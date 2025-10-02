@@ -4,6 +4,7 @@ import com.example.mysubmod.client.ClientSubModeManager;
 import com.example.mysubmod.network.NetworkHandler;
 import com.example.mysubmod.network.SubModeRequestPacket;
 import com.example.mysubmod.submodes.SubMode;
+import com.example.mysubmod.submodes.submode1.client.CandyFileUploadScreen;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.components.Button;
 import net.minecraft.client.gui.screens.Screen;
@@ -30,10 +31,21 @@ public class SubModeControlScreen extends Screen {
             button -> sendSubModeRequest(SubMode.WAITING_ROOM)
         ).bounds(centerX - BUTTON_WIDTH / 2, startY, BUTTON_WIDTH, BUTTON_HEIGHT).build());
 
+        // Sous-mode 1 with upload buttons
         addRenderableWidget(Button.builder(
             Component.literal("Sous-mode 1"),
             button -> sendSubModeRequest(SubMode.SUB_MODE_1)
-        ).bounds(centerX - BUTTON_WIDTH / 2, startY + BUTTON_SPACING, BUTTON_WIDTH, BUTTON_HEIGHT).build());
+        ).bounds(centerX - BUTTON_WIDTH / 2, startY + BUTTON_SPACING, BUTTON_WIDTH - 50, BUTTON_HEIGHT).build());
+
+        // File upload button next to Sous-mode 1 (only for admins)
+        if (ClientSubModeManager.isAdmin()) {
+            addRenderableWidget(Button.builder(
+                Component.literal("📁"),
+                button -> openCandyFileUploadScreen()
+            ).bounds(centerX + BUTTON_WIDTH / 2 - 25, startY + BUTTON_SPACING, 25, BUTTON_HEIGHT)
+            .tooltip(net.minecraft.client.gui.components.Tooltip.create(Component.literal("Charger un fichier depuis le disque")))
+            .build());
+        }
 
         addRenderableWidget(Button.builder(
             Component.literal("Sous-mode 2"),
@@ -52,6 +64,11 @@ public class SubModeControlScreen extends Screen {
             this.onClose();
         }
     }
+
+    private void openCandyFileUploadScreen() {
+        this.minecraft.setScreen(new CandyFileUploadScreen());
+    }
+
 
     @Override
     public void render(GuiGraphics guiGraphics, int mouseX, int mouseY, float partialTick) {

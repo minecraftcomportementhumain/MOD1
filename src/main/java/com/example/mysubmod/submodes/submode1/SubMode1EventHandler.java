@@ -14,6 +14,7 @@ import net.minecraft.world.phys.Vec3;
 import net.minecraftforge.event.entity.living.LivingAttackEvent;
 import net.minecraftforge.event.entity.EntityJoinLevelEvent;
 import net.minecraftforge.event.entity.player.PlayerEvent;
+import net.minecraftforge.event.entity.player.EntityItemPickupEvent;
 import net.minecraftforge.event.entity.player.PlayerInteractEvent;
 import net.minecraftforge.event.level.BlockEvent;
 import net.minecraftforge.event.TickEvent;
@@ -24,6 +25,8 @@ import net.minecraftforge.fml.common.Mod;
 public class SubMode1EventHandler {
     private static int positionLogTicks = 0;
     private static final int POSITION_LOG_INTERVAL = 100; // Log every 5 seconds (100 ticks)
+    private static int candyCountUpdateTicks = 0;
+    private static final int CANDY_COUNT_UPDATE_INTERVAL = 40; // Update every 2 seconds (40 ticks)
 
     @SubscribeEvent
     public static void onPlayerAttack(LivingAttackEvent event) {
@@ -42,7 +45,7 @@ public class SubMode1EventHandler {
         }
     }
 
-    @SubscribeEvent
+    @SubscribeEvent(priority = net.minecraftforge.eventbus.api.EventPriority.HIGHEST)
     public static void onPlayerInteractBlock(PlayerInteractEvent.RightClickBlock event) {
         if (SubModeManager.getInstance().getCurrentMode() != SubMode.SUB_MODE_1) {
             return;
@@ -61,13 +64,38 @@ public class SubMode1EventHandler {
         }
     }
 
-    @SubscribeEvent
+    @SubscribeEvent(priority = net.minecraftforge.eventbus.api.EventPriority.HIGHEST)
     public static void onBlockBreak(BlockEvent.BreakEvent event) {
         if (SubModeManager.getInstance().getCurrentMode() != SubMode.SUB_MODE_1) {
             return;
         }
 
         if (event.getPlayer() instanceof ServerPlayer player) {
+            net.minecraft.world.level.block.Block block = event.getState().getBlock();
+
+            // Log ALL block break attempts
+            MySubMod.LOGGER.info("BlockBreak attempt by {}: {} at {} - isAdmin: {}, isAlive: {}, isSpectator: {}",
+                player.getName().getString(),
+                block.getClass().getSimpleName(),
+                event.getPos(),
+                SubModeManager.getInstance().isAdmin(player),
+                SubMode1Manager.getInstance().isPlayerAlive(player.getUUID()),
+                SubMode1Manager.getInstance().isPlayerSpectator(player.getUUID()));
+
+            // ALWAYS prevent sign breaking for non-admins (to preserve text) - even during selection phase
+            if (block instanceof net.minecraft.world.level.block.SignBlock ||
+                block instanceof net.minecraft.world.level.block.StandingSignBlock ||
+                block instanceof net.minecraft.world.level.block.WallSignBlock) {
+                if (!SubModeManager.getInstance().isAdmin(player)) {
+                    event.setCanceled(true);
+                    MySubMod.LOGGER.info("BLOCKED sign break for non-admin player: {}", player.getName().getString());
+                    return;
+                } else {
+                    MySubMod.LOGGER.info("ALLOWED sign break for admin player: {}", player.getName().getString());
+                    return; // Allow admin to break signs
+                }
+            }
+
             if (SubMode1Manager.getInstance().isPlayerAlive(player.getUUID())) {
                 event.setCanceled(true);
                 player.sendSystemMessage(Component.literal("§cVous ne pouvez pas casser de blocs en sous-mode 1"));
@@ -113,13 +141,13 @@ public class SubMode1EventHandler {
     }
 
     @SubscribeEvent
-    public static void onPlayerPickupItem(PlayerEvent.ItemPickupEvent event) {
+    public static void onEntityItemPickup(EntityItemPickupEvent event) {
         if (SubModeManager.getInstance().getCurrentMode() != SubMode.SUB_MODE_1) {
             return;
         }
 
         if (event.getEntity() instanceof ServerPlayer player) {
-            ItemStack stack = event.getStack();
+            ItemStack stack = event.getItem().getItem();
 
             // Only allow candy pickup for alive players
             if (SubMode1Manager.getInstance().isPlayerAlive(player.getUUID())) {
@@ -131,17 +159,20 @@ public class SubMode1EventHandler {
                     }
 
                     // Notify candy manager
-                    ItemEntity itemEntity = event.getOriginalEntity();
+                    ItemEntity itemEntity = event.getItem();
                     if (itemEntity != null) {
                         SubMode1CandyManager.getInstance().onCandyPickup(itemEntity);
                     }
+                    // Allow candy pickup - do not cancel event
                 } else {
-                    // Remove non-candy items from inventory immediately
-                    player.getInventory().removeItem(stack);
+                    // Cancel pickup of non-candy items
+                    event.setCanceled(true);
+                    player.sendSystemMessage(Component.literal("§cVous ne pouvez ramasser que des bonbons en sous-mode 1"));
                 }
             } else {
-                // Remove items from spectator inventory
-                player.getInventory().removeItem(stack);
+                // Spectators cannot pick up any items
+                event.setCanceled(true);
+                player.sendSystemMessage(Component.literal("§cVous ne pouvez pas ramasser d'objets en tant que spectateur"));
             }
         }
     }
@@ -155,6 +186,9 @@ public class SubMode1EventHandler {
             }
         }
     }
+
+    private static int flowerCleanupTicks = 0;
+    private static final int FLOWER_CLEANUP_INTERVAL = 100; // Every 5 seconds (100 ticks)
 
     @SubscribeEvent
     public static void onServerTick(TickEvent.ServerTickEvent event) {
@@ -199,6 +233,51 @@ public class SubMode1EventHandler {
                 }
             }
         }
+
+        // Update candy count HUD for all players
+        candyCountUpdateTicks++;
+        if (candyCountUpdateTicks >= CANDY_COUNT_UPDATE_INTERVAL) {
+            candyCountUpdateTicks = 0;
+
+            // Get candy counts from manager
+            java.util.Map<com.example.mysubmod.submodes.submode1.islands.IslandType, Integer> candyCounts =
+                SubMode1CandyManager.getInstance().getAvailableCandiesPerIsland(event.getServer());
+
+            // Send to all players
+            com.example.mysubmod.submodes.submode1.network.CandyCountUpdatePacket packet =
+                new com.example.mysubmod.submodes.submode1.network.CandyCountUpdatePacket(candyCounts);
+            com.example.mysubmod.network.NetworkHandler.INSTANCE.send(
+                net.minecraftforge.network.PacketDistributor.ALL.noArg(), packet);
+        }
+
+        // Note: Dandelion cleanup is done once at start of selection phase in SubMode1Manager
+    }
+
+    private static void removeDroppedFlowers(net.minecraft.server.level.ServerLevel level) {
+        // Remove dropped flower items from islands and paths only
+        int removedCount = 0;
+        SubMode1Manager manager = SubMode1Manager.getInstance();
+
+        for (net.minecraft.world.entity.Entity entity : level.getAllEntities()) {
+            if (entity instanceof net.minecraft.world.entity.item.ItemEntity itemEntity) {
+                net.minecraft.world.item.Item item = itemEntity.getItem().getItem();
+
+                // Check if it's a flower item (only dandelion)
+                if (item == net.minecraft.world.item.Items.DANDELION) {
+
+                    // Only remove if near an island or path
+                    BlockPos itemPos = itemEntity.blockPosition();
+                    if (isNearIsland(itemPos)) {
+                        itemEntity.discard();
+                        removedCount++;
+                    }
+                }
+            }
+        }
+
+        if (removedCount > 0) {
+            MySubMod.LOGGER.debug("Removed {} dropped flower items from islands and paths", removedCount);
+        }
     }
 
     @SubscribeEvent
@@ -226,17 +305,35 @@ public class SubMode1EventHandler {
             if (SubMode1Manager.getInstance().isPlayerSpectator(player.getUUID())) {
                 event.setCanceled(true);
                 player.sendSystemMessage(Component.literal("§cVous ne pouvez pas jeter d'objets en tant que spectateur"));
+            } else if (SubMode1Manager.getInstance().isPlayerAlive(player.getUUID())) {
+                // Check if trying to drop a candy
+                ItemStack droppedItem = event.getEntity().getItem();
+                if (droppedItem.is(ModItems.CANDY.get())) {
+                    event.setCanceled(true);
+                    player.sendSystemMessage(Component.literal("§cVous ne pouvez pas jeter les bonbons en sous-mode 1"));
+                }
             }
         }
     }
 
-    @SubscribeEvent
+    @SubscribeEvent(priority = net.minecraftforge.eventbus.api.EventPriority.HIGHEST)
     public static void onEntityJoinLevel(EntityJoinLevelEvent event) {
         if (SubModeManager.getInstance().getCurrentMode() != SubMode.SUB_MODE_1) {
             return;
         }
 
-        // Only check hostile mobs (not players or item entities)
+        // Prevent dandelion items from spawning on islands and paths
+        if (event.getEntity() instanceof ItemEntity itemEntity) {
+            if (itemEntity.getItem().getItem() == net.minecraft.world.item.Items.DANDELION) {
+                BlockPos itemPos = itemEntity.blockPosition();
+                if (SubMode1Manager.getInstance().isNearIslandOrPath(itemPos)) {
+                    event.setCanceled(true);
+                    MySubMod.LOGGER.debug("Prevented dandelion item from spawning at {}", itemPos);
+                }
+            }
+        }
+
+        // Block hostile mobs near islands
         if (event.getEntity() instanceof net.minecraft.world.entity.monster.Monster) {
             BlockPos spawnPos = event.getEntity().blockPosition();
 
@@ -248,25 +345,36 @@ public class SubMode1EventHandler {
         }
     }
 
+
     private static boolean isNearIsland(BlockPos pos) {
         SubMode1Manager manager = SubMode1Manager.getInstance();
 
-        // Check if near small island (-100, 100, -100)
-        if (isWithinRadius(pos, manager.getSmallIslandCenter(), 25)) {
+        // Check if near small island
+        if (isWithinRadius(pos, manager.getSmallIslandCenter(), 35)) {
             return true;
         }
 
-        // Check if near medium island (0, 100, -100)
-        if (isWithinRadius(pos, manager.getMediumIslandCenter(), 30)) {
+        // Check if near medium island
+        if (isWithinRadius(pos, manager.getMediumIslandCenter(), 50)) {
             return true;
         }
 
-        // Check if near large island (100, 100, -100)
-        if (isWithinRadius(pos, manager.getLargeIslandCenter(), 35)) {
+        // Check if near large island
+        if (isWithinRadius(pos, manager.getLargeIslandCenter(), 65)) {
             return true;
         }
 
-        // Check if near spectator platform (0, 150, 0)
+        // Check if near extra large island
+        if (isWithinRadius(pos, manager.getExtraLargeIslandCenter(), 80)) {
+            return true;
+        }
+
+        // Check if near central square
+        if (isWithinRadius(pos, manager.getCentralSquare(), 15)) {
+            return true;
+        }
+
+        // Check if near spectator platform
         BlockPos spectatorCenter = new BlockPos(0, 150, 0);
         if (isWithinRadius(pos, spectatorCenter, 20)) {
             return true;

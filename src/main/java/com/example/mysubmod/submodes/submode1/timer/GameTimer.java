@@ -28,12 +28,24 @@ public class GameTimer {
         timer.scheduleAtFixedRate(new TimerTask() {
             @Override
             public void run() {
+                // Check if server is still valid before executing
+                if (server == null || server.isStopped()) {
+                    stop(); // Stop the timer if server is invalid
+                    return;
+                }
+
                 server.execute(() -> {
                     secondsLeft--;
 
-                    // Send timer update to all players
-                    NetworkHandler.INSTANCE.send(PacketDistributor.ALL.noArg(),
-                        new GameTimerPacket(secondsLeft));
+                    // Send timer update to all players - with safety check
+                    try {
+                        if (server != null && !server.isStopped() && server.getPlayerList() != null) {
+                            NetworkHandler.INSTANCE.send(PacketDistributor.ALL.noArg(),
+                                new GameTimerPacket(secondsLeft));
+                        }
+                    } catch (Exception e) {
+                        // Ignore network errors during server shutdown
+                    }
 
                     // Show important time milestones
                     if (secondsLeft == 300) { // 5 minutes left
@@ -65,17 +77,29 @@ public class GameTimer {
     }
 
     private void broadcastTimeWarning(String message) {
-        for (ServerPlayer player : server.getPlayerList().getPlayers()) {
-            player.sendSystemMessage(Component.literal(message));
+        try {
+            if (server != null && !server.isStopped() && server.getPlayerList() != null) {
+                for (ServerPlayer player : server.getPlayerList().getPlayers()) {
+                    player.sendSystemMessage(Component.literal(message));
+                }
+            }
+        } catch (Exception e) {
+            // Ignore errors during server shutdown
         }
     }
 
     private void teleportAllToSpectator() {
-        // Teleport all alive players to spectator platform
-        for (ServerPlayer player : server.getPlayerList().getPlayers()) {
-            if (SubMode1Manager.getInstance().isPlayerAlive(player.getUUID())) {
-                SubMode1Manager.getInstance().teleportToSpectator(player);
+        try {
+            if (server != null && !server.isStopped() && server.getPlayerList() != null) {
+                // Teleport all alive players to spectator platform
+                for (ServerPlayer player : server.getPlayerList().getPlayers()) {
+                    if (SubMode1Manager.getInstance().isPlayerAlive(player.getUUID())) {
+                        SubMode1Manager.getInstance().teleportToSpectator(player);
+                    }
+                }
             }
+        } catch (Exception e) {
+            // Ignore errors during server shutdown
         }
     }
 

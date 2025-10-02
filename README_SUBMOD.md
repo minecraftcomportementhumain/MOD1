@@ -6,7 +6,7 @@ Ce mod ajoute un système de sous-modes qui fonctionne côté client et serveur 
 
 ### Sous-modes disponibles
 1. **Salle d'attente** - Mode par défaut, activé automatiquement au démarrage du serveur
-2. **Sous-mode 1** - Jeu de survie de 15 minutes sur îles carrées avec système de bonbons
+2. **Sous-mode 1** - Jeu de survie de 15 minutes sur 4 îles avec système de bonbons et spawn points
 3. **Sous-mode 2** - Mode personnalisé 2 (à implémenter)
 
 ### Interface Admin
@@ -21,6 +21,7 @@ Ce mod ajoute un système de sous-modes qui fonctionne côté client et serveur 
 2. Démarrez le serveur - la salle d'attente se lance automatiquement
 3. Les joueurs peuvent se connecter et voir l'interface avec `M`
 4. Les données de jeu sont automatiquement sauvegardées dans `mysubmod_data/`
+5. Les fichiers de configuration de spawn sont dans `candy_spawn_configs/`
 
 ## Commandes Serveur
 
@@ -53,26 +54,74 @@ Ce mod ajoute un système de sous-modes qui fonctionne côté client et serveur 
 
 ## Fonctionnalités Avancées
 
+### Système de Spawn Points
+- **Génération aléatoire** : Spawn points générés automatiquement à chaque partie
+- **Espacement** : Minimum 40 blocs entre chaque spawn point
+- **Par île** : 1 point (Petite), 2 points (Moyenne), 3 points (Large), 4 points (Très Grande)
+- **Fichiers de configuration** : Format `temps,quantité,île,spawn_point`
+
+### HUD en Temps Réel
+- **Affichage non-invasif** : Coin supérieur droit de l'écran
+- **Bonbons disponibles** : Compte par île avec couleurs distinctives
+- **Mise à jour automatique** : Toutes les 2 secondes
+- **Désactivation automatique** : À la fin de la partie
+
 ### Système de Logging
 - **Enregistrement automatique** de toutes les sessions de jeu
-- **Données détaillées** : positions, actions, événements
+- **Données détaillées** : positions, actions, événements, choix d'îles
 - **Structure organisée** : dossiers par session avec horodatage
 - **Fichiers séparés** : logs individuels par joueur + événements globaux
 
 ### Interface Utilisateur
-- **Sélection d'îles** : Interface graphique pour choisir son île de départ
+- **Sélection d'îles** : Interface graphique pour choisir son île de départ (4 options)
+- **Sélection de fichiers** : Upload et gestion des fichiers de configuration de spawn
 - **Timer en jeu** : Affichage non-invasif du temps restant
 - **Alertes automatiques** : Notifications aux moments clés
 - **Restrictions visuelles** : Messages d'information pour les actions interdites
 
+### Gestion des Fichiers de Spawn
+- **Upload** : Interface pour téléverser des fichiers de configuration personnalisés
+- **Validation** : Vérification automatique du format et des valeurs
+- **Suppression** : Gestion des fichiers (default.txt protégé)
+- **Sélection** : Choix du fichier avant chaque partie
+
 ## Architecture Technique
 
+### Communication Réseau
 - **Client-serveur** : Communication via packets réseau
 - **Validation** : Vérification côté serveur des permissions admin
-- **Interface** : GUI Minecraft avec boutons pour chaque sous-mode
-- **Commandes** : Système de commandes intégré avec Brigadier
-- **Génération procédurale** : Îles carrées avec décoration naturelle
-- **Système de données** : Logging complet avec analyse comportementale
-- **Gestion des effets** : Bonbons lumineux, barrières invisibles, restrictions joueurs
+- **Synchronisation** : Mise à jour en temps réel des compteurs de bonbons
 
-Le mod garantit que seuls les administrateurs autorisés peuvent effectuer des changements de sous-modes, tout en permettant à tous les joueurs de voir l'état actuel du système.
+### Interface Graphique
+- **GUI Minecraft** : Boutons pour chaque sous-mode
+- **HUD Overlay** : Affichage des ressources disponibles
+- **Écrans personnalisés** : Sélection d'îles et de fichiers
+
+### Système de Jeu
+- **Génération procédurale** : 4 îles carrées autour d'un carré central (20x20)
+- **Distances** : 360 blocs entre le centre et chaque île
+- **Spawn points** : Système aléatoire avec contraintes de distance
+- **Téléportation sécurisée** : Chargement de chunks avant téléportation
+
+### Gestion des Données
+- **Logging complet** : Analyse comportementale détaillée
+- **Tracking des ressources** : Comptage en temps réel par île
+- **Configuration flexible** : Fichiers de spawn personnalisables
+
+### Effets et Restrictions
+- **Bonbons lumineux** : Effet de glowing pour visibilité
+- **Barrières invisibles** : Protection des îles et chemins
+- **Restrictions joueurs** : Limitations des actions en jeu
+- **Fin de partie** : Automatique si tous morts ou timer expiré
+
+## Nouveautés de la Dernière Version
+
+- **4 îles** au lieu de 3 (60x60, 90x90, 120x120, 150x150)
+- **Carré central** de spawn (20x20)
+- **Système de spawn points** aléatoires
+- **HUD des ressources** disponibles par île
+- **Logging du choix d'île** de chaque joueur
+- **Téléportation améliorée** avec chargement de chunks
+- **Fin automatique** si tous les joueurs meurent
+
+Le mod garantit que seuls les administrateurs autorisés peuvent effectuer des changements de sous-modes, tout en permettant à tous les joueurs de voir l'état actuel du système et de participer pleinement aux parties.

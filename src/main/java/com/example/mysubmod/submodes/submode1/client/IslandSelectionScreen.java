@@ -28,22 +28,27 @@ public class IslandSelectionScreen extends Screen {
         super.init();
 
         int centerX = this.width / 2;
-        int startY = this.height / 2 - 30;
+        int startY = this.height / 2 - 50;
 
         addRenderableWidget(Button.builder(
-            Component.literal("Petite Île"),
+            Component.literal(IslandType.SMALL.getDisplayName()),
             button -> selectIsland(IslandType.SMALL)
         ).bounds(centerX - BUTTON_WIDTH / 2, startY, BUTTON_WIDTH, BUTTON_HEIGHT).build());
 
         addRenderableWidget(Button.builder(
-            Component.literal("Île Moyenne"),
+            Component.literal(IslandType.MEDIUM.getDisplayName()),
             button -> selectIsland(IslandType.MEDIUM)
         ).bounds(centerX - BUTTON_WIDTH / 2, startY + BUTTON_SPACING, BUTTON_WIDTH, BUTTON_HEIGHT).build());
 
         addRenderableWidget(Button.builder(
-            Component.literal("Grande Île"),
+            Component.literal(IslandType.LARGE.getDisplayName()),
             button -> selectIsland(IslandType.LARGE)
         ).bounds(centerX - BUTTON_WIDTH / 2, startY + BUTTON_SPACING * 2, BUTTON_WIDTH, BUTTON_HEIGHT).build());
+
+        addRenderableWidget(Button.builder(
+            Component.literal(IslandType.EXTRA_LARGE.getDisplayName()),
+            button -> selectIsland(IslandType.EXTRA_LARGE)
+        ).bounds(centerX - BUTTON_WIDTH / 2, startY + BUTTON_SPACING * 3, BUTTON_WIDTH, BUTTON_HEIGHT).build());
     }
 
     private void selectIsland(IslandType island) {

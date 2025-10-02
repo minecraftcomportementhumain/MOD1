@@ -31,6 +31,11 @@ public class SubMode1HealthManager {
             @Override
             public void run() {
                 server.execute(() -> {
+                    // Only degrade health if the game is active (not during island selection)
+                    if (!SubMode1Manager.getInstance().isGameActive()) {
+                        return;
+                    }
+
                     for (ServerPlayer player : server.getPlayerList().getPlayers()) {
                         if (SubMode1Manager.getInstance().isPlayerAlive(player.getUUID())) {
                             degradePlayerHealth(player);
@@ -89,6 +94,17 @@ public class SubMode1HealthManager {
         // Log death
         if (SubMode1Manager.getInstance().getDataLogger() != null) {
             SubMode1Manager.getInstance().getDataLogger().logPlayerDeath(player);
+        }
+
+        // Check if all players are dead (no alive players left)
+        if (SubMode1Manager.getInstance().getAlivePlayers().isEmpty()) {
+            MySubMod.LOGGER.info("All players are dead - ending game");
+            player.server.execute(() -> {
+                for (ServerPlayer p : player.server.getPlayerList().getPlayers()) {
+                    p.sendSystemMessage(Component.literal("§c§lTous les joueurs sont morts !"));
+                }
+                SubMode1Manager.getInstance().endGame(player.server);
+            });
         }
     }
 }

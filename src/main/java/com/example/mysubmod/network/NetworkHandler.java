@@ -67,5 +67,48 @@ public class NetworkHandler {
             com.example.mysubmod.submodes.submode1.network.GameTimerPacket::decode,
             com.example.mysubmod.submodes.submode1.network.GameTimerPacket::handle
         );
+
+        INSTANCE.registerMessage(
+            packetId++,
+            com.example.mysubmod.submodes.submode1.network.CandyFileListPacket.class,
+            com.example.mysubmod.submodes.submode1.network.CandyFileListPacket::encode,
+            com.example.mysubmod.submodes.submode1.network.CandyFileListPacket::decode,
+            com.example.mysubmod.submodes.submode1.network.CandyFileListPacket::handle
+        );
+
+        INSTANCE.registerMessage(
+            packetId++,
+            com.example.mysubmod.submodes.submode1.network.CandyFileSelectionPacket.class,
+            com.example.mysubmod.submodes.submode1.network.CandyFileSelectionPacket::encode,
+            com.example.mysubmod.submodes.submode1.network.CandyFileSelectionPacket::decode,
+            com.example.mysubmod.submodes.submode1.network.CandyFileSelectionPacket::handle,
+            java.util.Optional.of(NetworkDirection.PLAY_TO_SERVER)
+        );
+
+        INSTANCE.registerMessage(
+            packetId++,
+            com.example.mysubmod.submodes.submode1.network.CandyFileUploadPacket.class,
+            com.example.mysubmod.submodes.submode1.network.CandyFileUploadPacket::encode,
+            com.example.mysubmod.submodes.submode1.network.CandyFileUploadPacket::decode,
+            com.example.mysubmod.submodes.submode1.network.CandyFileUploadPacket::handle,
+            java.util.Optional.of(NetworkDirection.PLAY_TO_SERVER)
+        );
+
+        INSTANCE.registerMessage(
+            packetId++,
+            com.example.mysubmod.submodes.submode1.network.CandyFileDeletePacket.class,
+            com.example.mysubmod.submodes.submode1.network.CandyFileDeletePacket::encode,
+            com.example.mysubmod.submodes.submode1.network.CandyFileDeletePacket::decode,
+            com.example.mysubmod.submodes.submode1.network.CandyFileDeletePacket::handle,
+            java.util.Optional.of(NetworkDirection.PLAY_TO_SERVER)
+        );
+
+        INSTANCE.registerMessage(
+            packetId++,
+            com.example.mysubmod.submodes.submode1.network.CandyCountUpdatePacket.class,
+            com.example.mysubmod.submodes.submode1.network.CandyCountUpdatePacket::encode,
+            com.example.mysubmod.submodes.submode1.network.CandyCountUpdatePacket::new,
+            com.example.mysubmod.submodes.submode1.network.CandyCountUpdatePacket::handle
+        );
     }
 }

@@ -40,7 +40,13 @@ public class MySubMod {
     @SubscribeEvent
     public void onServerStarting(ServerStartingEvent event) {
         LOGGER.info("Starting MySubMod server-side functionality");
+
+        // Force deactivate all sub-modes first to clean up any leftover state
+        SubModeManager.getInstance().forceDeactivateAllSubModes(event.getServer());
+
+        // Then start the waiting room
         SubModeManager.getInstance().startWaitingRoom();
+
         // Activate waiting room after a short delay to ensure server is fully loaded
         event.getServer().execute(() -> {
             com.example.mysubmod.submodes.waitingroom.WaitingRoomManager.getInstance().activate(event.getServer());

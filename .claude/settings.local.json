@@ -1,0 +1,15 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(./gradlew:*)",
+      "Bash(Select-Object -Last 100)",
+      "Bash(git checkout:*)",
+      "Bash(.gradlew.bat build)",
+      "Bash(./gradlew.bat build:*)",
+      "Bash(git log:*)",
+      "Bash(git add:*)"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}

@@ -26,6 +26,25 @@ public class SubModeManager {
         return instance;
     }
 
+    public void forceDeactivateAllSubModes(MinecraftServer server) {
+        MySubMod.LOGGER.info("Force deactivating all sub-modes at server startup");
+
+        try {
+            // Force deactivate all possible sub-modes to clean up any leftover state
+            // Note: SubMode1Manager.deactivate() now includes clearMap() with improved detection
+            WaitingRoomManager.getInstance().deactivate(server);
+            SubMode1Manager.getInstance().deactivate(server);
+            // TODO: Add SubMode2Manager.getInstance().deactivate(server) when implemented
+
+            // Reset to a clean state
+            currentMode = SubMode.WAITING_ROOM; // Will be properly activated next
+
+            MySubMod.LOGGER.info("Successfully deactivated all sub-modes");
+        } catch (Exception e) {
+            MySubMod.LOGGER.error("Error during force deactivation of sub-modes", e);
+        }
+    }
+
     public void startWaitingRoom() {
         changeSubMode(SubMode.WAITING_ROOM, null);
         MySubMod.LOGGER.info("Waiting room started automatically");
@@ -67,7 +86,7 @@ public class SubModeManager {
                     WaitingRoomManager.getInstance().activate(server);
                     break;
                 case SUB_MODE_1:
-                    SubMode1Manager.getInstance().activate(server);
+                    SubMode1Manager.getInstance().activate(server, requestingPlayer);
                     break;
                 case SUB_MODE_2:
                     // TODO: Implement SubMode2Manager when ready
@@ -102,6 +121,10 @@ public class SubModeManager {
     public boolean isAdmin(ServerPlayer player) {
         return admins.contains(player.getName().getString().toLowerCase()) ||
                player.hasPermissions(2);
+    }
+
+    public boolean isPlayerAdmin(ServerPlayer player) {
+        return isAdmin(player);
     }
 
     public Set<String> getAdmins() {

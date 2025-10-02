@@ -9,8 +9,13 @@ public class ClientGameTimer {
     private static boolean active = false;
 
     public static void updateTimer(int seconds) {
-        secondsLeft = seconds;
-        active = seconds > 0;
+        if (seconds < 0) {
+            // Special case: negative value means deactivate
+            deactivate();
+        } else {
+            secondsLeft = seconds;
+            active = seconds > 0;
+        }
     }
 
     public static boolean isActive() {

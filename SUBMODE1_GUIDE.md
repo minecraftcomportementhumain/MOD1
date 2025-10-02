@@ -7,20 +7,46 @@ Le sous-mode 1 est un mode de survie de 15 minutes où les joueurs doivent survi
 ## Fonctionnalités principales
 
 ### 🏝️ **Système d'îles carrées**
-- **3 îles carrées générées automatiquement** :
-  - **Petite île** (15x15 blocs) : Compacte, ressources limitées
-  - **Île moyenne** (25x25 blocs) : Équilibrée
-  - **Grande île** (35x35 blocs) : Plus d'espace, plus de ressources
+- **4 îles carrées générées automatiquement** autour d'un carré central (20x20) :
+  - **Petite île** (60x60 blocs) : 1 spawn point
+  - **Île moyenne** (90x90 blocs) : 2 spawn points
+  - **Grande île** (120x120 blocs) : 3 spawn points
+  - **Très grande île** (150x150 blocs) : 4 spawn points
+- **Carré central de spawn** (20x20) : Point de départ où tous les joueurs apparaissent
+- **Distance** : 360 blocs entre le centre et chaque île
 - **Barrières invisibles** : Empêchent la chute dans l'eau avec ouvertures pour les chemins
-- **Chemins de pierre** : Relient les îles entre elles
-- **Décoration naturelle** : Arbres, fleurs, herbe haute
+- **Chemins de pierre** : Relient chaque île au carré central (360 blocs de long)
+- **Indicateurs directionnels** : Hologrammes flottants colorés au-dessus des tours de laine au carré central
+- **Décoration naturelle** : Arbres, fleurs, herbe haute (pissenlits bloqués sur les îles et chemins)
 - **Génération procédurale** avec variations de terrain et bordures naturelles
 
 ### 🎯 **Phase de sélection (30 secondes)**
-- **Interface automatique** s'ouvre pour tous les joueurs non-admin
-- **Choix d'île** via boutons dans l'interface
+- **Téléportation au carré central** pour tous les joueurs non-admin
+- **Interface automatique** s'ouvre pour choisir l'île
+- **4 options d'îles** avec dimensions affichées
 - **Attribution automatique** si pas de sélection dans les 30 secondes
-- **Téléportation simultanée** de tous les joueurs vers leurs îles
+- **Téléportation simultanée** vers les îles choisies
+- **Logging automatique** du choix d'île de chaque joueur
+
+### 🎯 **Système de spawn points aléatoires**
+- **Génération à chaque partie** : Nouveaux spawn points aléatoires
+- **Distance minimale** : 40 blocs entre chaque spawn point
+- **Configuration par fichier** :
+  - Format : `temps,quantité,île,spawn_point`
+  - Exemple : `60,5,EXTRA_LARGE,3` (5 bonbons à 60s sur la très grande île au spawn point 3)
+  - Validation automatique du format et des valeurs
+
+### 📁 **Gestion des fichiers de configuration**
+- **Interface de sélection** avant chaque partie (admins uniquement)
+- **Upload de fichiers** personnalisés via interface graphique
+- **Validation stricte** :
+  - Format à 4 champs obligatoire
+  - Temps entre 0-900 secondes
+  - Quantité entre 1-50 bonbons
+  - Île valide (SMALL, MEDIUM, LARGE, EXTRA_LARGE)
+  - Spawn point valide selon l'île (1-4)
+- **Suppression** des fichiers personnalisés (default.txt protégé)
+- **Fichier par défaut** : `default.txt` toujours disponible
 
 ### ⏱️ **Timer de jeu (15 minutes)**
 - **Affichage non-invasif** en haut à droite de l'écran
@@ -31,26 +57,38 @@ Le sous-mode 1 est un mode de survie de 15 minutes où les joueurs doivent survi
   - Compte à rebours final (30s, 10s, 9s...1s)
 - **Couleurs d'alerte** : Jaune → Orange → Rouge
 
+### 📊 **HUD des ressources en temps réel**
+- **Position** : Coin supérieur droit (non-invasif)
+- **Affichage** : Nombre de bonbons disponibles par île
+- **Couleurs** :
+  - Petite : Blanc
+  - Moyenne : Vert
+  - Grande : Bleu
+  - Très Grande : Orange
+- **Mise à jour** : Toutes les 2 secondes
+- **Désactivation automatique** : À la fin de la partie
+
 ### 💔 **Système de santé**
 - **Santé initiale** : 100% santé, 50% faim au démarrage
-- **Dégradation automatique** : -0.5 cœur toutes les 10 secondes
+- **Dégradation automatique** : -0.5 cœur toutes les 10 secondes (UNIQUEMENT pendant la partie, pas pendant la sélection des îles)
 - **Alerte santé critique** quand ≤ 1 cœur restant
 - **Mort automatique** à 0 cœur → téléportation vers zone spectateur
+- **Fin de partie automatique** si tous les joueurs meurent
 
 ### 🍬 **Système de bonbons**
 - **Seul moyen de récupérer de la santé** (+2 cœurs par bonbon)
-- **Distribution** : 35 bonbons par joueur (50% grande île, 30% moyenne, 20% petite)
-- **Spawn étalé** : Répartis sur les 15 minutes de jeu
-- **Expiration** : 2 minutes après apparition
+- **Spawn selon configuration** : Défini par le fichier de configuration sélectionné
+- **Spawn aux points désignés** : Les bonbons apparaissent uniquement aux spawn points aléatoires
+- **Persistance** : Les bonbons restent jusqu'à collecte (pas d'expiration)
 - **Seul objet autorisé** dans l'inventaire
-- **Visibilité améliorée** : Effet lumineux et flottement pour les voir de loin
+- **Visibilité améliorée** : Effet lumineux (glowing) pour les voir de loin
 
 #### Propriétés des bonbons :
 - **Récupération** : +2 cœurs de santé
 - **Partageables** : Peuvent être jetés et ramassés par d'autres
 - **Destructibles** : Peuvent être détruits
 - **Effet lumineux** : Brillent avec un contour visible à travers les blocs
-- **Flottement** : Restent en l'air pour une meilleure visibilité
+- **Tracking** : Associés à leur île pour le HUD des ressources
 
 ### 👥 **Gestion des joueurs**
 
@@ -72,6 +110,7 @@ Le sous-mode 1 est un mode de survie de 15 minutes où les joueurs doivent survi
 - Téléportés automatiquement vers la plateforme spectateur
 - Peuvent observer le jeu
 - Gardent leurs privilèges pour changer de mode
+- Peuvent sélectionner le fichier de configuration
 
 ### 🚫 **Restrictions strictes**
 Les joueurs vivants **NE PEUVENT PAS** :
@@ -82,27 +121,35 @@ Les joueurs vivants **NE PEUVENT PAS** :
 - ❌ Fabriquer des objets
 - ❌ Ramasser d'autres objets que les bonbons
 
+**Protection supplémentaire** :
+- 🚫 Les pissenlits (dandelions) ne peuvent pas apparaître comme objets ramassables sur les îles et chemins
+- 🚫 Les mobs hostiles ne peuvent pas spawner près des îles
+
 ### 📊 **Système de logging complet**
 Toutes les actions sont enregistrées dans `mysubmod_data/submode1_game_[timestamp]/` :
 
 #### **Logs par joueur** (`[nom_joueur]_log.txt`) :
+- **Sélection d'île** : Île choisie (manuelle ou automatique) au début
 - **Positions** : Enregistrées toutes les 5 secondes
 - **Consommation de bonbons** : Moment, position et santé après consommation
 - **Ramassage de bonbons** : Position du bonbon et du joueur
 - **Changements de santé** : Ancienne → nouvelle valeur avec position
 - **Mort** : Position et moment
-- **Sélection d'île** : Île choisie au début
 
 #### **Logs globaux** (`game_events.txt`) :
 - Début/fin de partie
-- Spawn de bonbons (position et île)
+- Spawn de bonbons (position, île et spawn point)
 - Événements système
 
 ### 🎉 **Fin de partie**
+- **Conditions** :
+  - Timer de 15 minutes écoulé, OU
+  - Tous les joueurs sont morts
 - **Message de félicitations** affiché à tous
 - **Retour automatique** vers la salle d'attente après 5 secondes
 - **Sauvegarde** de toutes les données de la session
-- **Nettoyage complet** de la carte
+- **Nettoyage complet** de la carte (îles, chemins, barrières)
+- **Désactivation du HUD** des ressources
 
 ## Commandes administratives
 
@@ -120,30 +167,42 @@ Toutes les actions sont enregistrées dans `mysubmod_data/submode1_game_[timesta
 ## Architecture technique
 
 ### **Classes principales**
-- `SubMode1Manager` : Gestion principale du mode
+- `SubMode1Manager` : Gestion principale du mode (4 îles, carré central)
 - `IslandGenerator` : Génération procédurale des îles
+- `SpawnPointManager` : Génération et gestion des spawn points aléatoires
 - `SubMode1HealthManager` : Système de dégradation de santé
-- `SubMode1CandyManager` : Gestion des bonbons (spawn/expiration)
+- `SubMode1CandyManager` : Gestion des bonbons (spawn selon configuration)
 - `SubMode1DataLogger` : Système de logging complet
 - `GameTimer` : Gestion du timer de 15 minutes
+- `CandySpawnFileManager` : Gestion et validation des fichiers de configuration
 
 ### **Interface utilisateur**
-- `IslandSelectionScreen` : Interface de sélection d'île
+- `IslandSelectionScreen` : Interface de sélection d'île (4 options)
+- `CandyFileSelectionScreen` : Interface de sélection/upload/suppression de fichiers
+- `CandyFileUploadScreen` : Interface d'upload de fichiers
 - `SubMode1HUD` : Affichage du timer en jeu
+- `CandyCountHUD` : Affichage des ressources disponibles par île
 - `ClientGameTimer` : Gestion côté client du timer
 
 ### **Réseau**
 - `IslandSelectionPacket` : Ouverture de l'interface de sélection
 - `IslandChoicePacket` : Envoi du choix d'île au serveur
 - `GameTimerPacket` : Synchronisation du timer
+- `CandyFileListPacket` : Liste des fichiers disponibles
+- `CandyFileSelectionPacket` : Sélection du fichier de configuration
+- `CandyFileUploadPacket` : Upload de nouveaux fichiers
+- `CandyFileDeletePacket` : Suppression de fichiers
+- `CandyCountUpdatePacket` : Mise à jour du HUD des ressources
 
 ## Données collectées
 
 Le système collecte des données précieuses pour l'analyse comportementale :
 - **Patterns de mouvement** des joueurs
-- **Stratégies de collecte** de bonbons
+- **Choix d'îles** au début de la partie
+- **Stratégies de collecte** de bonbons (par spawn point)
 - **Gestion des ressources** (timing de consommation)
 - **Zones de survie préférées** sur chaque île
 - **Durée de survie** par joueur
+- **Distribution des bonbons** par île et spawn point
 
-Cette implémentation complète offre une expérience de jeu équilibrée, competitive et entièrement trackée pour l'analyse de données.
+Cette implémentation complète offre une expérience de jeu équilibrée, hautement configurable et entièrement trackée pour l'analyse de données comportementales.
