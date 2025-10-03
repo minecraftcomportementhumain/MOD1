@@ -13,6 +13,8 @@ Ce mod ajoute un système de sous-modes qui fonctionne côté client et serveur 
 - Accessible en appuyant sur la touche `M` en jeu
 - Affiche le mode actuel
 - Permet aux administrateurs de changer de sous-mode via des boutons
+- Bouton 📊 pour gérer les logs (télécharger/supprimer)
+- Bouton 📁 pour gérer les fichiers de spawn (upload/sélection/suppression)
 - Les non-administrateurs peuvent voir l'interface mais ne peuvent pas changer de mode
 
 ## Installation
@@ -82,8 +84,16 @@ Ce mod ajoute un système de sous-modes qui fonctionne côté client et serveur 
 ### Gestion des Fichiers de Spawn
 - **Upload** : Interface pour téléverser des fichiers de configuration personnalisés
 - **Validation** : Vérification automatique du format et des valeurs
-- **Suppression** : Gestion des fichiers (default.txt protégé)
-- **Sélection** : Choix du fichier avant chaque partie
+- **Suppression** : Gestion des fichiers via interface graphique (default.txt protégé)
+- **Sélection** : Liste défilante avec sélection par clic
+- **Actualisation** : Bouton pour rafraîchir la liste des fichiers
+
+### Gestion des Logs
+- **Téléchargement** : Logs compressés en ZIP dans le dossier Downloads
+- **Téléchargement en masse** : Option pour télécharger tous les logs en un fichier
+- **Suppression sélective** : Interface pour supprimer des sessions individuelles
+- **Suppression en masse** : Option pour nettoyer tous les logs
+- **Liste défilante** : Interface moderne avec sélection par clic
 
 ## Architecture Technique
 
@@ -116,12 +126,24 @@ Ce mod ajoute un système de sous-modes qui fonctionne côté client et serveur 
 
 ## Nouveautés de la Dernière Version
 
-- **4 îles** au lieu de 3 (60x60, 90x90, 120x120, 150x150)
-- **Carré central** de spawn (20x20)
-- **Système de spawn points** aléatoires
-- **HUD des ressources** disponibles par île
-- **Logging du choix d'île** de chaque joueur
-- **Téléportation améliorée** avec chargement de chunks
-- **Fin automatique** si tous les joueurs meurent
+### Améliorations Majeures
+- **Hologrammes** : Indicateurs directionnels au-dessus des tours de laine au carré central
+- **Protection améliorée** : Blocage de tous les items au sol (sauf bonbons) sur îles et chemins
+- **Sprint désactivé** : Vitesse de sprint réduite à la vitesse de marche normale
+- **Gestion des logs** : Interface complète de téléchargement et suppression des logs
+- **Interface modernisée** : Listes défilantes avec sélection par clic pour fichiers et logs
+- **Correction HUD** : Le HUD ne persiste plus après déconnexion/reconnexion
+
+### Fonctionnalités du Sous-mode 1
+- **4 îles** de tailles différentes (60x60, 90x90, 120x120, 150x150)
+- **Carré central** de spawn (20x20) avec tours de laine colorées
+- **Système de spawn points** aléatoires par île
+- **HUD des ressources** disponibles par île en temps réel
+- **Logging complet** du choix d'île de chaque joueur
+- **Téléportation sécurisée** avec chargement de chunks
+- **Fin automatique** si tous les joueurs meurent ou timer expiré
+- **Protection complète** : Aucun bloc ne peut être cassé/placé, aucun craft possible
+- **Monde vide** : Serveur configuré avec monde void par défaut
+- **Visibilité augmentée** : Distance de rendu des entités augmentée à 300%
 
 Le mod garantit que seuls les administrateurs autorisés peuvent effectuer des changements de sous-modes, tout en permettant à tous les joueurs de voir l'état actuel du système et de participer pleinement aux parties.

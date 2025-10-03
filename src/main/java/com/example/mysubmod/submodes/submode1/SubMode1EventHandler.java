@@ -179,16 +179,28 @@ public class SubMode1EventHandler {
 
     @SubscribeEvent
     public static void onPlayerJoin(PlayerEvent.PlayerLoggedInEvent event) {
-        if (SubModeManager.getInstance().getCurrentMode() == SubMode.SUB_MODE_1) {
-            if (event.getEntity() instanceof ServerPlayer player) {
+        if (event.getEntity() instanceof ServerPlayer player) {
+            if (SubModeManager.getInstance().getCurrentMode() == SubMode.SUB_MODE_1) {
                 // New players joining during SubMode1 go to spectator
                 SubMode1Manager.getInstance().teleportToSpectator(player);
+            } else {
+                // Player joining when SubMode1 is NOT active - clear their HUD and timer
+                // Send empty candy counts to deactivate candy HUD
+                com.example.mysubmod.network.NetworkHandler.INSTANCE.send(
+                    net.minecraftforge.network.PacketDistributor.PLAYER.with(() -> player),
+                    new com.example.mysubmod.submodes.submode1.network.CandyCountUpdatePacket(new java.util.HashMap<>())
+                );
+
+                // Send -1 timer to deactivate game timer
+                com.example.mysubmod.network.NetworkHandler.INSTANCE.send(
+                    net.minecraftforge.network.PacketDistributor.PLAYER.with(() -> player),
+                    new com.example.mysubmod.submodes.submode1.network.GameTimerPacket(-1)
+                );
+
+                MySubMod.LOGGER.info("Cleared SubMode1 HUD for reconnecting player: {}", player.getName().getString());
             }
         }
     }
-
-    private static int flowerCleanupTicks = 0;
-    private static final int FLOWER_CLEANUP_INTERVAL = 100; // Every 5 seconds (100 ticks)
 
     @SubscribeEvent
     public static void onServerTick(TickEvent.ServerTickEvent event) {
@@ -198,6 +210,35 @@ public class SubMode1EventHandler {
 
         if (SubModeManager.getInstance().getCurrentMode() != SubMode.SUB_MODE_1) {
             return;
+        }
+
+        // Disable sprinting for all players in SubMode1 by setting sprint speed to walk speed
+        for (ServerPlayer player : event.getServer().getPlayerList().getPlayers()) {
+            // Set movement speed attribute modifier to prevent sprint speed boost
+            net.minecraft.world.entity.ai.attributes.AttributeInstance movementSpeed =
+                player.getAttribute(net.minecraft.world.entity.ai.attributes.Attributes.MOVEMENT_SPEED);
+
+            if (movementSpeed != null) {
+                // Remove any existing sprint modifier
+                java.util.UUID sprintModifierUUID = java.util.UUID.fromString("662A6B8D-DA3E-4C1C-8813-96EA6097278D");
+                movementSpeed.removeModifier(sprintModifierUUID);
+
+                // Add a modifier that cancels sprint speed (sprint normally adds 30% speed)
+                // By adding -0.03 modifier when sprinting, we cancel the boost
+                if (player.isSprinting()) {
+                    net.minecraft.world.entity.ai.attributes.AttributeModifier noSprintModifier =
+                        new net.minecraft.world.entity.ai.attributes.AttributeModifier(
+                            sprintModifierUUID,
+                            "No sprint boost",
+                            -0.003, // Cancel 30% sprint boost (base speed is 0.1, so 0.1 * 0.3 = 0.03)
+                            net.minecraft.world.entity.ai.attributes.AttributeModifier.Operation.ADDITION
+                        );
+
+                    if (movementSpeed.getModifier(sprintModifierUUID) == null) {
+                        movementSpeed.addTransientModifier(noSprintModifier);
+                    }
+                }
+            }
         }
 
         if (!SubMode1Manager.getInstance().isGameActive()) {
@@ -253,33 +294,6 @@ public class SubMode1EventHandler {
         // Note: Dandelion cleanup is done once at start of selection phase in SubMode1Manager
     }
 
-    private static void removeDroppedFlowers(net.minecraft.server.level.ServerLevel level) {
-        // Remove dropped flower items from islands and paths only
-        int removedCount = 0;
-        SubMode1Manager manager = SubMode1Manager.getInstance();
-
-        for (net.minecraft.world.entity.Entity entity : level.getAllEntities()) {
-            if (entity instanceof net.minecraft.world.entity.item.ItemEntity itemEntity) {
-                net.minecraft.world.item.Item item = itemEntity.getItem().getItem();
-
-                // Check if it's a flower item (only dandelion)
-                if (item == net.minecraft.world.item.Items.DANDELION) {
-
-                    // Only remove if near an island or path
-                    BlockPos itemPos = itemEntity.blockPosition();
-                    if (isNearIsland(itemPos)) {
-                        itemEntity.discard();
-                        removedCount++;
-                    }
-                }
-            }
-        }
-
-        if (removedCount > 0) {
-            MySubMod.LOGGER.debug("Removed {} dropped flower items from islands and paths", removedCount);
-        }
-    }
-
     @SubscribeEvent
     public static void onPlayerInteractItem(PlayerInteractEvent.RightClickItem event) {
         if (SubModeManager.getInstance().getCurrentMode() != SubMode.SUB_MODE_1) {
@@ -322,13 +336,20 @@ public class SubMode1EventHandler {
             return;
         }
 
-        // Prevent dandelion items from spawning on islands and paths
+        // Prevent ALL items (except candies from our spawn system) from spawning on islands and paths
         if (event.getEntity() instanceof ItemEntity itemEntity) {
-            if (itemEntity.getItem().getItem() == net.minecraft.world.item.Items.DANDELION) {
-                BlockPos itemPos = itemEntity.blockPosition();
-                if (SubMode1Manager.getInstance().isNearIslandOrPath(itemPos)) {
+            BlockPos itemPos = itemEntity.blockPosition();
+
+            // Only block items on islands and paths
+            if (SubMode1Manager.getInstance().isNearIslandOrPath(itemPos)) {
+                // Allow candies from our spawn system (they have glowing tag and are candy items)
+                boolean isCandy = itemEntity.getItem().is(ModItems.CANDY.get());
+                boolean hasGlowingTag = itemEntity.hasGlowingTag();
+
+                if (!isCandy || !hasGlowingTag) {
                     event.setCanceled(true);
-                    MySubMod.LOGGER.debug("Prevented dandelion item from spawning at {}", itemPos);
+                    MySubMod.LOGGER.debug("Prevented item {} from spawning at {}",
+                        itemEntity.getItem().getItem().getDescriptionId(), itemPos);
                 }
             }
         }

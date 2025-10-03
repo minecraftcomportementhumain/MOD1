@@ -3,6 +3,7 @@ package com.example.mysubmod.client.gui;
 import com.example.mysubmod.client.ClientSubModeManager;
 import com.example.mysubmod.network.NetworkHandler;
 import com.example.mysubmod.network.SubModeRequestPacket;
+import com.example.mysubmod.network.LogListRequestPacket;
 import com.example.mysubmod.submodes.SubMode;
 import com.example.mysubmod.submodes.submode1.client.CandyFileUploadScreen;
 import net.minecraft.client.gui.GuiGraphics;
@@ -31,14 +32,23 @@ public class SubModeControlScreen extends Screen {
             button -> sendSubModeRequest(SubMode.WAITING_ROOM)
         ).bounds(centerX - BUTTON_WIDTH / 2, startY, BUTTON_WIDTH, BUTTON_HEIGHT).build());
 
-        // Sous-mode 1 with upload buttons
+        // Sous-mode 1 with upload and log buttons
         addRenderableWidget(Button.builder(
             Component.literal("Sous-mode 1"),
             button -> sendSubModeRequest(SubMode.SUB_MODE_1)
-        ).bounds(centerX - BUTTON_WIDTH / 2, startY + BUTTON_SPACING, BUTTON_WIDTH - 50, BUTTON_HEIGHT).build());
+        ).bounds(centerX - BUTTON_WIDTH / 2, startY + BUTTON_SPACING, BUTTON_WIDTH - 80, BUTTON_HEIGHT).build());
 
-        // File upload button next to Sous-mode 1 (only for admins)
+        // Buttons next to Sous-mode 1 (only for admins)
         if (ClientSubModeManager.isAdmin()) {
+            // Log management button
+            addRenderableWidget(Button.builder(
+                Component.literal("📊"),
+                button -> openLogManagementScreen()
+            ).bounds(centerX + BUTTON_WIDTH / 2 - 55, startY + BUTTON_SPACING, 25, BUTTON_HEIGHT)
+            .tooltip(net.minecraft.client.gui.components.Tooltip.create(Component.literal("Gestion des logs")))
+            .build());
+
+            // File upload button
             addRenderableWidget(Button.builder(
                 Component.literal("📁"),
                 button -> openCandyFileUploadScreen()
@@ -67,6 +77,11 @@ public class SubModeControlScreen extends Screen {
 
     private void openCandyFileUploadScreen() {
         this.minecraft.setScreen(new CandyFileUploadScreen());
+    }
+
+    private void openLogManagementScreen() {
+        // Request log list from server
+        NetworkHandler.INSTANCE.sendToServer(new LogListRequestPacket());
     }
 
 

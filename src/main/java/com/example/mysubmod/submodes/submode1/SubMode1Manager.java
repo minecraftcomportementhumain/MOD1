@@ -166,6 +166,13 @@ public class SubMode1Manager {
                 MySubMod.LOGGER.error("Error ending data logging", e);
             }
 
+            // Stop health degradation
+            try {
+                SubMode1HealthManager.getInstance().stopHealthDegradation();
+            } catch (Exception e) {
+                MySubMod.LOGGER.error("Error stopping health degradation", e);
+            }
+
             // Stop candy spawning and remove all existing candies
             try {
                 SubMode1CandyManager.getInstance().stopCandySpawning();
@@ -1473,6 +1480,12 @@ public class SubMode1Manager {
 
     public String getSelectedCandySpawnFile() {
         return selectedCandySpawnFile;
+    }
+
+    public void sendCandyFileListToPlayer(ServerPlayer player) {
+        List<String> availableFiles = CandySpawnFileManager.getInstance().getAvailableFiles();
+        NetworkHandler.INSTANCE.send(PacketDistributor.PLAYER.with(() -> player),
+            new CandyFileListPacket(availableFiles));
     }
 
     // Getters

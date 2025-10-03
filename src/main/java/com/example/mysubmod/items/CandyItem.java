@@ -82,7 +82,6 @@ public class CandyItem extends Item {
     @Override
     public void appendHoverText(ItemStack stack, Level level, List<Component> tooltip, TooltipFlag flag) {
         tooltip.add(Component.literal("§7Restaure §c1 cœur §7de santé"));
-        tooltip.add(Component.literal("§7Expire au bout de quelques minutes"));
         tooltip.add(Component.literal("§eUtilisable uniquement en sous-mode 1"));
     }
 

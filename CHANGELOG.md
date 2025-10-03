@@ -2,7 +2,44 @@
 
 ## Version actuelle (Octobre 2025)
 
-### 🎨 Améliorations visuelles et UX (2 octobre 2025)
+### 🎨 Dernières améliorations (2 octobre 2025 - Session finale)
+
+#### Système de gestion des logs
+- **Interface 📊** : Nouvelle interface graphique accessible depuis l'écran admin
+- **Liste défilante** : Sélection moderne avec clic sur les dossiers de logs
+- **Téléchargement sélectif** : Compression ZIP et sauvegarde dans Downloads Windows
+- **Téléchargement en masse** : Option pour télécharger tous les logs en un fichier
+- **Suppression sélective** : Supprimer des sessions individuelles
+- **Suppression en masse** : Nettoyer tous les logs d'un coup
+- **Bouton d'actualisation** : Rafraîchir la liste des logs
+- **Sécurité** : Accès admin uniquement via packets réseau
+
+#### Interface de fichiers modernisée
+- **Liste défilante** : Remplacement du CycleButton par ObjectSelectionList
+- **Sélection par clic** : Interface plus intuitive
+- **Fond de sélection** : Highlight au survol des éléments
+- **Icônes** : 📄 pour default.txt, 📁 pour les autres
+- **Bouton d'actualisation** : Rafraîchir la liste des fichiers
+- **Nouveau packet** : CandyFileListRequestPacket pour les requêtes de liste
+
+#### Protection renforcée
+- **Blocage items étendu** : Tous les ItemEntity bloqués sur îles/chemins (pas seulement pissenlits)
+- **Exception bonbons** : Seuls les bonbons du système (avec glowingTag) sont autorisés
+- **Sprint désactivé** : Modificateur d'attribut pour réduire vitesse sprint = vitesse normale
+- **Correction HUD** : Les HUD et timer ne persistent plus après déconnexion/reconnexion
+
+#### Monde vide par défaut
+- **Configuration serveur** : `level-type=minecraft:flat` avec layers vides
+- **Generator settings** : `{"layers":[],"biome":"minecraft:plains"}`
+- **Visibilité étendue** : `entity-broadcast-range-percentage=300` pour voir les bonbons de loin
+
+#### Nettoyage du code
+- **Code mort supprimé** :
+  - Méthode `removeDroppedFlowers()` jamais appelée
+  - Variables `flowerCleanupTicks` et `FLOWER_CLEANUP_INTERVAL` inutilisées
+- **Documentation mise à jour** : Tous les fichiers .md reflètent l'état actuel
+
+### 🎨 Améliorations visuelles et UX (Session précédente)
 
 #### Système d'hologrammes pour indicateurs directionnels
 - **Remplacement des panneaux** : Hologrammes flottants au lieu de panneaux (texte plus stable)
@@ -163,6 +200,20 @@
 #### Data
 - `CandySpawnEntry.java` : Ajout du champ `spawnPointNumber`
 - `CandySpawnFileManager.java` : Parsing et validation du 4ème champ
+
+### 📦 Nouveaux fichiers (Session finale)
+
+#### Gestion des logs
+- `LogManager.java` : Gestionnaire serveur pour ZIP et suppression
+- `LogManagementScreen.java` : Interface client avec liste défilante
+- `LogPacketHandler.java` : Gestion client des packets de logs
+- `LogListRequestPacket.java` : Demande de liste des logs
+- `LogListPacket.java` : Envoi de la liste au client
+- `LogDownloadPacket.java` : Téléchargement de logs
+- `LogDeletePacket.java` : Suppression de logs
+
+#### Gestion des fichiers candy
+- `CandyFileListRequestPacket.java` : Demande de rafraîchissement de liste
 
 ### 🎯 Prochaines améliorations prévues
 - Texture personnalisée pour l'item bonbon (modèle JSON créé)

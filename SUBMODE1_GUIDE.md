@@ -37,7 +37,7 @@ Le sous-mode 1 est un mode de survie de 15 minutes où les joueurs doivent survi
   - Validation automatique du format et des valeurs
 
 ### 📁 **Gestion des fichiers de configuration**
-- **Interface de sélection** avant chaque partie (admins uniquement)
+- **Interface moderne** avec liste défilante et sélection par clic
 - **Upload de fichiers** personnalisés via interface graphique
 - **Validation stricte** :
   - Format à 4 champs obligatoire
@@ -45,8 +45,10 @@ Le sous-mode 1 est un mode de survie de 15 minutes où les joueurs doivent survi
   - Quantité entre 1-50 bonbons
   - Île valide (SMALL, MEDIUM, LARGE, EXTRA_LARGE)
   - Spawn point valide selon l'île (1-4)
-- **Suppression** des fichiers personnalisés (default.txt protégé)
+- **Suppression sélective** des fichiers personnalisés (default.txt protégé)
+- **Actualisation** via bouton pour rafraîchir la liste
 - **Fichier par défaut** : `default.txt` toujours disponible
+- **Accès** : Bouton 📁 dans l'interface admin (touche M)
 
 ### ⏱️ **Timer de jeu (15 minutes)**
 - **Affichage non-invasif** en haut à droite de l'écran
@@ -116,16 +118,19 @@ Le sous-mode 1 est un mode de survie de 15 minutes où les joueurs doivent survi
 Les joueurs vivants **NE PEUVENT PAS** :
 - ❌ Attaquer d'autres joueurs ou entités
 - ❌ Interagir avec des blocs (clic droit)
-- ❌ Casser des blocs
+- ❌ Casser des blocs (sauf admins peuvent casser panneaux)
 - ❌ Placer des blocs
 - ❌ Fabriquer des objets
 - ❌ Ramasser d'autres objets que les bonbons
+- ❌ Sprinter (vitesse de sprint = vitesse normale)
 
 **Protection supplémentaire** :
-- 🚫 Les pissenlits (dandelions) ne peuvent pas apparaître comme objets ramassables sur les îles et chemins
+- 🚫 Tous les items au sol (sauf bonbons du système) bloqués sur îles et chemins
 - 🚫 Les mobs hostiles ne peuvent pas spawner près des îles
+- 🚫 Les joueurs ne peuvent pas jeter de bonbons
+- 🚫 Distance de rendu des entités augmentée à 300% pour meilleure visibilité
 
-### 📊 **Système de logging complet**
+### 📊 **Système de logging et gestion**
 Toutes les actions sont enregistrées dans `mysubmod_data/submode1_game_[timestamp]/` :
 
 #### **Logs par joueur** (`[nom_joueur]_log.txt`) :
@@ -140,6 +145,15 @@ Toutes les actions sont enregistrées dans `mysubmod_data/submode1_game_[timesta
 - Début/fin de partie
 - Spawn de bonbons (position, île et spawn point)
 - Événements système
+
+#### **Gestion des logs** (Interface 📊)
+- **Téléchargement sélectif** : Télécharger une session spécifique en ZIP
+- **Téléchargement en masse** : Tous les logs en un seul fichier ZIP
+- **Suppression sélective** : Supprimer une session spécifique
+- **Suppression en masse** : Nettoyer tous les logs
+- **Liste défilante** : Interface moderne avec sélection par clic
+- **Destination** : Dossier Downloads de Windows
+- **Accès** : Bouton 📊 dans l'interface admin (touche M)
 
 ### 🎉 **Fin de partie**
 - **Conditions** :
@@ -178,8 +192,9 @@ Toutes les actions sont enregistrées dans `mysubmod_data/submode1_game_[timesta
 
 ### **Interface utilisateur**
 - `IslandSelectionScreen` : Interface de sélection d'île (4 options)
-- `CandyFileSelectionScreen` : Interface de sélection/upload/suppression de fichiers
+- `CandyFileSelectionScreen` : Interface moderne avec liste défilante pour fichiers
 - `CandyFileUploadScreen` : Interface d'upload de fichiers
+- `LogManagementScreen` : Interface de gestion des logs avec liste défilante
 - `SubMode1HUD` : Affichage du timer en jeu
 - `CandyCountHUD` : Affichage des ressources disponibles par île
 - `ClientGameTimer` : Gestion côté client du timer
@@ -189,10 +204,15 @@ Toutes les actions sont enregistrées dans `mysubmod_data/submode1_game_[timesta
 - `IslandChoicePacket` : Envoi du choix d'île au serveur
 - `GameTimerPacket` : Synchronisation du timer
 - `CandyFileListPacket` : Liste des fichiers disponibles
+- `CandyFileListRequestPacket` : Demande de rafraîchissement de la liste
 - `CandyFileSelectionPacket` : Sélection du fichier de configuration
 - `CandyFileUploadPacket` : Upload de nouveaux fichiers
 - `CandyFileDeletePacket` : Suppression de fichiers
 - `CandyCountUpdatePacket` : Mise à jour du HUD des ressources
+- `LogListRequestPacket` : Demande de liste des logs
+- `LogListPacket` : Liste des logs disponibles
+- `LogDownloadPacket` : Téléchargement de logs
+- `LogDeletePacket` : Suppression de logs
 
 ## Données collectées
 

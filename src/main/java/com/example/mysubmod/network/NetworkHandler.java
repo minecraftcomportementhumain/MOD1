@@ -110,5 +110,50 @@ public class NetworkHandler {
             com.example.mysubmod.submodes.submode1.network.CandyCountUpdatePacket::new,
             com.example.mysubmod.submodes.submode1.network.CandyCountUpdatePacket::handle
         );
+
+        INSTANCE.registerMessage(
+            packetId++,
+            com.example.mysubmod.submodes.submode1.network.CandyFileListRequestPacket.class,
+            com.example.mysubmod.submodes.submode1.network.CandyFileListRequestPacket::toBytes,
+            com.example.mysubmod.submodes.submode1.network.CandyFileListRequestPacket::new,
+            com.example.mysubmod.submodes.submode1.network.CandyFileListRequestPacket::handle,
+            java.util.Optional.of(NetworkDirection.PLAY_TO_SERVER)
+        );
+
+        // Log management packets
+        INSTANCE.registerMessage(
+            packetId++,
+            LogListRequestPacket.class,
+            LogListRequestPacket::toBytes,
+            LogListRequestPacket::new,
+            LogListRequestPacket::handle,
+            java.util.Optional.of(NetworkDirection.PLAY_TO_SERVER)
+        );
+
+        INSTANCE.registerMessage(
+            packetId++,
+            LogListPacket.class,
+            LogListPacket::toBytes,
+            LogListPacket::new,
+            LogListPacket::handle
+        );
+
+        INSTANCE.registerMessage(
+            packetId++,
+            LogDownloadPacket.class,
+            LogDownloadPacket::toBytes,
+            LogDownloadPacket::new,
+            LogDownloadPacket::handle,
+            java.util.Optional.of(NetworkDirection.PLAY_TO_SERVER)
+        );
+
+        INSTANCE.registerMessage(
+            packetId++,
+            LogDeletePacket.class,
+            LogDeletePacket::toBytes,
+            LogDeletePacket::new,
+            LogDeletePacket::handle,
+            java.util.Optional.of(NetworkDirection.PLAY_TO_SERVER)
+        );
     }
 }

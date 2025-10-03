@@ -3,9 +3,10 @@ package com.example.mysubmod.submodes.submode1.client;
 import com.example.mysubmod.network.NetworkHandler;
 import com.example.mysubmod.submodes.submode1.network.CandyFileSelectionPacket;
 import com.example.mysubmod.submodes.submode1.network.CandyFileDeletePacket;
+import com.example.mysubmod.submodes.submode1.network.CandyFileListRequestPacket;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.components.Button;
-import net.minecraft.client.gui.components.CycleButton;
+import net.minecraft.client.gui.components.ObjectSelectionList;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.network.chat.Component;
 
@@ -14,129 +15,190 @@ import java.util.List;
 
 public class CandyFileSelectionScreen extends Screen {
     private final List<String> availableFiles;
-    private String selectedFile;
-    private CycleButton<String> fileSelector;
+    private CandyFileList fileList;
     private Button confirmButton;
-    private Button deleteButton;
+    private Button deleteSelectedButton;
+    private Button refreshButton;
 
     public CandyFileSelectionScreen(List<String> availableFiles) {
         super(Component.literal("Sélection du fichier de spawn des bonbons"));
         this.availableFiles = new ArrayList<>(availableFiles);
-        this.selectedFile = availableFiles.isEmpty() ? null : availableFiles.get(0); // Auto-select first file
     }
 
     @Override
     protected void init() {
         super.init();
 
-        // Clear existing widgets to prevent duplicates on resize
-        this.clearWidgets();
-
-        // Safety check for window dimensions
-        if (this.width <= 0 || this.height <= 0) {
-            return;
-        }
-
         int centerX = this.width / 2;
-        int startY = 120; // Fixed start position
-        int buttonWidth = Math.min(300, this.width - 40); // Ensure dropdown fits in window
-        int buttonHeight = 25;
+        int listWidth = Math.min(400, this.width - 40);
+        int listHeight = this.height - 160;
+        int listX = centerX - listWidth / 2;
+        int listY = 60;
 
-        // File selection dropdown
-        fileSelector = CycleButton.<String>builder(filename -> Component.literal(filename))
-            .withValues(availableFiles)
-            .withInitialValue(selectedFile)
-            .create(centerX - buttonWidth / 2, startY, buttonWidth, buttonHeight,
-                Component.literal("Fichier sélectionné"),
-                (button, value) -> selectFile(value));
-        this.addRenderableWidget(fileSelector);
+        // Create file list
+        fileList = new CandyFileList(this.minecraft, listWidth, listHeight, listY, listY + listHeight, 25, availableFiles);
+        this.addWidget(fileList);
 
-        // Delete button (positioned below dropdown)
-        deleteButton = Button.builder(
-            Component.literal("🗑 Supprimer ce fichier"),
-            button -> deleteSelectedFile()
-        )
-        .bounds(centerX - buttonWidth / 2, startY + 40, buttonWidth, buttonHeight)
-        .build();
-        this.addRenderableWidget(deleteButton);
-        updateDeleteButtonState();
+        int buttonY = listY + listHeight + 10;
+        int buttonHeight = 20;
+        int buttonSpacing = 5;
 
-        // Confirm button - positioned below delete button
-        int confirmButtonY = startY + 80; // Fixed spacing
+        // Row 1: Confirm and Delete Selected
         confirmButton = Button.builder(
             Component.literal("✓ Confirmer la sélection"),
             button -> confirmSelection()
-        )
-        .bounds(centerX - buttonWidth / 2, confirmButtonY, buttonWidth, buttonHeight + 5)
-        .build();
-
+        ).bounds(listX, buttonY, (listWidth - buttonSpacing) / 2, buttonHeight).build();
         this.addRenderableWidget(confirmButton);
 
-        // Update states
-        updateDeleteButtonState();
+        deleteSelectedButton = Button.builder(
+            Component.literal("🗑 Supprimer Sélectionné"),
+            button -> deleteSelectedFile()
+        ).bounds(listX + (listWidth + buttonSpacing) / 2, buttonY, (listWidth - buttonSpacing) / 2, buttonHeight).build();
+        this.addRenderableWidget(deleteSelectedButton);
+
+        // Row 2: Refresh and Close
+        buttonY += buttonHeight + buttonSpacing;
+        refreshButton = Button.builder(
+            Component.literal("🔄 Actualiser"),
+            button -> refreshFileList()
+        ).bounds(listX, buttonY, (listWidth - buttonSpacing) / 2, buttonHeight).build();
+        this.addRenderableWidget(refreshButton);
+
+        Button closeButton = Button.builder(
+            Component.literal("Fermer"),
+            button -> this.onClose()
+        ).bounds(listX + (listWidth + buttonSpacing) / 2, buttonY, (listWidth - buttonSpacing) / 2, buttonHeight).build();
+        this.addRenderableWidget(closeButton);
+
+        updateButtonStates();
     }
 
-    private void selectFile(String filename) {
-        this.selectedFile = filename;
-        updateDeleteButtonState();
-    }
+    private void updateButtonStates() {
+        boolean hasSelection = fileList != null && fileList.getSelected() != null;
+        boolean hasFiles = !availableFiles.isEmpty();
 
-    private void updateDeleteButtonState() {
-        // Only enable delete button for non-default files
-        if (deleteButton != null) {
-            deleteButton.active = selectedFile != null && !"default.txt".equals(selectedFile);
+        if (confirmButton != null) confirmButton.active = hasSelection;
+
+        // Can't delete default.txt
+        if (deleteSelectedButton != null) {
+            CandyFileList.CandyFileEntry selected = fileList != null ? fileList.getSelected() : null;
+            deleteSelectedButton.active = hasSelection && selected != null && !"default.txt".equals(selected.getFileName());
         }
     }
 
     private void confirmSelection() {
-        if (selectedFile != null) {
-            NetworkHandler.INSTANCE.sendToServer(new CandyFileSelectionPacket(selectedFile));
-            onClose();
+        CandyFileList.CandyFileEntry selected = fileList.getSelected();
+        if (selected != null) {
+            NetworkHandler.INSTANCE.sendToServer(new CandyFileSelectionPacket(selected.getFileName()));
+            this.minecraft.player.sendSystemMessage(Component.literal("§aFichier sélectionné: " + selected.getFileName()));
+            this.onClose();
         }
     }
 
     private void deleteSelectedFile() {
-        if (selectedFile != null && !"default.txt".equals(selectedFile)) {
-            NetworkHandler.INSTANCE.sendToServer(new CandyFileDeletePacket(selectedFile));
-            // Remove from local list and refresh UI
-            availableFiles.remove(selectedFile);
-            if (!availableFiles.isEmpty()) {
-                selectedFile = availableFiles.get(0); // Select first remaining file
-            } else {
-                selectedFile = null;
-            }
-            // Refresh the screen
-            this.minecraft.setScreen(new CandyFileSelectionScreen(availableFiles));
+        CandyFileList.CandyFileEntry selected = fileList.getSelected();
+        if (selected != null && !"default.txt".equals(selected.getFileName())) {
+            NetworkHandler.INSTANCE.sendToServer(new CandyFileDeletePacket(selected.getFileName()));
+            this.minecraft.player.sendSystemMessage(Component.literal("§cSuppression de " + selected.getFileName() + "..."));
+            availableFiles.remove(selected.getFileName());
+            fileList.children().remove(selected);
+            updateButtonStates();
         }
     }
 
-    @Override
-    public void onClose() {
-        super.onClose();
+    private void refreshFileList() {
+        NetworkHandler.INSTANCE.sendToServer(new CandyFileListRequestPacket());
     }
 
     @Override
     public void render(GuiGraphics guiGraphics, int mouseX, int mouseY, float partialTick) {
         this.renderBackground(guiGraphics);
 
+        if (fileList != null) {
+            fileList.render(guiGraphics, mouseX, mouseY, partialTick);
+        }
+
         int centerX = this.width / 2;
+        guiGraphics.drawCenteredString(this.font, this.title, centerX, 20, 0xFFFFFF);
 
-        // Title - larger and more prominent
-        guiGraphics.drawCenteredString(this.font, this.title, centerX, 30, 0xFFFFFF);
-
-        // Instructions - better spaced
-        String instructions = "Sélectionnez un fichier de configuration pour l'apparition des bonbons";
-        guiGraphics.drawCenteredString(this.font, instructions, centerX, 50, 0xCCCCCC);
-
-        // File count info
-        String fileCount = String.format("Fichiers disponibles: %d", availableFiles.size());
-        guiGraphics.drawCenteredString(this.font, fileCount, centerX, 75, 0xAAAAAA);
+        String countText = availableFiles.size() + " fichier(s) disponible(s)";
+        guiGraphics.drawCenteredString(this.font, Component.literal(countText), centerX, 40, 0xAAAAAA);
 
         super.render(guiGraphics, mouseX, mouseY, partialTick);
     }
 
     @Override
+    public boolean mouseClicked(double mouseX, double mouseY, int button) {
+        if (fileList != null && fileList.mouseClicked(mouseX, mouseY, button)) {
+            updateButtonStates();
+            return true;
+        }
+        return super.mouseClicked(mouseX, mouseY, button);
+    }
+
+    @Override
     public boolean isPauseScreen() {
         return false;
+    }
+
+    // Inner class for the scrollable list
+    public static class CandyFileList extends ObjectSelectionList<CandyFileList.CandyFileEntry> {
+        public CandyFileList(net.minecraft.client.Minecraft minecraft, int width, int height, int top, int bottom, int itemHeight, List<String> files) {
+            super(minecraft, width, height, top, bottom, itemHeight);
+            for (String file : files) {
+                this.addEntry(new CandyFileEntry(file));
+            }
+        }
+
+        @Override
+        public int getRowWidth() {
+            return 396;
+        }
+
+        @Override
+        protected int getScrollbarPosition() {
+            return this.width - 6;
+        }
+
+        public static class CandyFileEntry extends Entry<CandyFileEntry> {
+            private final String fileName;
+            private final Component displayName;
+
+            public CandyFileEntry(String fileName) {
+                this.fileName = fileName;
+                // Add icon for default file
+                String icon = "default.txt".equals(fileName) ? "📄" : "📁";
+                this.displayName = Component.literal(icon + " " + fileName);
+            }
+
+            public String getFileName() {
+                return fileName;
+            }
+
+            @Override
+            public void render(GuiGraphics guiGraphics, int index, int top, int left, int width, int height,
+                             int mouseX, int mouseY, boolean isMouseOver, float partialTick) {
+                // Draw selection background
+                if (isMouseOver) {
+                    guiGraphics.fill(left, top, left + width, top + height, 0x80FFFFFF);
+                }
+
+                guiGraphics.drawString(net.minecraft.client.Minecraft.getInstance().font,
+                    displayName, left + 5, top + 5, 0xFFFFFF);
+            }
+
+            @Override
+            public Component getNarration() {
+                return displayName;
+            }
+
+            @Override
+            public boolean mouseClicked(double mouseX, double mouseY, int button) {
+                if (button == 0) {
+                    return true;
+                }
+                return false;
+            }
+        }
     }
 }
