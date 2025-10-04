@@ -163,5 +163,38 @@ public class NetworkHandler {
             LogDataPacket::new,
             LogDataPacket::handle
         );
+
+        // Admin authentication packets
+        INSTANCE.registerMessage(
+            packetId++,
+            com.example.mysubmod.auth.AdminAuthRequestPacket.class,
+            com.example.mysubmod.auth.AdminAuthRequestPacket::encode,
+            com.example.mysubmod.auth.AdminAuthRequestPacket::decode,
+            com.example.mysubmod.auth.AdminAuthRequestPacket::handle
+        );
+
+        INSTANCE.registerMessage(
+            packetId++,
+            com.example.mysubmod.auth.AdminAuthPacket.class,
+            com.example.mysubmod.auth.AdminAuthPacket::encode,
+            com.example.mysubmod.auth.AdminAuthPacket::decode,
+            com.example.mysubmod.auth.AdminAuthPacket::handle,
+            java.util.Optional.of(NetworkDirection.PLAY_TO_SERVER)
+        );
+
+        INSTANCE.registerMessage(
+            packetId++,
+            com.example.mysubmod.auth.AdminAuthResponsePacket.class,
+            com.example.mysubmod.auth.AdminAuthResponsePacket::encode,
+            com.example.mysubmod.auth.AdminAuthResponsePacket::decode,
+            com.example.mysubmod.auth.AdminAuthResponsePacket::handle
+        );
+    }
+
+    /**
+     * Helper method to send packet to a specific player
+     */
+    public static void sendToPlayer(Object packet, net.minecraft.server.level.ServerPlayer player) {
+        INSTANCE.sendTo(packet, player.connection.connection, NetworkDirection.PLAY_TO_CLIENT);
     }
 }

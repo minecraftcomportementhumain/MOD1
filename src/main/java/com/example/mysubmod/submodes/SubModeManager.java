@@ -174,8 +174,33 @@ public class SubModeManager {
     }
 
     public boolean isAdmin(ServerPlayer player) {
-        return admins.contains(player.getName().getString().toLowerCase()) ||
-               player.hasPermissions(2);
+        String playerName = player.getName().getString().toLowerCase();
+
+        // Check if player is in admin list
+        if (admins.contains(playerName)) {
+            // Admin accounts MUST be authenticated
+            boolean authenticated = com.example.mysubmod.auth.AdminAuthManager.getInstance().isAuthenticated(player);
+            MySubMod.LOGGER.info("isAdmin check (admin list): {} -> authenticated={}", playerName, authenticated);
+            return authenticated;
+        }
+
+        // Server operators (permission level 2+) are also admins but must authenticate
+        if (player.hasPermissions(2)) {
+            // Add them to admin list if not already there
+            com.example.mysubmod.auth.AdminAuthManager authManager = com.example.mysubmod.auth.AdminAuthManager.getInstance();
+            if (authManager.isAdminAccount(playerName)) {
+                // They have a password set - require authentication
+                boolean authenticated = authManager.isAuthenticated(player);
+                MySubMod.LOGGER.info("isAdmin check (op with password): {} -> authenticated={}", playerName, authenticated);
+                return authenticated;
+            }
+            // No password set yet - allow access (they can set their password)
+            MySubMod.LOGGER.info("isAdmin check (op without password): {} -> true", playerName);
+            return true;
+        }
+
+        MySubMod.LOGGER.info("isAdmin check: {} -> false (not op, not in admin list)", playerName);
+        return false;
     }
 
     public Set<String> getAdmins() {

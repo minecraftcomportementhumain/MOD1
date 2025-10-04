@@ -1,5 +1,57 @@
 # Changelog - MySubMod
 
+## 🔐 Session du 4 octobre 2025 (Système d'Authentification Admin)
+
+### 🛡️ Système d'Authentification Complet
+
+**Objectif** : Sécuriser l'accès admin avec authentification par mot de passe en mode offline
+
+**Fichiers créés** (5 nouveaux) :
+- **AdminAuthManager.java** : Gestionnaire central d'authentification
+  - Hachage SHA-256 avec salt unique par admin
+  - Blacklist progressive (3min × 10^n)
+  - Réinitialisation automatique après 24h
+  - Persistance des tentatives dans JSON
+- **AdminPasswordScreen.java** : Interface client de saisie
+  - Masquage du mot de passe (astérisques)
+  - Compteur de tentatives visible
+  - Impossible à fermer avec ESC
+  - UI correctement espacée
+- **AdminAuthPacket.java** : Envoi mot de passe client → serveur
+- **AdminAuthRequestPacket.java** : Demande d'authentification serveur → client
+- **AdminAuthResponsePacket.java** : Résultat authentification serveur → client
+
+**Fichiers modifiés** (4) :
+- **NetworkHandler.java** : Enregistrement des 3 nouveaux packets
+- **ServerEventHandler.java** : Prompt automatique à la connexion admin
+- **SubModeCommand.java** : Ajout commandes setpassword, resetblacklist, resetfailures
+- **SubModeManager.java** : Vérification authentification dans isAdmin()
+
+**Fonctionnalités** :
+- ✅ Prompt automatique pour tous les comptes admin (OP 2+ ou liste admin)
+- ✅ 3 tentatives par session, persistantes même après déconnexion
+- ✅ Blacklist progressive : 3min → 30min → 300min → ... (×10)
+- ✅ Kick automatique si blacklisté avec temps restant affiché
+- ✅ Réinitialisation auto du compteur d'échecs après 24h
+- ✅ Stockage sécurisé dans `admin_credentials.json`
+- ✅ Ops peuvent définir leur mot de passe initial sans authentification
+- ✅ Synchronisation admin status après authentification réussie
+
+**Sécurité** :
+- Mots de passe hashés avec SHA-256 + salt unique (Base64)
+- Fichier `admin_credentials.json` avec structure admins/blacklist
+- Distinction tentatives tracking vs blacklist active (champ "until")
+- Code client/serveur correctement séparé avec DistExecutor
+
+**Correctifs importants** :
+- ✅ Fix crash NullPointerException (vérification champ "until" avant lecture)
+- ✅ Fix UUID offline mode (utilisation du vrai UUID généré)
+- ✅ Fix méthode de hachage (concatenation au lieu de md.update)
+- ✅ Fix UI overlapping (espacement correct des éléments)
+- ✅ Fix admin status non mis à jour après auth
+
+---
+
 ## 🎯 Session du 4 octobre 2025 (Optimisations et Correctifs)
 
 ### 🧹 Nettoyage des logs (Réduction de 26%)

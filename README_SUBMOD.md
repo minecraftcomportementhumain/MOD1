@@ -35,16 +35,36 @@ Ce mod ajoute un système de sous-modes qui fonctionne côté client et serveur 
 
 ### Gestion des administrateurs
 ```
-/submode admin add <joueur>     - Ajoute un administrateur
-/submode admin remove <joueur>  - Supprime un administrateur
-/submode admin list             - Liste les administrateurs
+/submode admin add <joueur>              - Ajoute un administrateur
+/submode admin remove <joueur>           - Supprime un administrateur
+/submode admin list                      - Liste les administrateurs
+/submode admin setpassword <joueur> <mdp> - Définir mot de passe admin
+/submode admin resetblacklist <joueur>   - Réinitialiser blacklist d'un joueur
+/submode admin resetfailures <joueur>    - Réinitialiser compteur d'échecs
 ```
 
-## Permissions
+## Permissions et Authentification
 
-- Les administrateurs du serveur (niveau OP 2+) peuvent gérer les admins et changer les modes
-- Les admins ajoutés via commande peuvent changer les sous-modes
-- Tous les joueurs peuvent voir l'interface mais seuls les admins peuvent l'utiliser
+### Système d'Authentification Admin
+- **Mode offline** : Le serveur fonctionne en `online-mode=false` pour permettre connexions sans compte Mojang
+- **Authentification obligatoire** : Tous les comptes admin (OP 2+ ou liste admin) doivent s'authentifier
+- **Prompt automatique** : Menu de saisie du mot de passe à la connexion pour les comptes admin
+- **Masquage du mot de passe** : Caractères remplacés par des asterisques
+- **Système d'essais** : 3 tentatives par session
+- **Blacklist progressive** :
+  - 3 échecs → 3 minutes de blacklist
+  - 3 échecs supplémentaires → 30 minutes (×10)
+  - Progression : 3min, 30min, 300min, 3000min... (×10 à chaque fois)
+- **Réinitialisation automatique** : Compteur d'échecs réinitialisé après 24h d'inactivité
+- **Persistance des tentatives** : Les tentatives persistent même si le joueur se déconnecte
+- **Stockage sécurisé** : Mots de passe hashés avec SHA-256 + salt unique par admin
+- **Fichier de credentials** : `admin_credentials.json` contient les hashes et la blacklist
+
+### Permissions
+- Les administrateurs du serveur (niveau OP 2+) doivent s'authentifier pour accéder aux privilèges
+- Les admins ajoutés via commande doivent s'authentifier pour changer les sous-modes
+- Tous les joueurs peuvent voir l'interface mais seuls les admins authentifiés peuvent l'utiliser
+- Les ops peuvent définir leur propre mot de passe la première fois sans authentification
 
 ## Utilisation
 
@@ -128,6 +148,16 @@ Ce mod ajoute un système de sous-modes qui fonctionne côté client et serveur 
 - **Fin de partie** : Automatique si tous morts ou timer expiré
 
 ## Nouveautés de la Dernière Version
+
+### Système d'Authentification Admin (4 octobre 2025)
+- **Authentification complète** : Système de mot de passe pour tous les comptes admin
+- **Prompt automatique** : Interface de saisie avec masquage du mot de passe (astérisques)
+- **Blacklist progressive** : 3min → 30min → 300min (×10 à chaque série d'échecs)
+- **Persistance** : Tentatives sauvegardées dans `admin_credentials.json`
+- **Sécurité** : SHA-256 + salt unique par admin, réinitialisation auto 24h
+- **Commandes admin** : setpassword, resetblacklist, resetfailures
+- **Protection** : Impossible de fermer le prompt avec ESC, kick automatique si blacklisté
+- **Interface soignée** : UI espacée correctement, compteur de tentatives visible
 
 ### Optimisations et Correctifs (4 octobre 2025)
 - **Nettoyage des logs** : Réduction de 26% du volume (116 → 86 log statements)

@@ -29,7 +29,17 @@ public class SubModeCommand {
                     .then(Commands.argument("player", StringArgumentType.string())
                         .executes(SubModeCommand::removeAdmin)))
                 .then(Commands.literal("list")
-                    .executes(SubModeCommand::listAdmins)))
+                    .executes(SubModeCommand::listAdmins))
+                .then(Commands.literal("setpassword")
+                    .then(Commands.argument("player", StringArgumentType.string())
+                        .then(Commands.argument("password", StringArgumentType.string())
+                            .executes(SubModeCommand::setAdminPassword))))
+                .then(Commands.literal("resetblacklist")
+                    .then(Commands.argument("player", StringArgumentType.string())
+                        .executes(SubModeCommand::resetBlacklist)))
+                .then(Commands.literal("resetfailures")
+                    .then(Commands.argument("player", StringArgumentType.string())
+                        .executes(SubModeCommand::resetFailures))))
             .then(Commands.literal("current")
                 .executes(SubModeCommand::getCurrentMode))
         );
@@ -106,6 +116,75 @@ public class SubModeCommand {
         } else {
             context.getSource().sendSuccess(() -> Component.literal("Admins: " + String.join(", ", admins)), false);
         }
+        return 1;
+    }
+
+    private static int setAdminPassword(CommandContext<CommandSourceStack> context) throws CommandSyntaxException {
+        ServerPlayer player = context.getSource().getPlayerOrException();
+        String targetPlayer = StringArgumentType.getString(context, "player");
+        String playerName = player.getName().getString();
+
+        com.example.mysubmod.auth.AdminAuthManager authManager = com.example.mysubmod.auth.AdminAuthManager.getInstance();
+
+        // Check permissions
+        boolean isSelf = playerName.equalsIgnoreCase(targetPlayer);
+        boolean isOp = player.hasPermissions(2);
+        boolean targetHasNoPassword = !authManager.isAdminAccount(targetPlayer);
+        boolean isAuthenticated = authManager.isAuthenticated(player);
+
+        // Allow if:
+        // 1. Op setting their own password for the first time
+        // 2. Authenticated admin setting anyone's password
+        if (!(isSelf && isOp && targetHasNoPassword) && !isAuthenticated) {
+            context.getSource().sendFailure(Component.literal("§cVous devez être un administrateur authentifié pour utiliser cette commande"));
+            return 0;
+        }
+
+        String password = StringArgumentType.getString(context, "password");
+
+        // Set the password
+        authManager.setAdminPassword(targetPlayer, password);
+
+        context.getSource().sendSuccess(() ->
+            Component.literal("§aMot de passe défini pour l'admin " + targetPlayer), true);
+        return 1;
+    }
+
+    private static int resetBlacklist(CommandContext<CommandSourceStack> context) throws CommandSyntaxException {
+        ServerPlayer player = context.getSource().getPlayerOrException();
+
+        // Check if player is authenticated admin
+        if (!com.example.mysubmod.auth.AdminAuthManager.getInstance().isAuthenticated(player)) {
+            context.getSource().sendFailure(Component.literal("§cVous devez être un administrateur authentifié pour utiliser cette commande"));
+            return 0;
+        }
+
+        String targetPlayer = StringArgumentType.getString(context, "player");
+
+        // Reset blacklist
+        com.example.mysubmod.auth.AdminAuthManager.getInstance().resetBlacklist(targetPlayer);
+
+        context.getSource().sendSuccess(() ->
+            Component.literal("§aBlacklist réinitialisée pour " + targetPlayer), true);
+        return 1;
+    }
+
+    private static int resetFailures(CommandContext<CommandSourceStack> context) throws CommandSyntaxException {
+        ServerPlayer player = context.getSource().getPlayerOrException();
+
+        // Check if player is authenticated admin
+        if (!com.example.mysubmod.auth.AdminAuthManager.getInstance().isAuthenticated(player)) {
+            context.getSource().sendFailure(Component.literal("§cVous devez être un administrateur authentifié pour utiliser cette commande"));
+            return 0;
+        }
+
+        String targetPlayer = StringArgumentType.getString(context, "player");
+
+        // Reset failure count
+        com.example.mysubmod.auth.AdminAuthManager.getInstance().resetFailureCount(targetPlayer);
+
+        context.getSource().sendSuccess(() ->
+            Component.literal("§aCompteur d'échecs réinitialisé pour " + targetPlayer), true);
         return 1;
     }
 
