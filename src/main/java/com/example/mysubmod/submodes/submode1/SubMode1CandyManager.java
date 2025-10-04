@@ -18,7 +18,6 @@ public class SubMode1CandyManager {
     private static SubMode1CandyManager instance;
     private Timer candySpawnTimer;
     private final Map<ItemEntity, Long> candySpawnTimes = new ConcurrentHashMap<>();
-    private final Map<ItemEntity, IslandType> candyIslands = new ConcurrentHashMap<>();
     private final Set<net.minecraft.world.level.ChunkPos> forceLoadedChunks = new HashSet<>();
     private MinecraftServer gameServer; // Keep reference to server
 
@@ -64,10 +63,6 @@ public class SubMode1CandyManager {
                     server.execute(() -> spawnCandiesFromEntry(server, entry));
                 }
             }, entry.getTimeMs());
-
-            MySubMod.LOGGER.debug("Scheduled spawn: {} candies on {} at spawn point {} after {}s",
-                entry.getCandyCount(), entry.getIsland().getDisplayName(),
-                entry.getSpawnPointNumber(), entry.getTimeSeconds());
         }
     }
 
@@ -94,24 +89,16 @@ public class SubMode1CandyManager {
         Set<UUID> alivePlayers = SubMode1Manager.getInstance().getAlivePlayers();
         if (alivePlayers.isEmpty()) return;
 
-        IslandType island = entry.getIsland();
-        int spawnPointNumber = entry.getSpawnPointNumber();
+        BlockPos spawnCenter = entry.getPosition();
         int candyCount = entry.getCandyCount();
-
-        // Get the specific spawn point position
-        BlockPos spawnPoint = SpawnPointManager.getInstance().getSpawnPoint(island, spawnPointNumber);
-        if (spawnPoint == null) {
-            MySubMod.LOGGER.error("Spawn point {} not found for island {}", spawnPointNumber, island.getDisplayName());
-            return;
-        }
 
         // Track used positions to avoid duplicate coordinates
         Set<BlockPos> usedPositions = new HashSet<>();
         Random random = new Random();
 
-        // Spawn multiple candies around the spawn point
+        // Spawn multiple candies around the specified position
         for (int i = 0; i < candyCount; i++) {
-            BlockPos spawnPos = findValidSpawnPositionNearPoint(overworld, spawnPoint, 3, usedPositions); // 3 block radius around spawn point
+            BlockPos spawnPos = findValidSpawnPositionNearPoint(overworld, spawnCenter, 3, usedPositions); // 3 block radius around spawn point
             if (spawnPos != null) {
                 usedPositions.add(spawnPos); // Mark this position as used
 
@@ -129,25 +116,23 @@ public class SubMode1CandyManager {
                 // Prevent pickup for 3 seconds
                 candyEntity.setPickUpDelay(60); // 3 seconds (60 ticks)
 
+                // Prevent candy from despawning
+                candyEntity.setUnlimitedLifetime();
+
                 // Make candy more visible from far distance
                 candyEntity.setGlowingTag(true); // Add glowing effect
 
                 overworld.addFreshEntity(candyEntity);
                 candySpawnTimes.put(candyEntity, System.currentTimeMillis());
-                candyIslands.put(candyEntity, island);
-
-                MySubMod.LOGGER.debug("Spawned candy #{} on {} at {} (spawn point {})",
-                    i + 1, island.getDisplayName(), spawnPos, spawnPointNumber);
 
                 // Log candy spawn
                 if (SubMode1Manager.getInstance().getDataLogger() != null) {
-                    SubMode1Manager.getInstance().getDataLogger().logCandySpawn(spawnPos, island);
+                    SubMode1Manager.getInstance().getDataLogger().logCandySpawn(spawnPos);
                 }
             }
         }
 
-        MySubMod.LOGGER.info("Spawned {} candies on {} at spawn point {} at time {}s",
-            candyCount, island.getDisplayName(), spawnPointNumber, entry.getTimeSeconds());
+        MySubMod.LOGGER.info("Spawned {} candies at time {}s", candyCount, entry.getTimeSeconds());
     }
 
 
@@ -195,7 +180,6 @@ public class SubMode1CandyManager {
             }
         }
         candySpawnTimes.clear();
-        candyIslands.clear();
     }
 
     public void removeAllCandiesFromWorld(MinecraftServer server) {
@@ -219,13 +203,11 @@ public class SubMode1CandyManager {
                 if (itemEntity.getItem().getItem() == ModItems.CANDY.get()) {
                     itemEntity.discard();
                     removedCount++;
-                    MySubMod.LOGGER.debug("Removed candy at {}", itemEntity.position());
                 }
             }
         }
 
         candySpawnTimes.clear();
-        candyIslands.clear();
         MySubMod.LOGGER.info("Removed {} candy items from the world", removedCount);
     }
 
@@ -266,21 +248,11 @@ public class SubMode1CandyManager {
                         if (island != null) {
                             totalCounted += candyAmount;
                             counts.put(island, counts.get(island) + candyAmount);
-                            MySubMod.LOGGER.debug("Counted {} candy(ies) on {} at {} (entity ID: {})",
-                                candyAmount, island.getDisplayName(), itemEntity.blockPosition(), entity.getId());
                         } else {
-                            // Candy not on any island, try to use spawn island from map
-                            IslandType spawnIsland = candyIslands.get(itemEntity);
-                            if (spawnIsland != null) {
-                                totalCounted += candyAmount;
-                                counts.put(spawnIsland, counts.get(spawnIsland) + candyAmount);
-                                MySubMod.LOGGER.debug("Counted {} candy(ies) on {} (fallback) at {} (entity ID: {})",
-                                    candyAmount, spawnIsland.getDisplayName(), itemEntity.blockPosition(), entity.getId());
-                            } else {
-                                notOnIsland += candyAmount;
-                                MySubMod.LOGGER.warn("Candy not counted - not on any island at {} (entity ID: {})",
-                                    itemEntity.position(), entity.getId());
-                            }
+                            // Candy not on any island
+                            notOnIsland += candyAmount;
+                            MySubMod.LOGGER.warn("Candy not counted - not on any island at {} (entity ID: {})",
+                                itemEntity.position(), entity.getId());
                         }
                     }
                 }
@@ -336,7 +308,6 @@ public class SubMode1CandyManager {
 
         for (net.minecraft.world.level.ChunkPos chunkPos : forceLoadedChunks) {
             overworld.setChunkForced(chunkPos.x, chunkPos.z, false);
-            MySubMod.LOGGER.info("Unforced chunk at {}", chunkPos);
         }
 
         forceLoadedChunks.clear();
@@ -393,17 +364,6 @@ public class SubMode1CandyManager {
     }
 
     public void onCandyPickup(ItemEntity candy) {
-        IslandType island = candyIslands.remove(candy);
         candySpawnTimes.remove(candy);
-
-        if (island != null) {
-            MySubMod.LOGGER.debug("Candy picked up from {} island at {}", island.getDisplayName(), candy.position());
-        } else {
-            MySubMod.LOGGER.warn("Candy picked up but was not tracked in candyIslands map at {}", candy.position());
-        }
-    }
-
-    public int getActiveCandyCount() {
-        return candySpawnTimes.size();
     }
 }

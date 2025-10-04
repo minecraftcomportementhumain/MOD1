@@ -53,7 +53,7 @@ public class SubModeControlScreen extends Screen {
                 Component.literal("📁"),
                 button -> openCandyFileUploadScreen()
             ).bounds(centerX + BUTTON_WIDTH / 2 - 25, startY + BUTTON_SPACING, 25, BUTTON_HEIGHT)
-            .tooltip(net.minecraft.client.gui.components.Tooltip.create(Component.literal("Charger un fichier depuis le disque")))
+            .tooltip(net.minecraft.client.gui.components.Tooltip.create(Component.literal("Charger un fichier de spawn de bonbons depuis le disque")))
             .build());
         }
 

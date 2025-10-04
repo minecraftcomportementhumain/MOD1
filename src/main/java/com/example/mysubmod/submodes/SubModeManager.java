@@ -16,6 +16,9 @@ public class SubModeManager {
     private static SubModeManager instance;
     private SubMode currentMode = SubMode.WAITING_ROOM;
     private final Set<String> admins = new HashSet<>();
+    private boolean isChangingMode = false; // Lock to prevent simultaneous mode changes
+    private long lastModeChangeTime = 0; // Track last mode change timestamp
+    private static final long MODE_CHANGE_COOLDOWN_MS = 5000; // 5 seconds cooldown
 
     private SubModeManager() {}
 
@@ -60,71 +63,119 @@ public class SubModeManager {
             return false;
         }
 
-        SubMode previousMode = currentMode;
-
-        // Deactivate previous mode
-        if (server != null) {
-            switch (previousMode) {
-                case WAITING_ROOM:
-                    WaitingRoomManager.getInstance().deactivate(server);
-                    break;
-                case SUB_MODE_1:
-                    SubMode1Manager.getInstance().deactivate(server);
-                    break;
-                case SUB_MODE_2:
-                    // TODO: Implement SubMode2Manager when ready
-                    break;
+        // Check cooldown - prevent rapid mode changes
+        long currentTime = System.currentTimeMillis();
+        long timeSinceLastChange = currentTime - lastModeChangeTime;
+        if (lastModeChangeTime > 0 && timeSinceLastChange < MODE_CHANGE_COOLDOWN_MS) {
+            long remainingCooldown = (MODE_CHANGE_COOLDOWN_MS - timeSinceLastChange) / 1000;
+            MySubMod.LOGGER.warn("Sub-mode change cooldown active, rejecting request from {}. {} seconds remaining",
+                requestingPlayer != null ? requestingPlayer.getName().getString() : "SERVER", remainingCooldown);
+            if (requestingPlayer != null) {
+                requestingPlayer.sendSystemMessage(net.minecraft.network.chat.Component.literal(
+                    "§cChangement de sous-mode trop rapide ! Veuillez attendre " + remainingCooldown + " seconde(s)..."));
             }
+            return false;
         }
 
-        currentMode = newMode;
-
-        // Activate new mode
-        if (server != null) {
-            switch (newMode) {
-                case WAITING_ROOM:
-                    WaitingRoomManager.getInstance().activate(server);
-                    break;
-                case SUB_MODE_1:
-                    SubMode1Manager.getInstance().activate(server, requestingPlayer);
-                    break;
-                case SUB_MODE_2:
-                    // TODO: Implement SubMode2Manager when ready
-                    break;
+        // Check if already changing mode
+        if (isChangingMode) {
+            MySubMod.LOGGER.warn("Sub-mode change already in progress, rejecting new request from {}",
+                requestingPlayer != null ? requestingPlayer.getName().getString() : "SERVER");
+            if (requestingPlayer != null) {
+                requestingPlayer.sendSystemMessage(net.minecraft.network.chat.Component.literal(
+                    "§cChangement de sous-mode déjà en cours, veuillez attendre..."));
             }
+            return false;
         }
 
-        MySubMod.LOGGER.info("Sub-mode changed from {} to {} by {}",
-            previousMode.getDisplayName(),
-            newMode.getDisplayName(),
-            requestingPlayer != null ? requestingPlayer.getName().getString() : "SERVER");
+        // Lock the mode change
+        isChangingMode = true;
 
-        NetworkHandler.INSTANCE.send(PacketDistributor.ALL.noArg(), new SubModeChangePacket(newMode));
+        try {
+            SubMode previousMode = currentMode;
 
-        return true;
+            // Deactivate previous mode
+            if (server != null) {
+                switch (previousMode) {
+                    case WAITING_ROOM:
+                        WaitingRoomManager.getInstance().deactivate(server);
+                        break;
+                    case SUB_MODE_1:
+                        SubMode1Manager.getInstance().deactivate(server);
+                        break;
+                    case SUB_MODE_2:
+                        // TODO: Implement SubMode2Manager when ready
+                        break;
+                }
+            }
+
+            currentMode = newMode;
+
+            // Activate new mode
+            if (server != null) {
+                switch (newMode) {
+                    case WAITING_ROOM:
+                        WaitingRoomManager.getInstance().activate(server);
+                        break;
+                    case SUB_MODE_1:
+                        SubMode1Manager.getInstance().activate(server, requestingPlayer);
+                        break;
+                    case SUB_MODE_2:
+                        // TODO: Implement SubMode2Manager when ready
+                        break;
+                }
+            }
+
+            MySubMod.LOGGER.info("Sub-mode changed from {} to {} by {}",
+                previousMode.getDisplayName(),
+                newMode.getDisplayName(),
+                requestingPlayer != null ? requestingPlayer.getName().getString() : "SERVER");
+
+            NetworkHandler.INSTANCE.send(PacketDistributor.ALL.noArg(), new SubModeChangePacket(newMode));
+
+            // Update last mode change timestamp for cooldown tracking
+            lastModeChangeTime = System.currentTimeMillis();
+
+            return true;
+        } finally {
+            // Always unlock, even if an exception occurs
+            isChangingMode = false;
+        }
     }
 
     public SubMode getCurrentMode() {
         return currentMode;
     }
 
-    public void addAdmin(String playerName) {
+    public void addAdmin(String playerName, MinecraftServer server) {
         admins.add(playerName.toLowerCase());
         MySubMod.LOGGER.info("Added {} as admin", playerName);
+
+        // Disconnect the player to force privilege refresh
+        disconnectPlayer(playerName, server, "§aVos privilèges ont été modifiés. Veuillez vous reconnecter.");
     }
 
-    public void removeAdmin(String playerName) {
+    public void removeAdmin(String playerName, MinecraftServer server) {
         admins.remove(playerName.toLowerCase());
         MySubMod.LOGGER.info("Removed {} from admins", playerName);
+
+        // Disconnect the player to force privilege refresh
+        disconnectPlayer(playerName, server, "§cVos privilèges ont été modifiés. Veuillez vous reconnecter.");
+    }
+
+    private void disconnectPlayer(String playerName, MinecraftServer server, String reason) {
+        if (server != null) {
+            ServerPlayer player = server.getPlayerList().getPlayerByName(playerName);
+            if (player != null) {
+                player.connection.disconnect(net.minecraft.network.chat.Component.literal(reason));
+                MySubMod.LOGGER.info("Disconnected player {} due to privilege change", playerName);
+            }
+        }
     }
 
     public boolean isAdmin(ServerPlayer player) {
         return admins.contains(player.getName().getString().toLowerCase()) ||
                player.hasPermissions(2);
-    }
-
-    public boolean isPlayerAdmin(ServerPlayer player) {
-        return isAdmin(player);
     }
 
     public Set<String> getAdmins() {

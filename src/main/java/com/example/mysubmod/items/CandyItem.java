@@ -23,7 +23,7 @@ public class CandyItem extends Item {
 
     public CandyItem() {
         super(new Properties()
-            .stacksTo(16)
+            .stacksTo(64) // Maximum stack size
             .food(new net.minecraft.world.food.FoodProperties.Builder()
                 .nutrition(1)
                 .saturationMod(0.1f)

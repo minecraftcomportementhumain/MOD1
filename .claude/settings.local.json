@@ -2,7 +2,9 @@
   "permissions": {
     "allow": [
       "Bash(git push:*)",
-      "Bash(gradlew.bat build:*)"
+      "Bash(gradlew.bat build:*)",
+      "Bash(Select-Object -Last 50)",
+      "Bash(find:*)"
     ],
     "deny": [],
     "ask": []

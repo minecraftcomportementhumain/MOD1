@@ -155,5 +155,13 @@ public class NetworkHandler {
             LogDeletePacket::handle,
             java.util.Optional.of(NetworkDirection.PLAY_TO_SERVER)
         );
+
+        INSTANCE.registerMessage(
+            packetId++,
+            LogDataPacket.class,
+            LogDataPacket::toBytes,
+            LogDataPacket::new,
+            LogDataPacket::handle
+        );
     }
 }

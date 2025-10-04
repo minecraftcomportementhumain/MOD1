@@ -56,11 +56,12 @@ Ce mod ajoute un système de sous-modes qui fonctionne côté client et serveur 
 
 ## Fonctionnalités Avancées
 
-### Système de Spawn Points
-- **Génération aléatoire** : Spawn points générés automatiquement à chaque partie
-- **Espacement** : Minimum 40 blocs entre chaque spawn point
-- **Par île** : 1 point (Petite), 2 points (Moyenne), 3 points (Large), 4 points (Très Grande)
-- **Fichiers de configuration** : Format `temps,quantité,île,spawn_point`
+### Système de Spawn par Coordonnées
+- **Coordonnées exactes** : Spawn précis au bloc spécifié (x,y,z)
+- **Dispersion naturelle** : Bonbons dispersés dans un rayon de 3 blocs
+- **Validation stricte** : X,Z sur les îles, Y entre 100-120
+- **Fichiers de configuration** : Format `temps,quantité,x,y,z`
+- **Sélection manuelle** : Touche N pour choisir le fichier avant la partie
 
 ### HUD en Temps Réel
 - **Affichage non-invasif** : Coin supérieur droit de l'écran
@@ -82,11 +83,13 @@ Ce mod ajoute un système de sous-modes qui fonctionne côté client et serveur 
 - **Restrictions visuelles** : Messages d'information pour les actions interdites
 
 ### Gestion des Fichiers de Spawn
-- **Upload** : Interface pour téléverser des fichiers de configuration personnalisés
-- **Validation** : Vérification automatique du format et des valeurs
-- **Suppression** : Gestion des fichiers via interface graphique (default.txt protégé)
-- **Sélection** : Liste défilante avec sélection par clic
-- **Actualisation** : Bouton pour rafraîchir la liste des fichiers
+- **Sélection (Touche N)** : Menu moderne pour choisir le fichier de configuration
+- **Lancement automatique** : Sélectionner un fichier démarre la partie immédiatement
+- **Protection** : Impossible de changer de fichier pendant une partie en cours
+- **Upload (Bouton 📁)** : Interface pour téléverser des fichiers personnalisés
+- **Validation stricte** : Vérification format 5 paramètres, coordonnées sur îles, Y entre 100-120
+- **Suppression** : Gestion des fichiers via interface (default.txt protégé)
+- **Actualisation** : Requête serveur automatique pour liste fraîche
 
 ### Gestion des Logs
 - **Téléchargement** : Logs compressés en ZIP dans le dossier Downloads
@@ -126,24 +129,53 @@ Ce mod ajoute un système de sous-modes qui fonctionne côté client et serveur 
 
 ## Nouveautés de la Dernière Version
 
-### Améliorations Majeures
-- **Hologrammes** : Indicateurs directionnels au-dessus des tours de laine au carré central
-- **Protection améliorée** : Blocage de tous les items au sol (sauf bonbons) sur îles et chemins
-- **Sprint désactivé** : Vitesse de sprint réduite à la vitesse de marche normale
-- **Gestion des logs** : Interface complète de téléchargement et suppression des logs
-- **Interface modernisée** : Listes défilantes avec sélection par clic pour fichiers et logs
+### Optimisations et Correctifs (4 octobre 2025)
+- **Nettoyage des logs** : Réduction de 26% du volume (116 → 86 log statements)
+- **Code épuré** : Suppression de 5 méthodes/champs inutilisés
+- **Cooldown de sous-modes** : Protection 5 secondes contre les changements trop rapides
+- **Logging rétroactif** : File d'attente pour événements avant création du dataLogger
+- **Détection carrée** : Spawn de monstres bloqués avec détection carrée (plus cercle)
+- **Jour permanent** : Cycle jour/nuit bloqué pendant TOUT le sous-mode (pas seulement le jeu)
+
+### Améliorations Majeures (3 octobre 2025)
+- **Système de spawn refait** : Coordonnées exactes (x,y,z) au lieu de spawn points aléatoires
+- **Sélection manuelle** : Touche N pour choisir le fichier, lancement immédiat de la partie
+- **Validation carrée** : Vérification des coordonnées dans les limites carrées des îles
+- **Max bonbons augmenté** : 100 bonbons max par spawn (au lieu de 50)
+- **Code nettoyé** : SpawnPointManager supprimé, code redondant éliminé
+- **Documentation complète** : CANDY_SPAWN_GUIDE.md avec exemples et carte des îles
+
+### Améliorations Précédentes (2 octobre 2025)
+- **Hologrammes** : Indicateurs directionnels au-dessus des tours de laine (texte espacé)
+- **Protection améliorée** : Blocage de tous les items au sol (sauf bonbons avec glowingTag)
+- **Sprint désactivé** : Vitesse de sprint = vitesse marche via attribut modifier
+- **Gestion des logs** : Interface 📊 complète (téléchargement ZIP, suppression)
+- **Interface modernisée** : Listes défilantes avec sélection par clic
 - **Correction HUD** : Le HUD ne persiste plus après déconnexion/reconnexion
+- **Déconnexion/Reconnexion** : Système complet avec pénalités, téléportation aléatoire, inventaire préservé
 
 ### Fonctionnalités du Sous-mode 1
-- **4 îles** de tailles différentes (60x60, 90x90, 120x120, 150x150)
-- **Carré central** de spawn (20x20) avec tours de laine colorées
-- **Système de spawn points** aléatoires par île
-- **HUD des ressources** disponibles par île en temps réel
-- **Logging complet** du choix d'île de chaque joueur
-- **Téléportation sécurisée** avec chargement de chunks
-- **Fin automatique** si tous les joueurs meurent ou timer expiré
-- **Protection complète** : Aucun bloc ne peut être cassé/placé, aucun craft possible
+- **4 îles carrées** de tailles différentes (60×60, 90×90, 120×120, 150×150)
+- **Carré central** de spawn (20×20) avec tours de laine colorées + hologrammes directionnels
+- **Système de spawn par coordonnées** : Fichiers avec format `temps,quantité,x,y,z`
+- **Sélection de fichier (Touche N)** : Choisir le fichier de configuration avant chaque partie
+- **HUD des ressources** : Nombre de bonbons disponibles par île en temps réel (coin supérieur droit)
+- **Logging complet** : Choix d'îles, positions toutes les 5s, déconnexions, tout avec timestamps
+- **Déconnexion/Reconnexion** : Pénalité -4 cœurs, téléportation île aléatoire, inventaire préservé
+- **Téléportation sécurisée** avec chargement de chunks (évite déconnexions)
+- **Fin automatique** si tous morts ou timer expiré (double condition)
+- **Protection complète** : Aucun bloc cassé/placé, aucun craft, sprint désactivé
+- **Protection environnement** : Items bloqués (sauf bonbons), barrières invisibles, pissenlits bloqués
+- **Monstres bloqués** : Détection carrée précise correspondant aux îles (SMALL: 35, MEDIUM: 50, LARGE: 65, EXTRA_LARGE: 80)
+- **Jour permanent** : Cycle jour/nuit bloqué pendant toute la durée du sous-mode
 - **Monde vide** : Serveur configuré avec monde void par défaut
-- **Visibilité augmentée** : Distance de rendu des entités augmentée à 300%
+- **Visibilité augmentée** : Distance de rendu des entités 150% (server.properties)
 
 Le mod garantit que seuls les administrateurs autorisés peuvent effectuer des changements de sous-modes, tout en permettant à tous les joueurs de voir l'état actuel du système et de participer pleinement aux parties.
+
+## Documentation Complète
+
+- **SUBMODE1_GUIDE.md** : Guide exhaustif du Sous-mode 1 avec toutes les fonctionnalités
+- **CANDY_SPAWN_GUIDE.md** : Guide d'utilisation des fichiers de spawn de bonbons (format, exemples, limites)
+- **CHANGELOG.md** : Historique complet de toutes les modifications
+- **README_SUBMOD.md** : Ce fichier - Vue d'ensemble du système

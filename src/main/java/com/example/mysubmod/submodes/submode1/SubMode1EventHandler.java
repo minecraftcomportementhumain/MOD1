@@ -17,6 +17,7 @@ import net.minecraftforge.event.entity.player.PlayerEvent;
 import net.minecraftforge.event.entity.player.EntityItemPickupEvent;
 import net.minecraftforge.event.entity.player.PlayerInteractEvent;
 import net.minecraftforge.event.level.BlockEvent;
+import net.minecraftforge.event.server.ServerStoppingEvent;
 import net.minecraftforge.event.TickEvent;
 import net.minecraftforge.eventbus.api.SubscribeEvent;
 import net.minecraftforge.fml.common.Mod;
@@ -152,6 +153,9 @@ public class SubMode1EventHandler {
             // Only allow candy pickup for alive players
             if (SubMode1Manager.getInstance().isPlayerAlive(player.getUUID())) {
                 if (stack.is(ModItems.CANDY.get())) {
+                    // Increment candy count for player
+                    SubMode1Manager.getInstance().incrementCandyCount(player.getUUID(), stack.getCount());
+
                     // Log candy pickup
                     if (SubMode1Manager.getInstance().getDataLogger() != null) {
                         BlockPos pos = new BlockPos((int)player.getX(), (int)player.getY(), (int)player.getZ());
@@ -181,8 +185,16 @@ public class SubMode1EventHandler {
     public static void onPlayerJoin(PlayerEvent.PlayerLoggedInEvent event) {
         if (event.getEntity() instanceof ServerPlayer player) {
             if (SubModeManager.getInstance().getCurrentMode() == SubMode.SUB_MODE_1) {
-                // New players joining during SubMode1 go to spectator
-                SubMode1Manager.getInstance().teleportToSpectator(player);
+                SubMode1Manager manager = SubMode1Manager.getInstance();
+
+                // Check if player was disconnected during the game
+                if (manager.wasPlayerDisconnected(player.getUUID())) {
+                    // Reconnecting player - restore their state
+                    manager.handlePlayerReconnection(player);
+                } else {
+                    // New players joining during SubMode1 go to spectator
+                    manager.teleportToSpectator(player);
+                }
             } else {
                 // Player joining when SubMode1 is NOT active - clear their HUD and timer
                 // Send empty candy counts to deactivate candy HUD
@@ -198,6 +210,20 @@ public class SubMode1EventHandler {
                 );
 
                 MySubMod.LOGGER.info("Cleared SubMode1 HUD for reconnecting player: {}", player.getName().getString());
+            }
+        }
+    }
+
+    @SubscribeEvent
+    public static void onPlayerLogout(PlayerEvent.PlayerLoggedOutEvent event) {
+        if (event.getEntity() instanceof ServerPlayer player) {
+            if (SubModeManager.getInstance().getCurrentMode() == SubMode.SUB_MODE_1) {
+                SubMode1Manager manager = SubMode1Manager.getInstance();
+
+                // Track disconnection time if player was alive
+                if (manager.isPlayerAlive(player.getUUID())) {
+                    manager.handlePlayerDisconnection(player);
+                }
             }
         }
     }
@@ -241,17 +267,17 @@ public class SubMode1EventHandler {
             }
         }
 
-        if (!SubMode1Manager.getInstance().isGameActive()) {
-            return;
-        }
-
-        // Keep permanent daylight
+        // Keep permanent daylight DURING ENTIRE SUBMODE (not just active game)
         net.minecraft.server.level.ServerLevel overworld = event.getServer().getLevel(net.minecraft.server.level.ServerLevel.OVERWORLD);
         if (overworld != null) {
             long currentTime = overworld.getDayTime() % 24000;
             if (currentTime > 12000) { // If it's night (after 12000 ticks)
                 overworld.setDayTime(6000); // Reset to noon
             }
+        }
+
+        if (!SubMode1Manager.getInstance().isGameActive()) {
+            return;
         }
 
         positionLogTicks++;
@@ -323,7 +349,15 @@ public class SubMode1EventHandler {
                 // Check if trying to drop a candy
                 ItemStack droppedItem = event.getEntity().getItem();
                 if (droppedItem.is(ModItems.CANDY.get())) {
+                    // Cancel the drop event
                     event.setCanceled(true);
+
+                    // Return candy to player's inventory
+                    if (!player.getInventory().add(droppedItem.copy())) {
+                        // If inventory is full, drop it anyway (shouldn't happen in this case)
+                        player.drop(droppedItem.copy(), false);
+                    }
+
                     player.sendSystemMessage(Component.literal("§cVous ne pouvez pas jeter les bonbons en sous-mode 1"));
                 }
             }
@@ -348,8 +382,6 @@ public class SubMode1EventHandler {
 
                 if (!isCandy || !hasGlowingTag) {
                     event.setCanceled(true);
-                    MySubMod.LOGGER.debug("Prevented item {} from spawning at {}",
-                        itemEntity.getItem().getItem().getDescriptionId(), itemPos);
                 }
             }
         }
@@ -361,7 +393,6 @@ public class SubMode1EventHandler {
             // Check if spawn is near any island
             if (isNearIsland(spawnPos)) {
                 event.setCanceled(true);
-                MySubMod.LOGGER.debug("Blocked hostile mob spawn at {} near islands", spawnPos);
             }
         }
     }
@@ -370,44 +401,45 @@ public class SubMode1EventHandler {
     private static boolean isNearIsland(BlockPos pos) {
         SubMode1Manager manager = SubMode1Manager.getInstance();
 
-        // Check if near small island
-        if (isWithinRadius(pos, manager.getSmallIslandCenter(), 35)) {
+        // Check if within small island (60x60, half = 30, +5 buffer = 35)
+        if (isWithinSquare(pos, manager.getSmallIslandCenter(), 35)) {
             return true;
         }
 
-        // Check if near medium island
-        if (isWithinRadius(pos, manager.getMediumIslandCenter(), 50)) {
+        // Check if within medium island (90x90, half = 45, +5 buffer = 50)
+        if (isWithinSquare(pos, manager.getMediumIslandCenter(), 50)) {
             return true;
         }
 
-        // Check if near large island
-        if (isWithinRadius(pos, manager.getLargeIslandCenter(), 65)) {
+        // Check if within large island (120x120, half = 60, +5 buffer = 65)
+        if (isWithinSquare(pos, manager.getLargeIslandCenter(), 65)) {
             return true;
         }
 
-        // Check if near extra large island
-        if (isWithinRadius(pos, manager.getExtraLargeIslandCenter(), 80)) {
+        // Check if within extra large island (150x150, half = 75, +5 buffer = 80)
+        if (isWithinSquare(pos, manager.getExtraLargeIslandCenter(), 80)) {
             return true;
         }
 
-        // Check if near central square
-        if (isWithinRadius(pos, manager.getCentralSquare(), 15)) {
+        // Check if within central square (20x20, half = 10, +5 buffer = 15)
+        if (isWithinSquare(pos, manager.getCentralSquare(), 15)) {
             return true;
         }
 
-        // Check if near spectator platform
+        // Check if within spectator platform (30x30, half = 15, +5 buffer = 20)
         BlockPos spectatorCenter = new BlockPos(0, 150, 0);
-        if (isWithinRadius(pos, spectatorCenter, 20)) {
+        if (isWithinSquare(pos, spectatorCenter, 20)) {
             return true;
         }
 
         return false;
     }
 
-    private static boolean isWithinRadius(BlockPos pos1, BlockPos pos2, int radius) {
-        double distance = Math.sqrt(Math.pow(pos1.getX() - pos2.getX(), 2) +
-                                  Math.pow(pos1.getZ() - pos2.getZ(), 2));
-        return distance <= radius;
+    private static boolean isWithinSquare(BlockPos pos, BlockPos center, int halfSize) {
+        if (center == null) return false;
+        int dx = Math.abs(pos.getX() - center.getX());
+        int dz = Math.abs(pos.getZ() - center.getZ());
+        return dx <= halfSize && dz <= halfSize;
     }
 
     public static void checkSpectatorBoundaries(ServerPlayer player) {

@@ -47,6 +47,16 @@ public class WaitingRoomManager {
     public void deactivate(MinecraftServer server) {
         MySubMod.LOGGER.info("Deactivating waiting room mode");
 
+        // Close all open screens for all players
+        try {
+            for (ServerPlayer player : server.getPlayerList().getPlayers()) {
+                player.closeContainer();
+            }
+            MySubMod.LOGGER.info("Closed all open screens for players");
+        } catch (Exception e) {
+            MySubMod.LOGGER.error("Error closing player screens", e);
+        }
+
         stopReminderMessages();
         restoreAllInventories(server);
         clearPlatform(server.getLevel(ServerLevel.OVERWORLD));

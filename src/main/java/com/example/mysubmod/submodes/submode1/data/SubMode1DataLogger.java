@@ -13,10 +13,15 @@ import java.time.format.DateTimeFormatter;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
+/**
+ * CSV-based data logger for SubMode1
+ * Format: timestamp,player,event_type,x,y,z,health,additional_data
+ */
 public class SubMode1DataLogger {
     private final Map<String, FileWriter> playerLoggers = new ConcurrentHashMap<>();
     private String gameSessionId;
     private File gameDirectory;
+    private static final DateTimeFormatter TIMESTAMP_FORMAT = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss.SSS");
 
     public void startNewGame() {
         gameSessionId = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyy-MM-dd_HH-mm-ss"));
@@ -29,13 +34,10 @@ public class SubMode1DataLogger {
             gameDirectory.mkdirs();
         }
 
-        MySubMod.LOGGER.info("Started data logging for SubMode1 game session: {}", gameSessionId);
-        logEvent("GAME_START", "Game session started at " + LocalDateTime.now());
+        MySubMod.LOGGER.info("Started CSV data logging for SubMode1 game session: {}", gameSessionId);
     }
 
     public void endGame() {
-        logEvent("GAME_END", "Game session ended at " + LocalDateTime.now());
-
         // Close all player loggers
         for (FileWriter writer : playerLoggers.values()) {
             try {
@@ -53,11 +55,11 @@ public class SubMode1DataLogger {
         String playerName = player.getName().getString();
         return playerLoggers.computeIfAbsent(playerName, name -> {
             try {
-                File playerFile = new File(gameDirectory, name + "_log.txt");
+                File playerFile = new File(gameDirectory, name + "_log.csv");
                 FileWriter writer = new FileWriter(playerFile, true);
-                writer.write("=== SubMode1 Data Log for " + name + " ===\n");
-                writer.write("Game Session: " + gameSessionId + "\n");
-                writer.write("Start Time: " + LocalDateTime.now() + "\n\n");
+
+                // Write CSV header
+                writer.write("timestamp,player,event_type,x,y,z,health,additional_data\n");
                 writer.flush();
                 return writer;
             } catch (IOException e) {
@@ -67,14 +69,22 @@ public class SubMode1DataLogger {
         });
     }
 
+    /**
+     * Log player position change
+     */
     public void logPlayerPosition(ServerPlayer player) {
         FileWriter logger = getPlayerLogger(player);
         if (logger != null) {
             try {
-                String timestamp = LocalDateTime.now().format(DateTimeFormatter.ofPattern("HH:mm:ss.SSS"));
-                String positionData = String.format("[%s] POSITION: %.2f, %.2f, %.2f\n",
-                    timestamp, player.getX(), player.getY(), player.getZ());
-                logger.write(positionData);
+                String timestamp = LocalDateTime.now().format(TIMESTAMP_FORMAT);
+                String csvLine = String.format("%s,%s,POSITION,%.2f,%.2f,%.2f,%.1f,\n",
+                    timestamp,
+                    player.getName().getString(),
+                    player.getX(),
+                    player.getY(),
+                    player.getZ(),
+                    player.getHealth());
+                logger.write(csvLine);
                 logger.flush();
             } catch (IOException e) {
                 MySubMod.LOGGER.error("Error logging position for player {}", player.getName().getString(), e);
@@ -82,14 +92,22 @@ public class SubMode1DataLogger {
         }
     }
 
+    /**
+     * Log candy consumption (eating)
+     */
     public void logCandyConsumption(ServerPlayer player) {
         FileWriter logger = getPlayerLogger(player);
         if (logger != null) {
             try {
-                String timestamp = LocalDateTime.now().format(DateTimeFormatter.ofPattern("HH:mm:ss.SSS"));
-                String candyData = String.format("[%s] CANDY_CONSUMED: %.2f, %.2f, %.2f | Health: %.1f\n",
-                    timestamp, player.getX(), player.getY(), player.getZ(), player.getHealth());
-                logger.write(candyData);
+                String timestamp = LocalDateTime.now().format(TIMESTAMP_FORMAT);
+                String csvLine = String.format("%s,%s,CANDY_CONSUMED,%.2f,%.2f,%.2f,%.1f,\n",
+                    timestamp,
+                    player.getName().getString(),
+                    player.getX(),
+                    player.getY(),
+                    player.getZ(),
+                    player.getHealth());
+                logger.write(csvLine);
                 logger.flush();
             } catch (IOException e) {
                 MySubMod.LOGGER.error("Error logging candy consumption for player {}", player.getName().getString(), e);
@@ -97,15 +115,25 @@ public class SubMode1DataLogger {
         }
     }
 
+    /**
+     * Log candy pickup (looting)
+     */
     public void logCandyPickup(ServerPlayer player, BlockPos position) {
         FileWriter logger = getPlayerLogger(player);
         if (logger != null) {
             try {
-                String timestamp = LocalDateTime.now().format(DateTimeFormatter.ofPattern("HH:mm:ss.SSS"));
-                String pickupData = String.format("[%s] CANDY_PICKUP: %d, %d, %d | Player: %.2f, %.2f, %.2f\n",
-                    timestamp, position.getX(), position.getY(), position.getZ(),
-                    player.getX(), player.getY(), player.getZ());
-                logger.write(pickupData);
+                String timestamp = LocalDateTime.now().format(TIMESTAMP_FORMAT);
+                String additionalData = String.format("candy_pos=%d;%d;%d",
+                    position.getX(), position.getY(), position.getZ());
+                String csvLine = String.format("%s,%s,CANDY_PICKUP,%.2f,%.2f,%.2f,%.1f,%s\n",
+                    timestamp,
+                    player.getName().getString(),
+                    player.getX(),
+                    player.getY(),
+                    player.getZ(),
+                    player.getHealth(),
+                    additionalData);
+                logger.write(csvLine);
                 logger.flush();
             } catch (IOException e) {
                 MySubMod.LOGGER.error("Error logging candy pickup for player {}", player.getName().getString(), e);
@@ -113,14 +141,24 @@ public class SubMode1DataLogger {
         }
     }
 
+    /**
+     * Log health change (degradation or healing)
+     */
     public void logHealthChange(ServerPlayer player, float oldHealth, float newHealth) {
         FileWriter logger = getPlayerLogger(player);
         if (logger != null) {
             try {
-                String timestamp = LocalDateTime.now().format(DateTimeFormatter.ofPattern("HH:mm:ss.SSS"));
-                String healthData = String.format("[%s] HEALTH_CHANGE: %.1f -> %.1f | Position: %.2f, %.2f, %.2f\n",
-                    timestamp, oldHealth, newHealth, player.getX(), player.getY(), player.getZ());
-                logger.write(healthData);
+                String timestamp = LocalDateTime.now().format(TIMESTAMP_FORMAT);
+                String additionalData = String.format("old_health=%.1f;new_health=%.1f", oldHealth, newHealth);
+                String csvLine = String.format("%s,%s,HEALTH_CHANGE,%.2f,%.2f,%.2f,%.1f,%s\n",
+                    timestamp,
+                    player.getName().getString(),
+                    player.getX(),
+                    player.getY(),
+                    player.getZ(),
+                    newHealth,
+                    additionalData);
+                logger.write(csvLine);
                 logger.flush();
             } catch (IOException e) {
                 MySubMod.LOGGER.error("Error logging health change for player {}", player.getName().getString(), e);
@@ -128,14 +166,21 @@ public class SubMode1DataLogger {
         }
     }
 
+    /**
+     * Log player death
+     */
     public void logPlayerDeath(ServerPlayer player) {
         FileWriter logger = getPlayerLogger(player);
         if (logger != null) {
             try {
-                String timestamp = LocalDateTime.now().format(DateTimeFormatter.ofPattern("HH:mm:ss.SSS"));
-                String deathData = String.format("[%s] PLAYER_DEATH: %.2f, %.2f, %.2f\n",
-                    timestamp, player.getX(), player.getY(), player.getZ());
-                logger.write(deathData);
+                String timestamp = LocalDateTime.now().format(TIMESTAMP_FORMAT);
+                String csvLine = String.format("%s,%s,DEATH,%.2f,%.2f,%.2f,0.0,\n",
+                    timestamp,
+                    player.getName().getString(),
+                    player.getX(),
+                    player.getY(),
+                    player.getZ());
+                logger.write(csvLine);
                 logger.flush();
             } catch (IOException e) {
                 MySubMod.LOGGER.error("Error logging player death for {}", player.getName().getString(), e);
@@ -143,14 +188,24 @@ public class SubMode1DataLogger {
         }
     }
 
+    /**
+     * Log island selection at start of game
+     */
     public void logIslandSelection(ServerPlayer player, IslandType island) {
         FileWriter logger = getPlayerLogger(player);
         if (logger != null) {
             try {
-                String timestamp = LocalDateTime.now().format(DateTimeFormatter.ofPattern("HH:mm:ss.SSS"));
-                String selectionData = String.format("[%s] ISLAND_SELECTION: %s\n",
-                    timestamp, island.getDisplayName());
-                logger.write(selectionData);
+                String timestamp = LocalDateTime.now().format(TIMESTAMP_FORMAT);
+                String additionalData = String.format("island=%s", island.name());
+                String csvLine = String.format("%s,%s,ISLAND_SELECTION,%.2f,%.2f,%.2f,%.1f,%s\n",
+                    timestamp,
+                    player.getName().getString(),
+                    player.getX(),
+                    player.getY(),
+                    player.getZ(),
+                    player.getHealth(),
+                    additionalData);
+                logger.write(csvLine);
                 logger.flush();
             } catch (IOException e) {
                 MySubMod.LOGGER.error("Error logging island selection for player {}", player.getName().getString(), e);
@@ -158,21 +213,35 @@ public class SubMode1DataLogger {
         }
     }
 
-    public void logCandySpawn(BlockPos position, IslandType island) {
-        logEvent("CANDY_SPAWN", String.format("Position: %d, %d, %d | Island: %s",
-            position.getX(), position.getY(), position.getZ(), island.getDisplayName()));
+    /**
+     * Log player actions (connection/disconnection events)
+     */
+    public void logPlayerAction(ServerPlayer player, String action) {
+        FileWriter logger = getPlayerLogger(player);
+        if (logger != null) {
+            try {
+                String timestamp = LocalDateTime.now().format(TIMESTAMP_FORMAT);
+                String csvLine = String.format("%s,%s,%s,%.2f,%.2f,%.2f,%.1f,\n",
+                    timestamp,
+                    player.getName().getString(),
+                    action, // CONNECTED, DISCONNECTED, RECONNECTED
+                    player.getX(),
+                    player.getY(),
+                    player.getZ(),
+                    player.getHealth());
+                logger.write(csvLine);
+                logger.flush();
+            } catch (IOException e) {
+                MySubMod.LOGGER.error("Error logging player action for {}", player.getName().getString(), e);
+            }
+        }
     }
 
-    private void logEvent(String eventType, String data) {
-        try {
-            File eventFile = new File(gameDirectory, "game_events.txt");
-            FileWriter eventLogger = new FileWriter(eventFile, true);
-            String timestamp = LocalDateTime.now().format(DateTimeFormatter.ofPattern("HH:mm:ss.SSS"));
-            eventLogger.write(String.format("[%s] %s: %s\n", timestamp, eventType, data));
-            eventLogger.close();
-        } catch (IOException e) {
-            MySubMod.LOGGER.error("Error logging game event", e);
-        }
+    /**
+     * Log candy spawn (global event, not player-specific)
+     */
+    public void logCandySpawn(BlockPos position) {
+        // This could be logged to a separate global events CSV if needed
     }
 
     public String getGameSessionId() {

@@ -32,7 +32,7 @@ public class CandyFileUploadPacket {
             ServerPlayer player = ctx.get().getSender();
             if (player != null) {
                 // Verify admin permissions on server side
-                if (SubModeManager.getInstance().isPlayerAdmin(player)) {
+                if (SubModeManager.getInstance().isAdmin(player)) {
                     boolean success = CandySpawnFileManager.getInstance().saveUploadedFile(
                         packet.filename, packet.content);
 

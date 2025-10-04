@@ -1,18 +1,16 @@
 package com.example.mysubmod.submodes.submode1.data;
 
-import com.example.mysubmod.submodes.submode1.islands.IslandType;
+import net.minecraft.core.BlockPos;
 
 public class CandySpawnEntry {
-    private final int timeSeconds;
-    private final int candyCount;
-    private final IslandType island;
-    private final int spawnPointNumber;
+    private final int timeSeconds;      // Time in seconds (max 900 = 15 minutes)
+    private final int candyCount;       // Number of candies (max 100)
+    private final BlockPos position;    // Exact coordinates
 
-    public CandySpawnEntry(int timeSeconds, int candyCount, IslandType island, int spawnPointNumber) {
+    public CandySpawnEntry(int timeSeconds, int candyCount, BlockPos position) {
         this.timeSeconds = timeSeconds;
         this.candyCount = candyCount;
-        this.island = island;
-        this.spawnPointNumber = spawnPointNumber;
+        this.position = position;
     }
 
     public int getTimeSeconds() {
@@ -23,12 +21,8 @@ public class CandySpawnEntry {
         return candyCount;
     }
 
-    public IslandType getIsland() {
-        return island;
-    }
-
-    public int getSpawnPointNumber() {
-        return spawnPointNumber;
+    public BlockPos getPosition() {
+        return position;
     }
 
     public long getTimeMs() {
@@ -37,7 +31,7 @@ public class CandySpawnEntry {
 
     @Override
     public String toString() {
-        return String.format("CandySpawnEntry{time=%ds, count=%d, island=%s, spawnPoint=%d}",
-            timeSeconds, candyCount, island.getDisplayName(), spawnPointNumber);
+        return String.format("CandySpawnEntry{time=%ds, count=%d, pos=(%d,%d,%d)}",
+            timeSeconds, candyCount, position.getX(), position.getY(), position.getZ());
     }
 }

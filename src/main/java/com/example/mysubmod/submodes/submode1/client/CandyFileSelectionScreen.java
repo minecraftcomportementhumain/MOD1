@@ -35,8 +35,8 @@ public class CandyFileSelectionScreen extends Screen {
         int listX = centerX - listWidth / 2;
         int listY = 60;
 
-        // Create file list
-        fileList = new CandyFileList(this.minecraft, listWidth, listHeight, listY, listY + listHeight, 25, availableFiles);
+        // Create file list centered
+        fileList = new CandyFileList(this.minecraft, listWidth, listHeight, listY, listY + listHeight, 25, availableFiles, listX);
         this.addWidget(fileList);
 
         int buttonY = listY + listHeight + 10;
@@ -143,8 +143,11 @@ public class CandyFileSelectionScreen extends Screen {
 
     // Inner class for the scrollable list
     public static class CandyFileList extends ObjectSelectionList<CandyFileList.CandyFileEntry> {
-        public CandyFileList(net.minecraft.client.Minecraft minecraft, int width, int height, int top, int bottom, int itemHeight, List<String> files) {
+        private final int leftPos;
+
+        public CandyFileList(net.minecraft.client.Minecraft minecraft, int width, int height, int top, int bottom, int itemHeight, List<String> files, int leftPos) {
             super(minecraft, width, height, top, bottom, itemHeight);
+            this.leftPos = leftPos;
             for (String file : files) {
                 this.addEntry(new CandyFileEntry(file));
             }
@@ -152,12 +155,17 @@ public class CandyFileSelectionScreen extends Screen {
 
         @Override
         public int getRowWidth() {
-            return 396;
+            return this.width - 10;
         }
 
         @Override
         protected int getScrollbarPosition() {
-            return this.width - 6;
+            return this.leftPos + this.width - 6;
+        }
+
+        @Override
+        public int getRowLeft() {
+            return this.leftPos;
         }
 
         public static class CandyFileEntry extends Entry<CandyFileEntry> {

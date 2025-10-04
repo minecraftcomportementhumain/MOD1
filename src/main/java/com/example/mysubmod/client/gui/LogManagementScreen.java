@@ -37,8 +37,8 @@ public class LogManagementScreen extends Screen {
         int listX = centerX - listWidth / 2;
         int listY = 60;
 
-        // Create folder list
-        folderList = new LogFolderList(this.minecraft, listWidth, listHeight, listY, listY + listHeight, 25, logFolders);
+        // Create folder list centered
+        folderList = new LogFolderList(this.minecraft, listWidth, listHeight, listY, listY + listHeight, 25, logFolders, listX);
         this.addWidget(folderList);
 
         int buttonY = listY + listHeight + 10;
@@ -167,8 +167,11 @@ public class LogManagementScreen extends Screen {
 
     // Inner class for the scrollable list
     public static class LogFolderList extends ObjectSelectionList<LogFolderList.LogFolderEntry> {
-        public LogFolderList(net.minecraft.client.Minecraft minecraft, int width, int height, int top, int bottom, int itemHeight, List<String> folders) {
+        private final int leftPos;
+
+        public LogFolderList(net.minecraft.client.Minecraft minecraft, int width, int height, int top, int bottom, int itemHeight, List<String> folders, int leftPos) {
             super(minecraft, width, height, top, bottom, itemHeight);
+            this.leftPos = leftPos;
             for (String folder : folders) {
                 this.addEntry(new LogFolderEntry(folder));
             }
@@ -176,12 +179,17 @@ public class LogManagementScreen extends Screen {
 
         @Override
         public int getRowWidth() {
-            return 396;
+            return this.width - 10;
         }
 
         @Override
         protected int getScrollbarPosition() {
-            return this.width - 6;
+            return this.leftPos + this.width - 6;
+        }
+
+        @Override
+        public int getRowLeft() {
+            return this.leftPos;
         }
 
         public static class LogFolderEntry extends Entry<LogFolderEntry> {

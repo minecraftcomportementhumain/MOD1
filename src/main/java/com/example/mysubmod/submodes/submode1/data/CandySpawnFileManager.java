@@ -1,8 +1,7 @@
 package com.example.mysubmod.submodes.submode1.data;
 
 import com.example.mysubmod.MySubMod;
-import com.example.mysubmod.submodes.submode1.islands.IslandType;
-import net.minecraft.server.MinecraftServer;
+import net.minecraft.core.BlockPos;
 
 import java.io.*;
 import java.nio.file.Files;
@@ -40,26 +39,28 @@ public class CandySpawnFileManager {
     private void createDefaultFile() {
         String defaultContent = """
             # Fichier de configuration d'apparition des bonbons
-            # Format: temps_en_secondes,nombre_bonbons,île,numéro_spawn_point
-            # Îles disponibles: SMALL, MEDIUM, LARGE, EXTRA_LARGE
-            # Spawn points: SMALL(1), MEDIUM(1-2), LARGE(1-3), EXTRA_LARGE(1-4)
-            # Temps: 0-900 secondes (15 minutes)
+            # Format: temps_en_secondes,nombre_bonbons,x,y,z
+            # Temps: 0-900 secondes (15 minutes max)
+            # Nombre de bonbons: 1-100 max
+            # Coordonnées: doivent être sur une des 4 îles
+            # Y (hauteur): 100-120 (îles à Y=100, +20 pour relief futur)
+            # Îles: SMALL(0,-360), MEDIUM(360,0), LARGE(0,360), EXTRA_LARGE(-360,0)
 
-            # Exemple: Apparition progressive
-            60,5,EXTRA_LARGE,1
-            120,3,LARGE,2
-            180,2,MEDIUM,1
-            240,4,EXTRA_LARGE,2
-            300,3,LARGE,1
-            360,2,SMALL,1
-            420,5,EXTRA_LARGE,3
-            480,4,LARGE,3
-            540,3,MEDIUM,2
-            600,3,EXTRA_LARGE,4
-            660,2,LARGE,1
-            720,4,MEDIUM,1
-            780,2,EXTRA_LARGE,2
-            840,1,SMALL,1
+            # Exemple: Apparition progressive sur différentes îles
+            60,5,0,101,-360
+            120,3,360,101,0
+            180,2,0,101,360
+            240,4,-360,101,0
+            300,10,0,101,-360
+            360,8,360,101,0
+            420,15,0,101,360
+            480,12,-360,101,0
+            540,20,0,101,-360
+            600,18,360,101,0
+            660,25,0,101,360
+            720,22,-360,101,0
+            780,30,0,101,-360
+            840,28,360,101,0
             """;
 
         try {
@@ -132,42 +133,75 @@ public class CandySpawnFileManager {
 
     private CandySpawnEntry parseLine(String line) {
         String[] parts = line.split(",");
-        if (parts.length != 4) {
-            throw new IllegalArgumentException("Expected format: time,count,island,spawnpoint");
+        if (parts.length != 5) {
+            throw new IllegalArgumentException("Expected format: time,count,x,y,z");
         }
 
         int timeSeconds = Integer.parseInt(parts[0].trim());
         int candyCount = Integer.parseInt(parts[1].trim());
-        String islandStr = parts[2].trim().toUpperCase();
-        int spawnPointNumber = Integer.parseInt(parts[3].trim());
+        int x = Integer.parseInt(parts[2].trim());
+        int y = Integer.parseInt(parts[3].trim());
+        int z = Integer.parseInt(parts[4].trim());
 
         // Validate time range (0-900 seconds = 15 minutes)
         if (timeSeconds < 0 || timeSeconds > 900) {
             throw new IllegalArgumentException("Time must be between 0 and 900 seconds");
         }
 
-        // Validate candy count
-        if (candyCount <= 0 || candyCount > 50) {
-            throw new IllegalArgumentException("Candy count must be between 1 and 50");
+        // Validate candy count (1-100)
+        if (candyCount <= 0 || candyCount > 100) {
+            throw new IllegalArgumentException("Candy count must be between 1 and 100");
         }
 
-        // Parse island type
-        IslandType island;
-        switch (islandStr) {
-            case "SMALL" -> island = IslandType.SMALL;
-            case "MEDIUM" -> island = IslandType.MEDIUM;
-            case "LARGE" -> island = IslandType.LARGE;
-            case "EXTRA_LARGE" -> island = IslandType.EXTRA_LARGE;
-            default -> throw new IllegalArgumentException("Invalid island type: " + islandStr);
+        // Validate Y coordinate (height)
+        // Islands are at Y=100, nothing below is valid, allow up to +20 for future terrain
+        if (y < 100 || y > 120) {
+            throw new IllegalArgumentException("Y coordinate must be between 100 and 120");
         }
 
-        // Validate spawn point number for the island type
-        if (spawnPointNumber < 1 || spawnPointNumber > island.getSpawnPointCount()) {
-            throw new IllegalArgumentException(String.format("Spawn point %d invalid for island %s (max: %d)",
-                spawnPointNumber, island.name(), island.getSpawnPointCount()));
+        net.minecraft.core.BlockPos position = new net.minecraft.core.BlockPos(x, y, z);
+
+        // Validate that coordinates are on one of the 4 islands
+        if (!isPositionOnIsland(position)) {
+            throw new IllegalArgumentException(String.format(
+                "Position (%d,%d,%d) is not on any island", x, y, z));
         }
 
-        return new CandySpawnEntry(timeSeconds, candyCount, island, spawnPointNumber);
+        return new CandySpawnEntry(timeSeconds, candyCount, position);
+    }
+
+    /**
+     * Check if a position is on one of the 4 islands
+     * Islands are square and at: SMALL(0,-360), MEDIUM(360,0), LARGE(0,360), EXTRA_LARGE(-360,0)
+     */
+    private boolean isPositionOnIsland(net.minecraft.core.BlockPos pos) {
+        // Island centers and radii (half-sizes)
+        // SMALL: 60x60 (radius 30), MEDIUM: 90x90 (radius 45), LARGE: 120x120 (radius 60), EXTRA_LARGE: 150x150 (radius 75)
+        int[][] islandData = {
+            {0, -360, 30},      // SMALL: center (0,-360), radius 30
+            {360, 0, 45},       // MEDIUM: center (360,0), radius 45
+            {0, 360, 60},       // LARGE: center (0,360), radius 60
+            {-360, 0, 75}       // EXTRA_LARGE: center (-360,0), radius 75
+        };
+
+        for (int[] island : islandData) {
+            int centerX = island[0];
+            int centerZ = island[1];
+            int halfSize = island[2];
+
+            // Check if position is within square bounds
+            int minX = centerX - halfSize;
+            int maxX = centerX + halfSize;
+            int minZ = centerZ - halfSize;
+            int maxZ = centerZ + halfSize;
+
+            if (pos.getX() >= minX && pos.getX() <= maxX &&
+                pos.getZ() >= minZ && pos.getZ() <= maxZ) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     public boolean saveUploadedFile(String filename, String content) {

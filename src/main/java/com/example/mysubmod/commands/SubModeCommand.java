@@ -74,14 +74,12 @@ public class SubModeCommand {
         }
 
         String playerName = StringArgumentType.getString(context, "player");
-        SubModeManager.getInstance().addAdmin(playerName);
+        net.minecraft.server.MinecraftServer server = context.getSource().getServer();
 
-        ServerPlayer targetPlayer = context.getSource().getServer().getPlayerList().getPlayerByName(playerName);
-        if (targetPlayer != null) {
-            NetworkHandler.INSTANCE.send(PacketDistributor.PLAYER.with(() -> targetPlayer), new AdminStatusPacket(true));
-        }
+        // Add admin and disconnect player (done in addAdmin method)
+        SubModeManager.getInstance().addAdmin(playerName, server);
 
-        context.getSource().sendSuccess(() -> Component.literal("Joueur " + playerName + " ajouté comme admin"), true);
+        context.getSource().sendSuccess(() -> Component.literal("Joueur " + playerName + " ajouté comme admin et déconnecté"), true);
         return 1;
     }
 
@@ -92,14 +90,12 @@ public class SubModeCommand {
         }
 
         String playerName = StringArgumentType.getString(context, "player");
-        SubModeManager.getInstance().removeAdmin(playerName);
+        net.minecraft.server.MinecraftServer server = context.getSource().getServer();
 
-        ServerPlayer targetPlayer = context.getSource().getServer().getPlayerList().getPlayerByName(playerName);
-        if (targetPlayer != null) {
-            NetworkHandler.INSTANCE.send(PacketDistributor.PLAYER.with(() -> targetPlayer), new AdminStatusPacket(false));
-        }
+        // Remove admin and disconnect player (done in removeAdmin method)
+        SubModeManager.getInstance().removeAdmin(playerName, server);
 
-        context.getSource().sendSuccess(() -> Component.literal("Admin " + playerName + " supprimé"), true);
+        context.getSource().sendSuccess(() -> Component.literal("Admin " + playerName + " supprimé et déconnecté"), true);
         return 1;
     }
 

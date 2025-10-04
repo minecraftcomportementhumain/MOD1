@@ -28,8 +28,17 @@ public class CandyFileSelectionPacket {
             ServerPlayer player = ctx.get().getSender();
             if (player != null) {
                 // Verify admin permissions on server side
-                if (SubModeManager.getInstance().isPlayerAdmin(player)) {
+                if (SubModeManager.getInstance().isAdmin(player)) {
+                    // Check if a game is already active or selection phase is active
+                    if (SubMode1Manager.getInstance().isGameActive() || SubMode1Manager.getInstance().isSelectionPhase()) {
+                        player.sendSystemMessage(net.minecraft.network.chat.Component.literal(
+                            "§cImpossible de sélectionner un fichier - Une partie est déjà en cours!"));
+                        return;
+                    }
+
                     SubMode1Manager.getInstance().setCandySpawnFile(packet.selectedFile);
+                    // Start island selection after file is set
+                    SubMode1Manager.getInstance().startIslandSelection(player.getServer());
                 }
             }
         });

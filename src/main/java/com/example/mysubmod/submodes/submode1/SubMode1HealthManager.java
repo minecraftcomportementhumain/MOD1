@@ -79,6 +79,9 @@ public class SubMode1HealthManager {
     private void handlePlayerDeath(ServerPlayer player) {
         player.sendSystemMessage(Component.literal("§cVous êtes mort ! Téléportation vers la zone spectateur..."));
 
+        // Record death time for leaderboard
+        SubMode1Manager.getInstance().recordPlayerDeath(player.getUUID());
+
         // Teleport to spectator area
         SubMode1Manager.getInstance().teleportToSpectator(player);
 

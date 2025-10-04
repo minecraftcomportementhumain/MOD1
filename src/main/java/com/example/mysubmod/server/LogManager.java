@@ -63,9 +63,9 @@ public class LogManager {
             }
 
             if (downloadAll) {
-                downloadAllLogsAsZip(player, baseDir);
+                sendAllLogsToClient(player, baseDir);
             } else if (folderName != null) {
-                downloadSingleFolder(player, new File(baseDir, folderName));
+                sendSingleFolderToClient(player, new File(baseDir, folderName));
             }
         } catch (Exception e) {
             MySubMod.LOGGER.error("Error downloading logs", e);
@@ -73,20 +73,11 @@ public class LogManager {
         }
     }
 
-    private static void downloadAllLogsAsZip(ServerPlayer player, File baseDir) throws IOException {
-        // Get Windows Downloads folder
-        String userHome = System.getProperty("user.home");
-        File downloadsDir = new File(userHome, "Downloads");
+    private static void sendAllLogsToClient(ServerPlayer player, File baseDir) throws IOException {
+        // Create ZIP in memory
+        java.io.ByteArrayOutputStream baos = new java.io.ByteArrayOutputStream();
 
-        if (!downloadsDir.exists()) {
-            downloadsDir = new File(userHome); // Fallback to user home
-        }
-
-        File outputZip = new File(downloadsDir, "all_logs.zip");
-
-        try (FileOutputStream fos = new FileOutputStream(outputZip);
-             ZipOutputStream zos = new ZipOutputStream(fos)) {
-
+        try (ZipOutputStream zos = new ZipOutputStream(baos)) {
             File[] folders = baseDir.listFiles();
             if (folders != null) {
                 for (File folder : folders) {
@@ -97,36 +88,39 @@ public class LogManager {
             }
         }
 
-        player.sendSystemMessage(net.minecraft.network.chat.Component.literal(
-            "§aTous les logs ont été téléchargés dans: " + outputZip.getAbsolutePath()));
-        MySubMod.LOGGER.info("Created zip archive of all logs at: {}", outputZip.getAbsolutePath());
+        // Send ZIP data to client
+        byte[] zipData = baos.toByteArray();
+        NetworkHandler.INSTANCE.send(
+            PacketDistributor.PLAYER.with(() -> player),
+            new com.example.mysubmod.network.LogDataPacket("all_logs.zip", zipData)
+        );
+
+        MySubMod.LOGGER.info("Sent all logs ZIP ({} bytes) to client {}", zipData.length, player.getName().getString());
     }
 
-    private static void downloadSingleFolder(ServerPlayer player, File folder) throws IOException {
+    private static void sendSingleFolderToClient(ServerPlayer player, File folder) throws IOException {
         if (!folder.exists() || !folder.isDirectory()) {
             player.sendSystemMessage(net.minecraft.network.chat.Component.literal("§cDossier non trouvé: " + folder.getName()));
             return;
         }
 
-        // Get Windows Downloads folder
-        String userHome = System.getProperty("user.home");
-        File downloadsDir = new File(userHome, "Downloads");
+        // Create ZIP in memory
+        java.io.ByteArrayOutputStream baos = new java.io.ByteArrayOutputStream();
 
-        if (!downloadsDir.exists()) {
-            downloadsDir = new File(userHome); // Fallback to user home
-        }
-
-        File outputZip = new File(downloadsDir, folder.getName() + ".zip");
-
-        try (FileOutputStream fos = new FileOutputStream(outputZip);
-             ZipOutputStream zos = new ZipOutputStream(fos)) {
-
+        try (ZipOutputStream zos = new ZipOutputStream(baos)) {
             addFolderToZip(folder, folder.getName(), zos);
         }
 
-        player.sendSystemMessage(net.minecraft.network.chat.Component.literal(
-            "§aLogs téléchargés dans: " + outputZip.getAbsolutePath()));
-        MySubMod.LOGGER.info("Created zip archive for {} at: {}", folder.getName(), outputZip.getAbsolutePath());
+        // Send ZIP data to client
+        byte[] zipData = baos.toByteArray();
+        String fileName = folder.getName() + ".zip";
+
+        NetworkHandler.INSTANCE.send(
+            PacketDistributor.PLAYER.with(() -> player),
+            new com.example.mysubmod.network.LogDataPacket(fileName, zipData)
+        );
+
+        MySubMod.LOGGER.info("Sent log folder {} ({} bytes) to client {}", folder.getName(), zipData.length, player.getName().getString());
     }
 
     private static void addFolderToZip(File folder, String parentPath, ZipOutputStream zos) throws IOException {

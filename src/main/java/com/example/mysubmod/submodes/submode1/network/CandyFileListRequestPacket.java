@@ -24,6 +24,12 @@ public class CandyFileListRequestPacket {
         context.enqueueWork(() -> {
             net.minecraft.server.level.ServerPlayer player = context.getSender();
             if (player != null && SubModeManager.getInstance().isAdmin(player)) {
+                // Check if a game is already active or selection phase is active
+                if (SubMode1Manager.getInstance().isGameActive() || SubMode1Manager.getInstance().isSelectionPhase()) {
+                    player.sendSystemMessage(net.minecraft.network.chat.Component.literal(
+                        "§cImpossible de rafraîchir - Une partie est déjà en cours!"));
+                    return;
+                }
                 SubMode1Manager.getInstance().sendCandyFileListToPlayer(player);
             }
         });

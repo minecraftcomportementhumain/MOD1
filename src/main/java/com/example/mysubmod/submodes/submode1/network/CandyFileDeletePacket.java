@@ -28,7 +28,7 @@ public class CandyFileDeletePacket {
         NetworkEvent.Context context = contextSupplier.get();
         context.enqueueWork(() -> {
             ServerPlayer player = context.getSender();
-            if (player != null && SubModeManager.getInstance().isPlayerAdmin(player)) {
+            if (player != null && SubModeManager.getInstance().isAdmin(player)) {
                 boolean success = CandySpawnFileManager.getInstance().deleteFile(packet.filename);
                 if (success) {
                     MySubMod.LOGGER.info("Admin {} deleted candy spawn file: {}",

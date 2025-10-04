@@ -8,20 +8,23 @@ import net.minecraftforge.network.NetworkEvent;
 import java.util.function.Supplier;
 
 public class IslandSelectionPacket {
+    private final int timeLeftSeconds;
 
-    public IslandSelectionPacket() {}
+    public IslandSelectionPacket(int timeLeftSeconds) {
+        this.timeLeftSeconds = timeLeftSeconds;
+    }
 
     public static void encode(IslandSelectionPacket packet, FriendlyByteBuf buf) {
-        // No data to encode
+        buf.writeInt(packet.timeLeftSeconds);
     }
 
     public static IslandSelectionPacket decode(FriendlyByteBuf buf) {
-        return new IslandSelectionPacket();
+        return new IslandSelectionPacket(buf.readInt());
     }
 
     public static void handle(IslandSelectionPacket packet, Supplier<NetworkEvent.Context> ctx) {
         ctx.get().enqueueWork(() -> {
-            DistExecutor.unsafeRunWhenOn(Dist.CLIENT, () -> () -> ClientPacketHandler.openIslandSelectionScreen());
+            DistExecutor.unsafeRunWhenOn(Dist.CLIENT, () -> () -> ClientPacketHandler.openIslandSelectionScreen(packet.timeLeftSeconds));
         });
         ctx.get().setPacketHandled(true);
     }

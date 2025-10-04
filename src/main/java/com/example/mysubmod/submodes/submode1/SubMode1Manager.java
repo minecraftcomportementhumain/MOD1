@@ -29,9 +29,18 @@ public class SubMode1Manager {
     private final Map<UUID, IslandType> playerIslandSelections = new ConcurrentHashMap<>();
     private final Set<UUID> alivePlayers = ConcurrentHashMap.newKeySet();
     private final Set<UUID> spectatorPlayers = ConcurrentHashMap.newKeySet();
+    private final Map<UUID, Long> disconnectedPlayers = new ConcurrentHashMap<>(); // Track disconnect time
+    private final Map<UUID, Integer> playerCandyCount = new ConcurrentHashMap<>(); // Track candies collected
+    private final Map<UUID, Long> playerDeathTime = new ConcurrentHashMap<>(); // Track when players died
+    private final Set<UUID> playersInSelectionPhase = ConcurrentHashMap.newKeySet(); // Players who were present during selection
+    private final List<net.minecraft.world.entity.decoration.ArmorStand> holograms = new ArrayList<>(); // Track hologram entities
+    private final List<PendingLogEvent> pendingLogEvents = new ArrayList<>(); // Events before dataLogger exists
+    private long gameStartTime; // Track game start time
+    private long selectionStartTime; // Track selection phase start time
 
     private boolean gameActive = false;
     private boolean selectionPhase = false;
+    private boolean fileSelectionPhase = false; // Admin is selecting candy file
     private boolean gameEnding = false;
     private boolean islandsGenerated = false;
     private Timer selectionTimer;
@@ -110,9 +119,14 @@ public class SubMode1Manager {
             MySubMod.LOGGER.error("Error in final candy cleanup", e);
         }
 
-        // Initialize data logger
-        dataLogger = new SubMode1DataLogger();
-        dataLogger.startNewGame();
+        // Cleanup any orphaned holograms from previous sessions
+        try {
+            cleanupOrphanedHolograms(server.getLevel(ServerLevel.OVERWORLD));
+        } catch (Exception e) {
+            MySubMod.LOGGER.error("Error cleaning up orphaned holograms", e);
+        }
+
+        // Data logger will be initialized when file is selected (in startIslandSelection)
 
         // Teleport admins to spectator platform
         teleportAdminsToSpectator(server);
@@ -121,7 +135,8 @@ public class SubMode1Manager {
         teleportAllPlayersToSmallIsland(server);
 
         // Show candy file selection to the initiating admin
-        if (initiator != null && SubModeManager.getInstance().isPlayerAdmin(initiator)) {
+        if (initiator != null && SubModeManager.getInstance().isAdmin(initiator)) {
+            fileSelectionPhase = true; // Mark that we're in file selection phase
             showCandyFileSelection(initiator);
         } else {
             // Auto-select default file if no admin initiated or fallback
@@ -135,6 +150,16 @@ public class SubMode1Manager {
         MySubMod.LOGGER.info("Deactivating SubMode1");
 
         try {
+            // Close all open screens for all players
+            try {
+                for (ServerPlayer player : server.getPlayerList().getPlayers()) {
+                    player.closeContainer();
+                }
+                MySubMod.LOGGER.info("Closed all open screens for players");
+            } catch (Exception e) {
+                MySubMod.LOGGER.error("Error closing player screens", e);
+            }
+
             // Stop all timers
             try {
                 stopSelectionTimer();
@@ -145,6 +170,7 @@ public class SubMode1Manager {
             try {
                 if (gameTimer != null) {
                     gameTimer.stop();
+                    gameTimer = null;
                 }
                 // Always send deactivation signal to all clients to clear any lingering timers
                 NetworkHandler.INSTANCE.send(PacketDistributor.ALL.noArg(),
@@ -153,6 +179,10 @@ public class SubMode1Manager {
                 // Send empty candy counts to deactivate HUD
                 NetworkHandler.INSTANCE.send(PacketDistributor.ALL.noArg(),
                     new com.example.mysubmod.submodes.submode1.network.CandyCountUpdatePacket(new java.util.HashMap<>()));
+
+                // Send empty file list to clear client-side storage (without opening screen)
+                NetworkHandler.INSTANCE.send(PacketDistributor.ALL.noArg(),
+                    new com.example.mysubmod.submodes.submode1.network.CandyFileListPacket(new java.util.ArrayList<>(), false));
             } catch (Exception e) {
                 MySubMod.LOGGER.error("Error stopping game timer", e);
             }
@@ -202,13 +232,46 @@ public class SubMode1Manager {
             // Reset state regardless of errors
             gameActive = false;
             selectionPhase = false;
+            fileSelectionPhase = false;
             gameEnding = false;
             islandsGenerated = false;
             playerIslandSelections.clear();
             alivePlayers.clear();
             spectatorPlayers.clear();
+            disconnectedPlayers.clear(); // Clear disconnect tracking
+            playerCandyCount.clear(); // Clear candy counts
+            playerDeathTime.clear(); // Clear death times
+            playersInSelectionPhase.clear(); // Clear selection phase participants
+            gameStartTime = 0; // Reset game start time
+            selectionStartTime = 0; // Reset selection start time
+            selectedCandySpawnFile = null; // Clear selected file
+            candySpawnConfig = null; // Clear spawn config
+            gameInitiator = null; // Clear game initiator
+            dataLogger = null; // Clear data logger reference
+            holograms.clear(); // Clear hologram tracking list
 
             MySubMod.LOGGER.info("SubMode1 deactivation completed");
+        }
+    }
+
+    /**
+     * Remove all orphaned hologram armor stands in the world (for cleanup of untracked holograms)
+     */
+    public void cleanupOrphanedHolograms(net.minecraft.server.level.ServerLevel level) {
+        int hologramsRemoved = 0;
+
+        for (net.minecraft.world.entity.Entity entity : level.getAllEntities()) {
+            // Remove hologram armor stands (invisible, no base plate, custom name visible)
+            if (entity instanceof net.minecraft.world.entity.decoration.ArmorStand armorStand) {
+                if (armorStand.isInvisible() && armorStand.isNoBasePlate() && armorStand.isCustomNameVisible()) {
+                    armorStand.discard();
+                    hologramsRemoved++;
+                }
+            }
+        }
+
+        if (hologramsRemoved > 0) {
+            MySubMod.LOGGER.info("Cleaned up {} orphaned hologram armor stands", hologramsRemoved);
         }
     }
 
@@ -242,10 +305,6 @@ public class SubMode1Manager {
         generator.generateIsland(level, mediumIslandCenter, IslandType.MEDIUM);
         generator.generateIsland(level, largeIslandCenter, IslandType.LARGE);
         generator.generateIsland(level, extraLargeIslandCenter, IslandType.EXTRA_LARGE);
-
-        // Generate spawn points for all islands
-        SpawnPointManager.getInstance().generateSpawnPoints(
-            smallIslandCenter, mediumIslandCenter, largeIslandCenter, extraLargeIslandCenter);
 
         islandsGenerated = true; // Mark islands as generated
     }
@@ -321,7 +380,10 @@ public class SubMode1Manager {
         hologram1.setInvulnerable(true);
         hologram1.setSilent(true);
         hologram1.setNoBasePlate(true);
+        // Add custom tag to identify SubMode1 holograms
+        hologram1.addTag("SubMode1Hologram");
         level.addFreshEntity(hologram1);
+        holograms.add(hologram1); // Track this hologram
 
         // Create armor stand for line 2 (slightly below)
         net.minecraft.world.entity.decoration.ArmorStand hologram2 = new net.minecraft.world.entity.decoration.ArmorStand(
@@ -336,7 +398,10 @@ public class SubMode1Manager {
         hologram2.setInvulnerable(true);
         hologram2.setSilent(true);
         hologram2.setNoBasePlate(true);
+        // Add custom tag to identify SubMode1 holograms
+        hologram2.addTag("SubMode1Hologram");
         level.addFreshEntity(hologram2);
+        holograms.add(hologram2); // Track this hologram
     }
 
 
@@ -556,43 +621,52 @@ public class SubMode1Manager {
     private void generatePathSideBarriers(ServerLevel level, BlockPos start, BlockPos end, int pathWidth) {
         int deltaX = end.getX() - start.getX();
         int deltaZ = end.getZ() - start.getZ();
-        int length = Math.max(Math.abs(deltaX), Math.abs(deltaZ));
 
-        for (int i = 0; i <= length; i++) {
-            double progress = (double) i / length;
-            int pathX = (int) (start.getX() + deltaX * progress);
+        // Calculate the actual path length and direction
+        double pathLength = Math.sqrt(deltaX * deltaX + deltaZ * deltaZ);
+        double dirX = deltaX / pathLength;
+        double dirZ = deltaZ / pathLength;
+
+        // Perpendicular is 90 degrees rotation: (x,z) -> (-z, x)
+        double perpX = -dirZ;
+        double perpZ = dirX;
+
+        int barrierStart = pathWidth/2 + 1; // Start right after path edge
+        int barrierRows = 3; // 3 rows of barriers on each side
+
+        // Iterate over every single block along the path
+        int steps = (int) Math.ceil(pathLength);
+        for (int i = 0; i <= steps; i++) {
+            // Use floating point for smooth progression
+            double t = (steps > 0) ? (double) i / steps : 0;
+            int pathX = (int) Math.round(start.getX() + deltaX * t);
             int pathY = start.getY();
-            int pathZ = (int) (start.getZ() + deltaZ * progress);
+            int pathZ = (int) Math.round(start.getZ() + deltaZ * t);
 
             // Skip barriers if path point is on an island
             if (isPointOnAnyIsland(pathX, pathZ)) {
                 continue;
             }
 
-            // Place barriers on both sides of the path
-            int barrierOffset = pathWidth/2 + 1; // 1 block away from path edge
+            // Place multiple rows of barriers on each side
+            for (int row = 0; row < barrierRows; row++) {
+                int offset = barrierStart + row;
 
-            // Calculate perpendicular direction for side barriers
-            double perpX = 0, perpZ = 1; // Default perpendicular (for X-direction paths)
-            if (deltaX == 0) { // Z-direction path
-                perpX = 1;
-                perpZ = 0;
-            }
+                // Left side barriers
+                int leftX = (int) Math.round(pathX + offset * perpX);
+                int leftZ = (int) Math.round(pathZ + offset * perpZ);
+                for (int y = 90; y <= pathY + 20; y++) {
+                    level.setBlock(new BlockPos(leftX, y, leftZ),
+                        net.minecraft.world.level.block.Blocks.BARRIER.defaultBlockState(), 3);
+                }
 
-            // Left side barriers
-            int leftX = (int) (pathX + barrierOffset * perpX);
-            int leftZ = (int) (pathZ + barrierOffset * perpZ);
-            for (int y = 90; y <= pathY + 20; y++) {
-                level.setBlock(new BlockPos(leftX, y, leftZ),
-                    net.minecraft.world.level.block.Blocks.BARRIER.defaultBlockState(), 3);
-            }
-
-            // Right side barriers
-            int rightX = (int) (pathX - barrierOffset * perpX);
-            int rightZ = (int) (pathZ - barrierOffset * perpZ);
-            for (int y = 90; y <= pathY + 20; y++) {
-                level.setBlock(new BlockPos(rightX, y, rightZ),
-                    net.minecraft.world.level.block.Blocks.BARRIER.defaultBlockState(), 3);
+                // Right side barriers
+                int rightX = (int) Math.round(pathX - offset * perpX);
+                int rightZ = (int) Math.round(pathZ - offset * perpZ);
+                for (int y = 90; y <= pathY + 20; y++) {
+                    level.setBlock(new BlockPos(rightX, y, rightZ),
+                        net.minecraft.world.level.block.Blocks.BARRIER.defaultBlockState(), 3);
+                }
             }
         }
     }
@@ -720,7 +794,6 @@ public class SubMode1Manager {
 
         // Only clear if islands were generated OR if residual islands exist physically
         if (!islandsGenerated && !islandsExistPhysically) {
-            MySubMod.LOGGER.debug("Skipping map clearing - no islands found in world");
             return;
         }
 
@@ -737,13 +810,11 @@ public class SubMode1Manager {
             MySubMod.LOGGER.error("Error cleaning up leftover candies during map clearing", e);
         }
 
+        // Remove holograms FIRST before clearing anything else
+        removeHolograms(level);
+
         // Clear central square
         clearCentralSquare(level);
-
-        // Wait a tick for dropped items to spawn, then remove sign items
-        level.getServer().tell(new net.minecraft.server.TickTask(level.getServer().getTickCount() + 1, () -> {
-            removeHolograms(level);
-        }));
 
         // Clear islands first (slower)
         IslandGenerator.clearIsland(level, smallIslandCenter, IslandType.SMALL);
@@ -756,9 +827,6 @@ public class SubMode1Manager {
 
         // Clear invisible walls
         clearInvisibleWalls(level);
-
-        // Clear spawn points
-        SpawnPointManager.getInstance().clear();
 
         // Clear spectator platform last (faster)
         for (int x = -15; x <= 15; x++) {
@@ -807,8 +875,6 @@ public class SubMode1Manager {
             if (islandsExist) {
                 MySubMod.LOGGER.info("Physical islands detected in world - Small: {}, Medium: {}, Large: {}",
                     smallExists, mediumExists, largeExists);
-            } else {
-                MySubMod.LOGGER.debug("No physical islands detected in world");
             }
 
             return islandsExist;
@@ -869,6 +935,11 @@ public class SubMode1Manager {
     }
 
     private void clearInvisibleWalls(ServerLevel level) {
+        MySubMod.LOGGER.info("Clearing invisible walls (barriers)");
+
+        // Clear barriers around central square
+        clearCentralSquareBarriers(level);
+
         // Clear barriers around each island
         clearIslandBarriers(level, smallIslandCenter, IslandType.SMALL);
         clearIslandBarriers(level, mediumIslandCenter, IslandType.MEDIUM);
@@ -877,6 +948,38 @@ public class SubMode1Manager {
 
         // Clear path barriers
         clearPathBarriers(level);
+    }
+
+    private void clearCentralSquareBarriers(ServerLevel level) {
+        int halfSize = 10;
+        int wallHeight = 20;
+
+        // Clear barriers on all sides of central square
+        for (int x = -halfSize; x <= halfSize; x++) {
+            // North wall
+            for (int y = 90; y <= centralSquare.getY() + wallHeight; y++) {
+                level.setBlock(new BlockPos(centralSquare.getX() + x, y, centralSquare.getZ() - halfSize),
+                    net.minecraft.world.level.block.Blocks.AIR.defaultBlockState(), 3);
+            }
+            // South wall
+            for (int y = 90; y <= centralSquare.getY() + wallHeight; y++) {
+                level.setBlock(new BlockPos(centralSquare.getX() + x, y, centralSquare.getZ() + halfSize),
+                    net.minecraft.world.level.block.Blocks.AIR.defaultBlockState(), 3);
+            }
+        }
+
+        for (int z = -halfSize; z <= halfSize; z++) {
+            // West wall
+            for (int y = 90; y <= centralSquare.getY() + wallHeight; y++) {
+                level.setBlock(new BlockPos(centralSquare.getX() - halfSize, y, centralSquare.getZ() + z),
+                    net.minecraft.world.level.block.Blocks.AIR.defaultBlockState(), 3);
+            }
+            // East wall
+            for (int y = 90; y <= centralSquare.getY() + wallHeight; y++) {
+                level.setBlock(new BlockPos(centralSquare.getX() + halfSize, y, centralSquare.getZ() + z),
+                    net.minecraft.world.level.block.Blocks.AIR.defaultBlockState(), 3);
+            }
+        }
     }
 
     private void clearIslandBarriers(ServerLevel level, BlockPos center, IslandType type) {
@@ -925,39 +1028,50 @@ public class SubMode1Manager {
     private void clearPathSideBarriers(ServerLevel level, BlockPos start, BlockPos end, int pathWidth) {
         int deltaX = end.getX() - start.getX();
         int deltaZ = end.getZ() - start.getZ();
-        int length = Math.max(Math.abs(deltaX), Math.abs(deltaZ));
 
-        for (int i = 0; i <= length; i++) {
-            double progress = (double) i / length;
-            int pathX = (int) (start.getX() + deltaX * progress);
+        // Calculate the actual path length and direction
+        double pathLength = Math.sqrt(deltaX * deltaX + deltaZ * deltaZ);
+        double dirX = deltaX / pathLength;
+        double dirZ = deltaZ / pathLength;
+
+        // Perpendicular is 90 degrees rotation: (x,z) -> (-z, x)
+        double perpX = -dirZ;
+        double perpZ = dirX;
+
+        int barrierStart = pathWidth/2 + 1;
+        int barrierRows = 3; // Match generation - 3 rows on each side
+
+        // Iterate over every single block along the path
+        int steps = (int) Math.ceil(pathLength);
+        for (int i = 0; i <= steps; i++) {
+            // Use floating point for smooth progression
+            double t = (steps > 0) ? (double) i / steps : 0;
+            int pathX = (int) Math.round(start.getX() + deltaX * t);
             int pathY = start.getY();
-            int pathZ = (int) (start.getZ() + deltaZ * progress);
+            int pathZ = (int) Math.round(start.getZ() + deltaZ * t);
 
             // Skip clearing if path point was on an island (no barriers were placed there)
             if (isPointOnAnyIsland(pathX, pathZ)) {
                 continue;
             }
 
-            int barrierOffset = pathWidth/2 + 2;
+            // Clear multiple rows of barriers on each side
+            for (int row = 0; row < barrierRows; row++) {
+                int offset = barrierStart + row;
 
-            double perpX = 0, perpZ = 1;
-            if (deltaX == 0) {
-                perpX = 1;
-                perpZ = 0;
-            }
+                // Clear left side barriers
+                int leftX = (int) Math.round(pathX + offset * perpX);
+                int leftZ = (int) Math.round(pathZ + offset * perpZ);
+                for (int y = 90; y <= pathY + 20; y++) {
+                    level.setBlock(new BlockPos(leftX, y, leftZ), net.minecraft.world.level.block.Blocks.AIR.defaultBlockState(), 3);
+                }
 
-            // Clear left side barriers
-            int leftX = (int) (pathX + barrierOffset * perpX);
-            int leftZ = (int) (pathZ + barrierOffset * perpZ);
-            for (int y = 90; y <= pathY + 20; y++) {
-                level.setBlock(new BlockPos(leftX, y, leftZ), net.minecraft.world.level.block.Blocks.AIR.defaultBlockState(), 3);
-            }
-
-            // Clear right side barriers
-            int rightX = (int) (pathX - barrierOffset * perpX);
-            int rightZ = (int) (pathZ - barrierOffset * perpZ);
-            for (int y = 90; y <= pathY + 20; y++) {
-                level.setBlock(new BlockPos(rightX, y, rightZ), net.minecraft.world.level.block.Blocks.AIR.defaultBlockState(), 3);
+                // Clear right side barriers
+                int rightX = (int) Math.round(pathX - offset * perpX);
+                int rightZ = (int) Math.round(pathZ - offset * perpZ);
+                for (int y = 90; y <= pathY + 20; y++) {
+                    level.setBlock(new BlockPos(rightX, y, rightZ), net.minecraft.world.level.block.Blocks.AIR.defaultBlockState(), 3);
+                }
             }
         }
     }
@@ -974,8 +1088,14 @@ public class SubMode1Manager {
         ServerLevel overworld = server.getLevel(ServerLevel.OVERWORLD);
         if (overworld == null) return;
 
+        // Track all non-admin players participating (even if they disconnect later)
+        playersInSelectionPhase.clear();
+
         for (ServerPlayer player : server.getPlayerList().getPlayers()) {
             if (!SubModeManager.getInstance().isAdmin(player)) {
+                // Add to selection phase tracking
+                playersInSelectionPhase.add(player.getUUID());
+
                 // Store and clear inventory
                 storePlayerInventory(player);
                 clearPlayerInventory(player);
@@ -988,8 +1108,26 @@ public class SubMode1Manager {
         }
     }
 
-    private void startIslandSelection(MinecraftServer server) {
+    public void startIslandSelection(MinecraftServer server) {
+        fileSelectionPhase = false; // File selection is done
         selectionPhase = true;
+        selectionStartTime = System.currentTimeMillis(); // Record when selection started
+
+        // Initialize data logger NOW (when file is selected and game really starts)
+        if (dataLogger == null) {
+            dataLogger = new SubMode1DataLogger();
+            dataLogger.startNewGame();
+            MySubMod.LOGGER.info("Data logging started for game with file: {}", selectedCandySpawnFile);
+
+            // Flush any pending log events that occurred before logger was created
+            if (!pendingLogEvents.isEmpty()) {
+                MySubMod.LOGGER.info("Flushing {} pending log events retroactively", pendingLogEvents.size());
+                for (PendingLogEvent event : pendingLogEvents) {
+                    dataLogger.logPlayerAction(event.player, event.action);
+                }
+                pendingLogEvents.clear();
+            }
+        }
 
         // Force load all island chunks and remove dandelion items once
         ServerLevel overworld = server.getLevel(ServerLevel.OVERWORLD);
@@ -1001,13 +1139,20 @@ public class SubMode1Manager {
             }));
         }
 
+        // Add any newly connected non-admin players (don't clear - keep players from file selection phase)
+        for (ServerPlayer player : server.getPlayerList().getPlayers()) {
+            if (!SubModeManager.getInstance().isAdmin(player)) {
+                playersInSelectionPhase.add(player.getUUID());
+            }
+        }
+
         // Send island selection GUI to all non-admin players
         for (ServerPlayer player : server.getPlayerList().getPlayers()) {
             if (!SubModeManager.getInstance().isAdmin(player)) {
                 storePlayerInventory(player);
                 clearPlayerInventory(player);
                 NetworkHandler.INSTANCE.send(PacketDistributor.PLAYER.with(() -> player),
-                    new IslandSelectionPacket());
+                    new IslandSelectionPacket(SELECTION_TIME_SECONDS));
             }
         }
 
@@ -1039,19 +1184,30 @@ public class SubMode1Manager {
     private void endSelectionPhase(MinecraftServer server) {
         selectionPhase = false;
 
-        // Assign random islands to players who didn't select
+        // Assign random islands to players who didn't select (including disconnected players)
         IslandType[] islands = IslandType.values();
         Random random = new Random();
 
-        for (ServerPlayer player : server.getPlayerList().getPlayers()) {
-            if (!SubModeManager.getInstance().isAdmin(player) &&
-                !playerIslandSelections.containsKey(player.getUUID())) {
+        // Process ALL players who were in selection phase (connected or disconnected)
+        for (UUID playerId : playersInSelectionPhase) {
+            if (!playerIslandSelections.containsKey(playerId)) {
                 IslandType randomIsland = islands[random.nextInt(islands.length)];
-                playerIslandSelections.put(player.getUUID(), randomIsland);
-                player.sendSystemMessage(Component.literal("§eÎle assignée automatiquement: " + randomIsland.getDisplayName()));
+                playerIslandSelections.put(playerId, randomIsland);
+
+                // Mark them as alive so they'll be properly handled on reconnection
+                alivePlayers.add(playerId);
+
+                // Notify if player is currently connected
+                ServerPlayer player = server.getPlayerList().getPlayer(playerId);
+                if (player != null) {
+                    player.sendSystemMessage(Component.literal("§eÎle assignée automatiquement: " + randomIsland.getDisplayName()));
+                } else {
+                    MySubMod.LOGGER.info("Assigned random island {} to disconnected player {} and marked as alive",
+                        randomIsland.name(), playerId);
+                }
 
                 // Log automatic island assignment
-                if (dataLogger != null) {
+                if (dataLogger != null && player != null) {
                     dataLogger.logIslandSelection(player, randomIsland);
                 }
             }
@@ -1095,6 +1251,7 @@ public class SubMode1Manager {
 
     private void startGame(MinecraftServer server) {
         gameActive = true;
+        gameStartTime = System.currentTimeMillis(); // Record start time for leaderboard
 
         // Final cleanup: Remove all candies one last time before starting
         try {
@@ -1143,28 +1300,28 @@ public class SubMode1Manager {
     }
 
     public boolean isNearIslandOrPath(BlockPos pos) {
-        // Check if near small island (60x60, so radius = 30, add margin = 40)
-        if (isWithinRadius(pos, smallIslandCenter, 40)) {
+        // Check if within square bounds of small island (60x60, so half-size = 30, add margin = 5)
+        if (isWithinSquareBounds(pos, smallIslandCenter, 30 + 5)) {
             return true;
         }
 
-        // Check if near medium island (90x90, so radius = 45, add margin = 55)
-        if (isWithinRadius(pos, mediumIslandCenter, 55)) {
+        // Check if within square bounds of medium island (90x90, so half-size = 45, add margin = 5)
+        if (isWithinSquareBounds(pos, mediumIslandCenter, 45 + 5)) {
             return true;
         }
 
-        // Check if near large island (120x120, so radius = 60, add margin = 70)
-        if (isWithinRadius(pos, largeIslandCenter, 70)) {
+        // Check if within square bounds of large island (120x120, so half-size = 60, add margin = 5)
+        if (isWithinSquareBounds(pos, largeIslandCenter, 60 + 5)) {
             return true;
         }
 
-        // Check if near extra large island (150x150, so radius = 75, add margin = 85)
-        if (isWithinRadius(pos, extraLargeIslandCenter, 85)) {
+        // Check if within square bounds of extra large island (150x150, so half-size = 75, add margin = 5)
+        if (isWithinSquareBounds(pos, extraLargeIslandCenter, 75 + 5)) {
             return true;
         }
 
-        // Check if near central square (20x20, so radius = 10, add margin = 20)
-        if (isWithinRadius(pos, centralSquare, 20)) {
+        // Check if within square bounds of central square (20x20, so half-size = 10, add margin = 5)
+        if (isWithinSquareBounds(pos, centralSquare, 10 + 5)) {
             return true;
         }
 
@@ -1176,6 +1333,19 @@ public class SubMode1Manager {
         if (isOnPath(pos, centralSquare, extraLargeIslandCenter, 5)) return true;
 
         return false;
+    }
+
+    /**
+     * Check if position is within square bounds (not circular)
+     * This properly covers all corners of square islands
+     */
+    private boolean isWithinSquareBounds(BlockPos pos, BlockPos center, int halfSize) {
+        if (center == null) return false;
+
+        int distX = Math.abs(pos.getX() - center.getX());
+        int distZ = Math.abs(pos.getZ() - center.getZ());
+
+        return distX <= halfSize && distZ <= halfSize;
     }
 
     private boolean isOnPath(BlockPos pos, BlockPos start, BlockPos end, int pathWidth) {
@@ -1235,18 +1405,30 @@ public class SubMode1Manager {
     private void removeHolograms(net.minecraft.server.level.ServerLevel level) {
         int hologramsRemoved = 0;
 
+        // First, remove tracked holograms directly
+        for (net.minecraft.world.entity.decoration.ArmorStand hologram : holograms) {
+            if (hologram != null && hologram.isAlive()) {
+                hologram.discard();
+                hologramsRemoved++;
+            }
+        }
+        holograms.clear(); // Clear the tracking list
+
+        // Second, scan for any orphaned holograms with our tag (backup cleanup)
+        // This catches any holograms that weren't in the tracking list
+        int orphanedRemoved = 0;
         for (net.minecraft.world.entity.Entity entity : level.getAllEntities()) {
-            // Remove hologram armor stands (invisible, no base plate)
             if (entity instanceof net.minecraft.world.entity.decoration.ArmorStand armorStand) {
-                if (armorStand.isInvisible() && armorStand.isNoBasePlate()) {
+                if (armorStand.getTags().contains("SubMode1Hologram") && armorStand.isAlive()) {
                     armorStand.discard();
-                    hologramsRemoved++;
+                    orphanedRemoved++;
                 }
             }
         }
 
-        if (hologramsRemoved > 0) {
-            MySubMod.LOGGER.info("Removed {} hologram armor stands from the world", hologramsRemoved);
+        if (hologramsRemoved > 0 || orphanedRemoved > 0) {
+            MySubMod.LOGGER.info("Removed {} tracked + {} orphaned hologram armor stands from the world",
+                hologramsRemoved, orphanedRemoved);
         }
     }
 
@@ -1297,6 +1479,9 @@ public class SubMode1Manager {
         } catch (Exception e) {
             MySubMod.LOGGER.error("Error stopping game systems during endGame", e);
         }
+
+        // Display leaderboard
+        displayLeaderboard(server);
 
         // Show congratulations
         showCongratulations(server);
@@ -1393,8 +1578,6 @@ public class SubMode1Manager {
         // Force update the player's position on the client with relative flag cleared
         player.connection.send(new net.minecraft.network.protocol.game.ClientboundPlayerPositionPacket(
             x, y, z, 0.0f, 0.0f, java.util.Collections.emptySet(), 0));
-
-        MySubMod.LOGGER.debug("Teleported player {} to ({}, {}, {})", player.getName().getString(), x, y, z);
     }
 
     private void stopSelectionTimer() {
@@ -1418,8 +1601,6 @@ public class SubMode1Manager {
             // Set hunger to 50% (10 out of 20)
             player.getFoodData().setFoodLevel(10);
             player.getFoodData().setSaturation(5.0f);
-
-            MySubMod.LOGGER.debug("Reset health to 100% and hunger to 50% for player: {}", player.getName().getString());
         }
 
         MySubMod.LOGGER.info("Reset health to 100% and hunger to 50% for all players at game start");
@@ -1436,24 +1617,11 @@ public class SubMode1Manager {
             return;
         }
 
+        // Send file list without opening screen automatically (openScreen = false)
         NetworkHandler.INSTANCE.send(PacketDistributor.PLAYER.with(() -> player),
-            new CandyFileListPacket(availableFiles));
+            new CandyFileListPacket(availableFiles, false));
 
-        // Start auto-selection timer (30 seconds)
-        Timer autoSelectTimer = new Timer();
-        autoSelectTimer.schedule(new TimerTask() {
-            @Override
-            public void run() {
-                if (selectedCandySpawnFile == null) {
-                    String defaultFile = CandySpawnFileManager.getInstance().getDefaultFile();
-                    setCandySpawnFile(defaultFile);
-                    player.getServer().execute(() -> {
-                        player.sendSystemMessage(Component.literal("§eAucun fichier sélectionné, utilisation de: " + defaultFile));
-                        startIslandSelection(player.getServer());
-                    });
-                }
-            }
-        }, 30000); // 30 seconds
+        player.sendSystemMessage(Component.literal("§eAppuyez sur N pour ouvrir le menu de sélection de fichier"));
     }
 
     public void setCandySpawnFile(String filename) {
@@ -1463,10 +1631,9 @@ public class SubMode1Manager {
             this.candySpawnConfig = CandySpawnFileManager.getInstance().loadSpawnConfig(filename);
             MySubMod.LOGGER.info("Selected candy spawn file: {} with {} entries", filename, candySpawnConfig.size());
 
-            // If we have a game initiator, notify them and start island selection
-            if (gameInitiator != null && gameInitiator.getServer() != null) {
+            // Notify game initiator (but DON'T start island selection - caller will do that)
+            if (gameInitiator != null) {
                 gameInitiator.sendSystemMessage(Component.literal("§aFichier de spawn sélectionné: " + filename));
-                startIslandSelection(gameInitiator.getServer());
             }
         } else {
             this.candySpawnConfig = new ArrayList<>();
@@ -1486,6 +1653,390 @@ public class SubMode1Manager {
         List<String> availableFiles = CandySpawnFileManager.getInstance().getAvailableFiles();
         NetworkHandler.INSTANCE.send(PacketDistributor.PLAYER.with(() -> player),
             new CandyFileListPacket(availableFiles));
+    }
+
+    /**
+     * Handle player disconnection - track when they left
+     */
+    public void handlePlayerDisconnection(ServerPlayer player) {
+        disconnectedPlayers.put(player.getUUID(), System.currentTimeMillis());
+        MySubMod.LOGGER.info("Player {} disconnected during SubMode1 - tracking disconnect time", player.getName().getString());
+
+        // Log disconnection (if logger exists, otherwise queue for later)
+        if (dataLogger != null) {
+            dataLogger.logPlayerAction(player, "DISCONNECTED");
+        } else {
+            // Queue event for retroactive logging when dataLogger is created
+            pendingLogEvents.add(new PendingLogEvent(player, "DISCONNECTED"));
+        }
+    }
+
+    /**
+     * Check if player was disconnected during the game
+     */
+    public boolean wasPlayerDisconnected(UUID playerId) {
+        return disconnectedPlayers.containsKey(playerId);
+    }
+
+    /**
+     * Check if we're in file selection phase (admin choosing candy file)
+     */
+    public boolean isFileSelectionPhase() {
+        return fileSelectionPhase;
+    }
+
+    /**
+     * Get remaining selection time in seconds
+     */
+    public int getRemainingSelectionTime() {
+        if (!selectionPhase || selectionStartTime == 0) {
+            return 0;
+        }
+        long elapsed = (System.currentTimeMillis() - selectionStartTime) / 1000;
+        int remaining = (int) (SELECTION_TIME_SECONDS - elapsed);
+        return Math.max(0, remaining);
+    }
+
+    /**
+     * Handle player reconnection - restore their state and apply health penalty
+     */
+    public void handlePlayerReconnection(ServerPlayer player) {
+        UUID playerId = player.getUUID();
+        Long disconnectTime = disconnectedPlayers.remove(playerId);
+
+        if (disconnectTime == null) {
+            MySubMod.LOGGER.warn("No disconnect time found for reconnecting player {}", player.getName().getString());
+            return;
+        }
+
+        // Calculate time disconnected DURING THE ACTIVE GAME only
+        long currentTime = System.currentTimeMillis();
+        long effectiveDisconnectStart = disconnectTime;
+
+        // If player disconnected before game started, only count time during active game
+        if (gameStartTime > 0 && disconnectTime < gameStartTime) {
+            effectiveDisconnectStart = gameStartTime;
+        }
+
+        // Calculate time disconnected during active game
+        long timeDisconnectedDuringGame = currentTime - effectiveDisconnectStart;
+        long secondsDisconnected = timeDisconnectedDuringGame / 1000;
+        float healthLoss = (float) (secondsDisconnected / 10.0) * 1.0f;
+
+        MySubMod.LOGGER.info("Player {} reconnected - {} seconds disconnected (during game), health loss: {}",
+            player.getName().getString(), secondsDisconnected, healthLoss);
+
+        // Restore player to game state
+        if (alivePlayers.contains(playerId)) {
+            // Player was alive when they disconnected
+
+            // Get their island selection
+            IslandType selectedIsland = playerIslandSelections.get(playerId);
+            boolean islandAssignedDuringReconnection = false;
+
+            // If player disconnected during selection and reconnects after game started without island
+            if (selectedIsland == null && gameActive && playersInSelectionPhase.contains(playerId)) {
+                // Assign random island to player who missed selection
+                IslandType[] islands = IslandType.values();
+                Random random = new Random();
+                selectedIsland = islands[random.nextInt(islands.length)];
+                playerIslandSelections.put(playerId, selectedIsland);
+                islandAssignedDuringReconnection = true;
+
+                MySubMod.LOGGER.info("Assigned random island {} to player {} who reconnected after selection phase",
+                    selectedIsland.name(), player.getName().getString());
+
+                player.sendSystemMessage(Component.literal("§eÎle assignée automatiquement (reconnexion tardive): " + selectedIsland.getDisplayName()));
+            }
+
+            if (selectedIsland != null && gameActive) {
+                // Teleport to their island
+                MinecraftServer server = player.getServer();
+                if (server != null) {
+                    ServerLevel overworld = server.getLevel(ServerLevel.OVERWORLD);
+                    if (overworld != null) {
+                        BlockPos spawnPos = getIslandSpawnPosition(selectedIsland);
+                        safeTeleport(player, overworld, spawnPos.getX() + 0.5, spawnPos.getY() + 1, spawnPos.getZ() + 0.5);
+                    }
+                }
+
+                // Ensure inventory is cleared (should already be done, but double-check for safety)
+                if (!player.getInventory().isEmpty()) {
+                    MySubMod.LOGGER.warn("Player {} reconnected with non-empty inventory - clearing it", player.getName().getString());
+                    clearPlayerInventory(player);
+                }
+
+                // Reset health to 100% ONLY if player disconnected BEFORE game started
+                // (Players who disconnect during active game keep their current health minus penalty)
+                boolean disconnectedBeforeGameStart = (gameStartTime > 0 && disconnectTime < gameStartTime);
+                float currentHealth = player.getHealth();
+
+                if (disconnectedBeforeGameStart) {
+                    // Player was disconnected before game started - reset to 100% like other players
+                    player.setHealth(player.getMaxHealth());
+                    player.getFoodData().setFoodLevel(10);
+                    player.getFoodData().setSaturation(5.0f);
+                    currentHealth = player.getMaxHealth(); // Update to new health value
+                    MySubMod.LOGGER.info("Reset health to 100% for player {} (was disconnected before game start)", player.getName().getString());
+                } else {
+                    // Player disconnected during active game - keep current health
+                    MySubMod.LOGGER.info("Player {} disconnected during active game - keeping current health {}",
+                        player.getName().getString(), currentHealth);
+                }
+
+                // Log island selection (either assigned now or previously while disconnected)
+                if (dataLogger != null) {
+                    dataLogger.logIslandSelection(player, selectedIsland);
+                    if (islandAssignedDuringReconnection) {
+                        MySubMod.LOGGER.info("Logged island selection for player {} (assigned during reconnection)", player.getName().getString());
+                    } else {
+                        MySubMod.LOGGER.info("Logged island selection for player {} (was disconnected during selection phase)", player.getName().getString());
+                    }
+                }
+
+                // Apply health penalty for time disconnected
+                float newHealth = Math.max(0.5f, currentHealth - healthLoss); // Minimum 0.5 HP to avoid instant death
+                player.setHealth(newHealth);
+
+                player.sendSystemMessage(Component.literal(String.format(
+                    "§eVous avez été reconnecté. Perte de santé: %.1f cœurs (%.0f secondes déconnecté)",
+                    healthLoss / 2.0f, (float)secondsDisconnected)));
+
+                MySubMod.LOGGER.info("Player {} health reduced by {} (from {} to {})",
+                    player.getName().getString(), healthLoss, currentHealth, newHealth);
+
+                // Log reconnection (if logger exists, otherwise queue for later)
+                if (dataLogger != null) {
+                    dataLogger.logPlayerAction(player, String.format("RECONNECTED (-%d seconds, -%.1f HP)",
+                        secondsDisconnected, healthLoss));
+                } else {
+                    // Queue event for retroactive logging when dataLogger is created
+                    pendingLogEvents.add(new PendingLogEvent(player, String.format("RECONNECTED (-%d seconds, -%.1f HP)",
+                        secondsDisconnected, healthLoss)));
+                }
+
+                // Check if health penalty killed the player
+                if (newHealth <= 0.5f) {
+                    player.sendSystemMessage(Component.literal("§cVous êtes mort pendant votre déconnexion !"));
+                    SubMode1HealthManager.getInstance().stopHealthDegradation();
+                    teleportToSpectator(player);
+                }
+            } else if (!gameActive && fileSelectionPhase) {
+                // Reconnect to central square during file selection phase (admin choosing candy file)
+                MinecraftServer server = player.getServer();
+                if (server != null) {
+                    ServerLevel overworld = server.getLevel(ServerLevel.OVERWORLD);
+                    if (overworld != null) {
+                        safeTeleport(player, overworld,
+                            centralSquare.getX() + 0.5,
+                            centralSquare.getY() + 1,
+                            centralSquare.getZ() + 0.5);
+                    }
+                }
+                player.sendSystemMessage(Component.literal("§eVous avez été reconnecté. En attente de la sélection de fichier par l'admin..."));
+
+                // Log reconnection (queue for later since dataLogger doesn't exist yet)
+                pendingLogEvents.add(new PendingLogEvent(player, "RECONNECTED (file selection phase)"));
+
+            } else if (!gameActive && selectionPhase) {
+                // Reconnect to central square during island selection phase
+                MinecraftServer server = player.getServer();
+                if (server != null) {
+                    ServerLevel overworld = server.getLevel(ServerLevel.OVERWORLD);
+                    if (overworld != null) {
+                        safeTeleport(player, overworld,
+                            centralSquare.getX() + 0.5,
+                            centralSquare.getY() + 1,
+                            centralSquare.getZ() + 0.5);
+                    }
+                }
+
+                // Check if player hasn't selected an island yet
+                if (!playerIslandSelections.containsKey(playerId)) {
+                    // Send island selection screen with remaining time
+                    int remainingTime = getRemainingSelectionTime();
+                    if (remainingTime > 0) {
+                        NetworkHandler.INSTANCE.send(PacketDistributor.PLAYER.with(() -> player),
+                            new IslandSelectionPacket(remainingTime));
+                        player.sendSystemMessage(Component.literal("§eVous avez été reconnecté pendant la phase de sélection. Temps restant: " + remainingTime + "s"));
+                    } else {
+                        player.sendSystemMessage(Component.literal("§eVous avez été reconnecté. La phase de sélection se termine..."));
+                    }
+                } else {
+                    player.sendSystemMessage(Component.literal("§eVous avez été reconnecté. Île déjà sélectionnée: " +
+                        playerIslandSelections.get(playerId).getDisplayName()));
+                }
+
+                // Log reconnection (if logger exists, otherwise queue for later)
+                if (dataLogger != null) {
+                    dataLogger.logPlayerAction(player, "RECONNECTED (island selection phase)");
+                } else {
+                    pendingLogEvents.add(new PendingLogEvent(player, "RECONNECTED (island selection phase)"));
+                }
+            }
+        } else if (spectatorPlayers.contains(playerId)) {
+            // Player was spectator when they disconnected
+            teleportToSpectator(player);
+            player.sendSystemMessage(Component.literal("§eVous avez été reconnecté en mode spectateur"));
+        }
+    }
+
+    /**
+     * Increment candy count for a player
+     */
+    public void incrementCandyCount(UUID playerId, int amount) {
+        playerCandyCount.put(playerId, playerCandyCount.getOrDefault(playerId, 0) + amount);
+    }
+
+    /**
+     * Record when a player died for leaderboard
+     */
+    public void recordPlayerDeath(UUID playerId) {
+        playerDeathTime.put(playerId, System.currentTimeMillis());
+    }
+
+    /**
+     * Display leaderboard at end of game
+     */
+    private void displayLeaderboard(MinecraftServer server) {
+        MySubMod.LOGGER.info("Displaying leaderboard");
+
+        // Create leaderboard entries for all players who participated
+        List<LeaderboardEntry> entries = new ArrayList<>();
+
+        for (ServerPlayer player : server.getPlayerList().getPlayers()) {
+            UUID playerId = player.getUUID();
+
+            // Only include players who selected an island (participated in the game)
+            if (!playerIslandSelections.containsKey(playerId)) {
+                MySubMod.LOGGER.debug("Skipping player {} - did not participate (no island selection)", player.getName().getString());
+                continue;
+            }
+
+            String playerName = player.getName().getString();
+            boolean isAlive = alivePlayers.contains(playerId);
+            int candyCount = playerCandyCount.getOrDefault(playerId, 0);
+            long survivalTime = 0;
+
+            if (!isAlive && playerDeathTime.containsKey(playerId)) {
+                // Calculate survival time for dead players
+                survivalTime = playerDeathTime.get(playerId) - gameStartTime;
+            }
+
+            entries.add(new LeaderboardEntry(playerName, isAlive, candyCount, survivalTime));
+            MySubMod.LOGGER.debug("Added player {} to leaderboard - alive: {}, candies: {}, survival: {}ms",
+                playerName, isAlive, candyCount, survivalTime);
+        }
+
+        // Sort leaderboard:
+        // 1. Alive players first (by candy count descending)
+        // 2. Dead players second (by survival time descending)
+        entries.sort((e1, e2) -> {
+            // Alive players always ranked higher than dead players
+            if (e1.isAlive && !e2.isAlive) return -1;
+            if (!e1.isAlive && e2.isAlive) return 1;
+
+            // Both alive: sort by candy count (descending)
+            if (e1.isAlive && e2.isAlive) {
+                return Integer.compare(e2.candyCount, e1.candyCount);
+            }
+
+            // Both dead: sort by survival time (descending)
+            return Long.compare(e2.survivalTimeMs, e1.survivalTimeMs);
+        });
+
+        // Display leaderboard to all players
+        for (ServerPlayer player : server.getPlayerList().getPlayers()) {
+            player.sendSystemMessage(Component.literal(""));
+            player.sendSystemMessage(Component.literal("§6§l========== CLASSEMENT FINAL =========="));
+            player.sendSystemMessage(Component.literal(""));
+
+            for (int i = 0; i < entries.size(); i++) {
+                LeaderboardEntry entry = entries.get(i);
+                int rank = i + 1;
+
+                String rankColor;
+                if (rank == 1) rankColor = "§6"; // Gold for 1st
+                else if (rank == 2) rankColor = "§7"; // Silver for 2nd
+                else if (rank == 3) rankColor = "§c"; // Bronze-ish for 3rd
+                else rankColor = "§f"; // White for others
+
+                String statusInfo;
+                if (entry.isAlive) {
+                    statusInfo = String.format("§a✓ Vivant §7- §e%d bonbons", entry.candyCount);
+                } else {
+                    long survivalSeconds = entry.survivalTimeMs / 1000;
+                    long minutes = survivalSeconds / 60;
+                    long seconds = survivalSeconds % 60;
+                    statusInfo = String.format("§c✗ Mort §7- Survie: %dm%ds", minutes, seconds);
+                }
+
+                player.sendSystemMessage(Component.literal(
+                    String.format("%s#%d §f- %s %s", rankColor, rank, entry.playerName, statusInfo)
+                ));
+            }
+
+            player.sendSystemMessage(Component.literal(""));
+            player.sendSystemMessage(Component.literal("§6§l======================================="));
+            player.sendSystemMessage(Component.literal(""));
+        }
+
+        // Log leaderboard to data logger
+        if (dataLogger != null) {
+            StringBuilder leaderboardLog = new StringBuilder("\n=== FINAL LEADERBOARD ===\n");
+            for (int i = 0; i < entries.size(); i++) {
+                LeaderboardEntry entry = entries.get(i);
+                leaderboardLog.append(String.format("#%d - %s: %s\n",
+                    i + 1,
+                    entry.playerName,
+                    entry.isAlive ?
+                        String.format("Alive (%d candies)", entry.candyCount) :
+                        String.format("Dead (survived %dms)", entry.survivalTimeMs)
+                ));
+            }
+            try {
+                java.io.File eventFile = new java.io.File(dataLogger.getGameSessionId() != null ?
+                    new java.io.File(".", "mysubmod_data/submode1_game_" + dataLogger.getGameSessionId()) :
+                    new java.io.File(".", "mysubmod_data"), "game_events.txt");
+                java.io.FileWriter eventLogger = new java.io.FileWriter(eventFile, true);
+                eventLogger.write(leaderboardLog.toString());
+                eventLogger.close();
+            } catch (java.io.IOException e) {
+                MySubMod.LOGGER.error("Error logging leaderboard", e);
+            }
+        }
+    }
+
+    /**
+     * Inner class to store log events that occur before dataLogger is created
+     */
+    private static class PendingLogEvent {
+        final ServerPlayer player;
+        final String action;
+        final long timestamp;
+
+        PendingLogEvent(ServerPlayer player, String action) {
+            this.player = player;
+            this.action = action;
+            this.timestamp = System.currentTimeMillis();
+        }
+    }
+
+    /**
+     * Inner class to represent a leaderboard entry
+     */
+    private static class LeaderboardEntry {
+        String playerName;
+        boolean isAlive;
+        int candyCount;
+        long survivalTimeMs;
+
+        LeaderboardEntry(String playerName, boolean isAlive, int candyCount, long survivalTimeMs) {
+            this.playerName = playerName;
+            this.isAlive = isAlive;
+            this.candyCount = candyCount;
+            this.survivalTimeMs = survivalTimeMs;
+        }
     }
 
     // Getters

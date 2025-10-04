@@ -16,11 +16,12 @@ public class IslandSelectionScreen extends Screen {
     private static final int BUTTON_HEIGHT = 20;
     private static final int BUTTON_SPACING = 25;
 
-    private int timeLeft = 30;
+    private int timeLeft;
     private int tickCounter = 0;
 
-    public IslandSelectionScreen() {
+    public IslandSelectionScreen(int initialTimeLeft) {
         super(Component.literal("Sélection d'Île"));
+        this.timeLeft = initialTimeLeft;
     }
 
     @Override
