@@ -21,6 +21,7 @@ public class AdminAuthManager {
 
     // Runtime state
     private final Set<UUID> authenticatedAdmins = ConcurrentHashMap.newKeySet();
+    private final Map<UUID, Long> authenticationStartTime = new ConcurrentHashMap<>(); // Track when auth started
 
     // Persistent data
     private JsonObject credentials;
@@ -29,6 +30,7 @@ public class AdminAuthManager {
     private static final long ACCOUNT_BLACKLIST_DURATION = 3 * 60 * 1000; // 3 minutes in ms (fixed for accounts)
     private static final long BASE_IP_BLACKLIST_DURATION = 3 * 60 * 1000; // 3 minutes in ms (base for IP escalation)
     private static final long FAILURE_RESET_TIME = 24 * 60 * 60 * 1000; // 24 hours in ms
+    private static final long AUTH_PROTECTION_DURATION = 30 * 1000; // 30 seconds protection
 
     private AdminAuthManager() {
         this.credentialsFile = new File("admin_credentials.json");
@@ -467,6 +469,35 @@ public class AdminAuthManager {
      */
     public void handleDisconnect(ServerPlayer player) {
         authenticatedAdmins.remove(player.getUUID());
+        authenticationStartTime.remove(player.getUUID());
+    }
+
+    /**
+     * Start authentication protection for an admin
+     */
+    public void startAuthenticationProtection(ServerPlayer player) {
+        authenticationStartTime.put(player.getUUID(), System.currentTimeMillis());
+        MySubMod.LOGGER.info("Started 30-second authentication protection for {}", player.getName().getString());
+    }
+
+    /**
+     * Check if admin is protected from disconnect during authentication
+     */
+    public boolean isProtectedDuringAuth(ServerPlayer player) {
+        Long startTime = authenticationStartTime.get(player.getUUID());
+        if (startTime == null) {
+            return false;
+        }
+
+        long elapsed = System.currentTimeMillis() - startTime;
+        boolean isProtected = elapsed < AUTH_PROTECTION_DURATION;
+
+        if (!isProtected) {
+            // Protection expired, remove entry
+            authenticationStartTime.remove(player.getUUID());
+        }
+
+        return isProtected;
     }
 
     /**

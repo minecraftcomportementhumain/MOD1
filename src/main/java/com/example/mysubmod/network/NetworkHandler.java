@@ -37,6 +37,23 @@ public class NetworkHandler {
 
         INSTANCE.registerMessage(
             packetId++,
+            SubModeControlScreenRequestPacket.class,
+            SubModeControlScreenRequestPacket::encode,
+            SubModeControlScreenRequestPacket::decode,
+            SubModeControlScreenRequestPacket::handle,
+            java.util.Optional.of(NetworkDirection.PLAY_TO_SERVER)
+        );
+
+        INSTANCE.registerMessage(
+            packetId++,
+            SubModeControlScreenPacket.class,
+            SubModeControlScreenPacket::encode,
+            SubModeControlScreenPacket::decode,
+            SubModeControlScreenPacket::handle
+        );
+
+        INSTANCE.registerMessage(
+            packetId++,
             AdminStatusPacket.class,
             AdminStatusPacket::encode,
             AdminStatusPacket::decode,
@@ -188,6 +205,14 @@ public class NetworkHandler {
             com.example.mysubmod.auth.AdminAuthResponsePacket::encode,
             com.example.mysubmod.auth.AdminAuthResponsePacket::decode,
             com.example.mysubmod.auth.AdminAuthResponsePacket::handle
+        );
+
+        INSTANCE.registerMessage(
+            packetId++,
+            com.example.mysubmod.submodes.submode1.network.GameEndPacket.class,
+            com.example.mysubmod.submodes.submode1.network.GameEndPacket::encode,
+            com.example.mysubmod.submodes.submode1.network.GameEndPacket::decode,
+            com.example.mysubmod.submodes.submode1.network.GameEndPacket::handle
         );
     }
 

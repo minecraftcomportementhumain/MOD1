@@ -11,6 +11,7 @@ import com.example.mysubmod.submodes.submode1.islands.IslandType;
 import com.example.mysubmod.submodes.submode1.network.CandyFileListPacket;
 import com.example.mysubmod.submodes.submode1.network.IslandSelectionPacket;
 import com.example.mysubmod.submodes.submode1.network.GameTimerPacket;
+import com.example.mysubmod.submodes.submode1.network.GameEndPacket;
 import com.example.mysubmod.submodes.submode1.timer.GameTimer;
 import net.minecraft.core.BlockPos;
 import net.minecraft.server.MinecraftServer;
@@ -27,6 +28,8 @@ public class SubMode1Manager {
     private static SubMode1Manager instance;
     private final Map<UUID, List<ItemStack>> storedInventories = new ConcurrentHashMap<>();
     private final Map<UUID, IslandType> playerIslandSelections = new ConcurrentHashMap<>();
+    private final Map<UUID, Boolean> playerIslandManualSelection = new ConcurrentHashMap<>(); // Track if island was manually selected (true) or auto-assigned (false)
+    private final Set<UUID> playerIslandSelectionLogged = ConcurrentHashMap.newKeySet(); // Track which players had their island selection logged
     private final Set<UUID> alivePlayers = ConcurrentHashMap.newKeySet();
     private final Set<UUID> spectatorPlayers = ConcurrentHashMap.newKeySet();
     private final Map<UUID, DisconnectInfo> disconnectedPlayers = new ConcurrentHashMap<>(); // Track disconnect time and position
@@ -249,6 +252,8 @@ public class SubMode1Manager {
             gameEnding = false;
             islandsGenerated = false;
             playerIslandSelections.clear();
+            playerIslandManualSelection.clear();
+            playerIslandSelectionLogged.clear();
             alivePlayers.clear();
             spectatorPlayers.clear();
             disconnectedPlayers.clear(); // Clear disconnect tracking
@@ -1186,11 +1191,13 @@ public class SubMode1Manager {
         if (!selectionPhase) return;
 
         playerIslandSelections.put(player.getUUID(), island);
+        playerIslandManualSelection.put(player.getUUID(), true); // Manual selection
         player.sendSystemMessage(Component.literal("§aVous avez sélectionné: " + island.getDisplayName()));
 
         // Log island selection
         if (dataLogger != null) {
             dataLogger.logIslandSelection(player, island);
+            playerIslandSelectionLogged.add(player.getUUID());
         }
     }
 
@@ -1206,6 +1213,7 @@ public class SubMode1Manager {
             if (!playerIslandSelections.containsKey(playerId)) {
                 IslandType randomIsland = islands[random.nextInt(islands.length)];
                 playerIslandSelections.put(playerId, randomIsland);
+                playerIslandManualSelection.put(playerId, false); // Automatic assignment
 
                 // Mark them as alive so they'll be properly handled on reconnection
                 alivePlayers.add(playerId);
@@ -1221,7 +1229,8 @@ public class SubMode1Manager {
 
                 // Log automatic island assignment
                 if (dataLogger != null && player != null) {
-                    dataLogger.logIslandSelection(player, randomIsland);
+                    dataLogger.logIslandSelection(player, randomIsland, "AUTOMATIC");
+                    playerIslandSelectionLogged.add(playerId);
                 }
             }
         }
@@ -1478,6 +1487,9 @@ public class SubMode1Manager {
         gameActive = false;
 
         MySubMod.LOGGER.info("Ending SubMode1 game");
+
+        // Notify all clients that game has ended
+        NetworkHandler.INSTANCE.send(PacketDistributor.ALL.noArg(), new GameEndPacket());
 
         // Stop systems immediately to prevent further operations
         try {
@@ -1763,6 +1775,7 @@ public class SubMode1Manager {
                 Random random = new Random();
                 selectedIsland = islands[random.nextInt(islands.length)];
                 playerIslandSelections.put(playerId, selectedIsland);
+                playerIslandManualSelection.put(playerId, false); // Automatic assignment
                 islandAssignedDuringReconnection = true;
 
                 MySubMod.LOGGER.info("Assigned random island {} to player {} who reconnected after selection phase",
@@ -1818,13 +1831,22 @@ public class SubMode1Manager {
                         player.getName().getString(), currentHealth);
                 }
 
-                // Log island selection (either assigned now or previously while disconnected)
-                if (dataLogger != null) {
-                    dataLogger.logIslandSelection(player, selectedIsland);
+                // Log island selection if:
+                // 1. Island was assigned during reconnection (missed selection phase)
+                // 2. Player disconnected before game start (never teleported to island before) AND not already logged
+                if (dataLogger != null && !playerIslandSelectionLogged.contains(playerId)) {
                     if (islandAssignedDuringReconnection) {
+                        dataLogger.logIslandSelection(player, selectedIsland, "AUTOMATIC");
+                        playerIslandSelectionLogged.add(playerId);
                         MySubMod.LOGGER.info("Logged island selection for player {} (assigned during reconnection)", player.getName().getString());
-                    } else {
-                        MySubMod.LOGGER.info("Logged island selection for player {} (was disconnected during selection phase)", player.getName().getString());
+                    } else if (disconnectedBeforeGameStart) {
+                        // Check if island was manually selected or auto-assigned
+                        Boolean wasManualSelection = playerIslandManualSelection.get(playerId);
+                        String selectionType = (wasManualSelection != null && wasManualSelection) ? "MANUAL" : "AUTOMATIC";
+                        dataLogger.logIslandSelection(player, selectedIsland, selectionType);
+                        playerIslandSelectionLogged.add(playerId);
+                        MySubMod.LOGGER.info("Logged island selection for player {} (first teleport to island after reconnection, type: {})",
+                            player.getName().getString(), selectionType);
                     }
                 }
 
@@ -1857,6 +1879,9 @@ public class SubMode1Manager {
                 }
             } else if (!gameActive && fileSelectionPhase) {
                 // Reconnect to central square during file selection phase (admin choosing candy file)
+                // Add player to selection phase participants so they're not treated as spectator
+                playersInSelectionPhase.add(playerId);
+
                 MinecraftServer server = player.getServer();
                 if (server != null) {
                     ServerLevel overworld = server.getLevel(ServerLevel.OVERWORLD);
@@ -2075,6 +2100,22 @@ public class SubMode1Manager {
 
     // Getters
     public boolean isGameActive() { return gameActive; }
+
+    public void addPlayerToSelectionPhase(ServerPlayer player) {
+        playersInSelectionPhase.add(player.getUUID());
+
+        // Teleport to central square
+        MinecraftServer server = player.getServer();
+        if (server != null) {
+            ServerLevel overworld = server.getLevel(ServerLevel.OVERWORLD);
+            if (overworld != null) {
+                safeTeleport(player, overworld,
+                    centralSquare.getX() + 0.5,
+                    centralSquare.getY() + 1,
+                    centralSquare.getZ() + 0.5);
+            }
+        }
+    }
     public boolean isSelectionPhase() { return selectionPhase; }
     public boolean isPlayerAlive(UUID playerId) { return alivePlayers.contains(playerId); }
     public boolean isPlayerSpectator(UUID playerId) { return spectatorPlayers.contains(playerId); }

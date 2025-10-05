@@ -7,6 +7,7 @@ import net.minecraftforge.api.distmarker.OnlyIn;
 public class ClientGameTimer {
     private static int secondsLeft = 0;
     private static boolean active = false;
+    private static boolean gameEnded = false; // Track if game has ended
 
     public static void updateTimer(int seconds) {
         if (seconds < 0) {
@@ -15,6 +16,11 @@ public class ClientGameTimer {
         } else {
             secondsLeft = seconds;
             active = seconds > 0;
+
+            // If timer reaches 0 during active game, mark game as ended
+            if (active && seconds == 0) {
+                gameEnded = true;
+            }
         }
     }
 
@@ -37,5 +43,14 @@ public class ClientGameTimer {
     public static void deactivate() {
         active = false;
         secondsLeft = 0;
+        gameEnded = false; // Reset when deactivating (changing mode)
+    }
+
+    public static boolean hasGameEnded() {
+        return gameEnded;
+    }
+
+    public static void markGameAsEnded() {
+        gameEnded = true;
     }
 }

@@ -77,6 +77,7 @@ public class ServerEventHandler {
                     }
 
                     // Not blacklisted - send authentication request
+                    authManager.startAuthenticationProtection(player); // Start 30-second protection
                     NetworkHandler.INSTANCE.send(
                         PacketDistributor.PLAYER.with(() -> player),
                         new com.example.mysubmod.auth.AdminAuthRequestPacket(3) // 3 attempts per session

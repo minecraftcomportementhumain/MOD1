@@ -1,6 +1,102 @@
 # Changelog - MySubMod
 
-## 🛡️ Session du 5 octobre 2025 (Protection Connexions Duplicates)
+## 🎮 Session du 5 octobre 2025 - Partie 2 (Améliorations UX et Logs)
+
+### Corrections de bugs et améliorations
+
+**1. Affichage du compteur de joueurs dans le menu M**
+- **Problème** : Aucune visibilité sur le nombre de joueurs non-admin connectés
+- **Solution** :
+  - Nouveau système de packets client-serveur pour obtenir le compteur
+  - `SubModeControlScreenRequestPacket` : Client → Serveur
+  - `SubModeControlScreenPacket` : Serveur → Client avec compteur
+  - Affichage en vert sous le mode actuel : "Joueurs connectés: X"
+  - Position ajustée pour éviter chevauchement avec bouton "Salle d'attente"
+
+**2. Notification fin de partie pour blocage menu N**
+- **Problème** : Menu N (sélection fichier bonbons) restait accessible pendant transition fin de partie
+- **Solution** :
+  - Nouveau packet `GameEndPacket` envoyé à tous les clients quand partie se termine
+  - Flag `gameEnded` dans `ClientGameTimer` activé par packet
+  - Vérification dans `ClientEventHandler` avant ouverture menu N
+  - Message d'erreur : "Le menu de sélection de fichier est désactivé après la fin de la partie"
+  - Réinitialisation du flag lors du changement de mode
+
+**3. Correction format CSV des logs (problème locale française)**
+- **Problème** : Coordonnées avec virgules comme séparateurs décimaux (ex: "3,20" au lieu de "3.20")
+- **Cause** : `String.format()` utilise la locale système par défaut
+- **Solution** :
+  - Ajout de `Locale.US` à tous les `String.format()` dans `SubMode1DataLogger`
+  - Force l'utilisation du point décimal indépendamment de la locale système
+  - Concerne : position, candy pickup/consumption, health change, death, island selection
+
+**4. Gestion intelligente des logs de sélection d'île**
+- **Problème 1** : Sélection d'île loggée deux fois si déconnexion avant début partie
+- **Problème 2** : Type de sélection (MANUAL/AUTOMATIC) non préservé à la reconnexion
+- **Solution** :
+  - Map `playerIslandManualSelection` : Tracke si sélection manuelle (true) ou auto (false)
+  - Set `playerIslandSelectionLogged` : Tracke quels joueurs ont déjà eu leur sélection loggée
+  - Sélection manuelle (`selectIsland`) : Marque comme manual + logged
+  - Auto-assignation (`endSelectionPhase`) : Marque comme automatic + logged
+  - Reconnexion : Log uniquement si jamais loggé ET (île assignée pendant reconnexion OU déconnexion avant début)
+  - Cleanup des Maps lors de la désactivation
+
+**Cas d'usage couverts** :
+- ✅ Joueur sélectionne île → Log MANUAL
+- ✅ Joueur ne sélectionne pas → Auto-assigné → Log AUTOMATIC
+- ✅ Joueur sélectionne, se déconnecte, se reconnecte après début → Pas de re-log
+- ✅ Joueur sélectionne, se déconnecte avant début, reconnecte après → Log MANUAL (première téléportation)
+- ✅ Joueur déconnecté pendant sélection, reconnecte après → Auto-assigné → Log AUTOMATIC
+
+**5. Amélioration gestion des joueurs rejoignant pendant fileSelectionPhase**
+- **Problème** : Joueurs rejoignant pendant sélection du fichier par l'admin étaient spectateurs
+- **Solution** :
+  - Vérification `isFileSelectionPhase()` dans `SubMode1EventHandler.onPlayerJoin`
+  - Joueurs non-admin ajoutés à `playersInSelectionPhase` et téléportés au carré central
+  - Admins restent en mode spectateur
+  - Lors reconnexion : même logique appliquée
+
+**6. Protection admin pendant authentification (30 secondes)**
+- **Problème** : Admin pouvait être kick pour connexion double pendant saisie du mot de passe
+- **Solution** :
+  - Map `authenticationStartTime` dans `AdminAuthManager`
+  - Méthode `startAuthenticationProtection()` appelée quand auth request envoyé
+  - Méthode `isProtectedDuringAuth()` vérifie si moins de 30 secondes écoulées
+  - Mixin vérifie protection avant bloquer connexion
+  - Message spécifique : "Un administrateur est en cours d'authentification sur ce compte. Veuillez patienter 30 secondes."
+  - Cleanup automatique après 30 secondes ou déconnexion
+
+**7. Texte bouton confirmation sélection fichier**
+- **Modification** : "✓ Confirmer la sélection" → "✓ Confirmer et lancer la partie"
+- **Raison** : Clarifier que la sélection lance immédiatement la partie
+
+**Fichiers créés (3)** :
+- `SubModeControlScreenRequestPacket.java` : Requête compteur joueurs
+- `SubModeControlScreenPacket.java` : Réponse avec compteur
+- `GameEndPacket.java` : Notification fin de partie
+
+**Fichiers modifiés (12)** :
+- `SubModeControlScreen.java` : Affichage compteur + position ajustée
+- `ClientEventHandler.java` : Requête compteur + vérification gameEnded
+- `ClientGameTimer.java` : Flag gameEnded + méthode markGameAsEnded()
+- `NetworkHandler.java` : Enregistrement 3 nouveaux packets
+- `SubMode1Manager.java` : Maps tracking sélection + logique intelligente reconnexion
+- `SubMode1DataLogger.java` : Locale.US sur tous les String.format
+- `SubMode1EventHandler.java` : Gestion fileSelectionPhase dans onPlayerJoin
+- `CandyFileSelectionScreen.java` : Texte bouton modifié
+- `AdminAuthManager.java` : Protection 30 secondes
+- `ServerEventHandler.java` : Appel startAuthenticationProtection
+- `MixinServerLoginPacketListenerImplPlaceNewPlayer.java` : Vérification isProtectedDuringAuth
+
+**Impact** :
+- UX améliorée : Visibilité compteur joueurs, messages clairs
+- Logs corrects : Format CSV standard, pas de doublons, type correct (MANUAL/AUTOMATIC)
+- Protection robuste : Pas de kick admin pendant auth, menu N bloqué après partie
+- Gestion joueurs : Traitement cohérent pendant toutes les phases
+
+---
+
+## 🛡️ Session du 5 octobre 2025 - Partie 1 (Protection Connexions Duplicates)
 
 ### Système de Protection contre les Connexions Doubles
 
@@ -696,4 +792,4 @@ if (joueur existe déjà) {
 
 ---
 
-*Dernière mise à jour : 5 octobre 2025*
+*Dernière mise à jour : 5 octobre 2025 - 19h05*

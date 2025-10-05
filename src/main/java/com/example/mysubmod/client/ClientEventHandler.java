@@ -21,7 +21,10 @@ public class ClientEventHandler {
         // M key - Open sub-mode control screen
         if (event.getKey() == GLFW.GLFW_KEY_M && event.getAction() == GLFW.GLFW_PRESS) {
             if (mc.screen == null && mc.player != null) {
-                mc.setScreen(new SubModeControlScreen());
+                // Request screen from server with player count
+                com.example.mysubmod.network.NetworkHandler.INSTANCE.sendToServer(
+                    new com.example.mysubmod.network.SubModeControlScreenRequestPacket()
+                );
             }
         }
 
@@ -30,7 +33,12 @@ public class ClientEventHandler {
             if (mc.screen == null && mc.player != null) {
                 // Only allow in SubMode1 (use ClientSubModeManager for client-side mode check)
                 if (ClientSubModeManager.getCurrentMode() == SubMode.SUB_MODE_1) {
-                    ClientPacketHandler.openCandyFileSelectionScreen();
+                    // Check if game has ended
+                    if (com.example.mysubmod.submodes.submode1.client.ClientGameTimer.hasGameEnded()) {
+                        mc.player.sendSystemMessage(net.minecraft.network.chat.Component.literal("§cLe menu de sélection de fichier est désactivé après la fin de la partie"));
+                    } else {
+                        ClientPacketHandler.openCandyFileSelectionScreen();
+                    }
                 }
             }
         }

@@ -45,7 +45,7 @@ public class CandyFileSelectionScreen extends Screen {
 
         // Row 1: Confirm and Delete Selected
         confirmButton = Button.builder(
-            Component.literal("✓ Confirmer la sélection"),
+            Component.literal("✓ Confirmer et lancer la partie"),
             button -> confirmSelection()
         ).bounds(listX, buttonY, (listWidth - buttonSpacing) / 2, buttonHeight).build();
         this.addRenderableWidget(confirmButton);

@@ -66,6 +66,14 @@ public abstract class MixinServerLoginPacketListenerImplPlaceNewPlayer {
                     ));
                     this.connection.disconnect(Component.literal("Authenticated admin already connected"));
                     ci.cancel();
+                } else if (authManager.isProtectedDuringAuth(existingPlayer)) {
+                    // Admin is currently authenticating (30s protection) - deny new connection
+                    MySubMod.LOGGER.warn("MIXIN: Denying connection for {} - admin is authenticating (protected)", playerName);
+                    this.connection.send(new ClientboundLoginDisconnectPacket(
+                        Component.literal("§c§lConnexion refusée\n\n§eUn administrateur est en cours d'authentification sur ce compte.\n§7Veuillez patienter 30 secondes.")
+                    ));
+                    this.connection.disconnect(Component.literal("Admin authenticating"));
+                    ci.cancel();
                 } else {
                     // Allow vanilla to kick old unauthenticated admin
                     MySubMod.LOGGER.info("MIXIN: Allowing connection for {} - will kick unauthenticated admin", playerName);

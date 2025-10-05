@@ -10,6 +10,7 @@ import java.io.FileWriter;
 import java.io.IOException;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
+import java.util.Locale;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
@@ -77,7 +78,7 @@ public class SubMode1DataLogger {
         if (logger != null) {
             try {
                 String timestamp = LocalDateTime.now().format(TIMESTAMP_FORMAT);
-                String csvLine = String.format("%s,%s,POSITION,%.2f,%.2f,%.2f,%.1f,\n",
+                String csvLine = String.format(Locale.US, "%s,%s,POSITION,%.2f,%.2f,%.2f,%.1f,\n",
                     timestamp,
                     player.getName().getString(),
                     player.getX(),
@@ -100,7 +101,7 @@ public class SubMode1DataLogger {
         if (logger != null) {
             try {
                 String timestamp = LocalDateTime.now().format(TIMESTAMP_FORMAT);
-                String csvLine = String.format("%s,%s,CANDY_CONSUMED,%.2f,%.2f,%.2f,%.1f,\n",
+                String csvLine = String.format(Locale.US, "%s,%s,CANDY_CONSUMED,%.2f,%.2f,%.2f,%.1f,\n",
                     timestamp,
                     player.getName().getString(),
                     player.getX(),
@@ -123,9 +124,9 @@ public class SubMode1DataLogger {
         if (logger != null) {
             try {
                 String timestamp = LocalDateTime.now().format(TIMESTAMP_FORMAT);
-                String additionalData = String.format("candy_pos=%d;%d;%d",
+                String additionalData = String.format(Locale.US, "candy_pos=%d;%d;%d",
                     position.getX(), position.getY(), position.getZ());
-                String csvLine = String.format("%s,%s,CANDY_PICKUP,%.2f,%.2f,%.2f,%.1f,%s\n",
+                String csvLine = String.format(Locale.US, "%s,%s,CANDY_PICKUP,%.2f,%.2f,%.2f,%.1f,%s\n",
                     timestamp,
                     player.getName().getString(),
                     player.getX(),
@@ -149,8 +150,8 @@ public class SubMode1DataLogger {
         if (logger != null) {
             try {
                 String timestamp = LocalDateTime.now().format(TIMESTAMP_FORMAT);
-                String additionalData = String.format("old_health=%.1f;new_health=%.1f", oldHealth, newHealth);
-                String csvLine = String.format("%s,%s,HEALTH_CHANGE,%.2f,%.2f,%.2f,%.1f,%s\n",
+                String additionalData = String.format(Locale.US, "old_health=%.1f;new_health=%.1f", oldHealth, newHealth);
+                String csvLine = String.format(Locale.US, "%s,%s,HEALTH_CHANGE,%.2f,%.2f,%.2f,%.1f,%s\n",
                     timestamp,
                     player.getName().getString(),
                     player.getX(),
@@ -174,7 +175,7 @@ public class SubMode1DataLogger {
         if (logger != null) {
             try {
                 String timestamp = LocalDateTime.now().format(TIMESTAMP_FORMAT);
-                String csvLine = String.format("%s,%s,DEATH,%.2f,%.2f,%.2f,0.0,\n",
+                String csvLine = String.format(Locale.US, "%s,%s,DEATH,%.2f,%.2f,%.2f,0.0,\n",
                     timestamp,
                     player.getName().getString(),
                     player.getX(),
@@ -192,12 +193,19 @@ public class SubMode1DataLogger {
      * Log island selection at start of game
      */
     public void logIslandSelection(ServerPlayer player, IslandType island) {
+        logIslandSelection(player, island, "MANUAL");
+    }
+
+    /**
+     * Log island selection at start of game with selection type
+     */
+    public void logIslandSelection(ServerPlayer player, IslandType island, String selectionType) {
         FileWriter logger = getPlayerLogger(player);
         if (logger != null) {
             try {
                 String timestamp = LocalDateTime.now().format(TIMESTAMP_FORMAT);
-                String additionalData = String.format("island=%s", island.name());
-                String csvLine = String.format("%s,%s,ISLAND_SELECTION,%.2f,%.2f,%.2f,%.1f,%s\n",
+                String additionalData = String.format(Locale.US, "island=%s,selection=%s", island.name(), selectionType);
+                String csvLine = String.format(Locale.US, "%s,%s,ISLAND_SELECTION,%.2f,%.2f,%.2f,%.1f,%s\n",
                     timestamp,
                     player.getName().getString(),
                     player.getX(),
@@ -221,7 +229,7 @@ public class SubMode1DataLogger {
         if (logger != null) {
             try {
                 String timestamp = LocalDateTime.now().format(TIMESTAMP_FORMAT);
-                String csvLine = String.format("%s,%s,%s,%.2f,%.2f,%.2f,%.1f,\n",
+                String csvLine = String.format(Locale.US, "%s,%s,%s,%.2f,%.2f,%.2f,%.1f,\n",
                     timestamp,
                     player.getName().getString(),
                     action, // CONNECTED, DISCONNECTED, RECONNECTED

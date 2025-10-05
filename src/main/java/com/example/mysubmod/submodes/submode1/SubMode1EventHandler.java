@@ -192,8 +192,20 @@ public class SubMode1EventHandler {
                     // Reconnecting player - restore their state
                     manager.handlePlayerReconnection(player);
                 } else {
-                    // New players joining during SubMode1 go to spectator
-                    manager.teleportToSpectator(player);
+                    // New players joining - check if we're in file selection phase
+                    if (manager.isFileSelectionPhase()) {
+                        // During file selection phase, treat new non-admin players as participants
+                        if (!SubModeManager.getInstance().isAdmin(player)) {
+                            manager.addPlayerToSelectionPhase(player);
+                            player.sendSystemMessage(net.minecraft.network.chat.Component.literal("§eVous rejoignez le jeu. En attente de la sélection de fichier par l'admin..."));
+                        } else {
+                            // Admins go to spectator
+                            manager.teleportToSpectator(player);
+                        }
+                    } else {
+                        // After file selection, new players go to spectator
+                        manager.teleportToSpectator(player);
+                    }
                 }
             } else {
                 // Player joining when SubMode1 is NOT active - clear their HUD and timer
