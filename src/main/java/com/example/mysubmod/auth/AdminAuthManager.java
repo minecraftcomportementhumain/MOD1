@@ -26,7 +26,8 @@ public class AdminAuthManager {
     private JsonObject credentials;
 
     private static final int MAX_ATTEMPTS = 3;
-    private static final long BASE_BLACKLIST_DURATION = 3 * 60 * 1000; // 3 minutes in ms
+    private static final long ACCOUNT_BLACKLIST_DURATION = 3 * 60 * 1000; // 3 minutes in ms (fixed for accounts)
+    private static final long BASE_IP_BLACKLIST_DURATION = 3 * 60 * 1000; // 3 minutes in ms (base for IP escalation)
     private static final long FAILURE_RESET_TIME = 24 * 60 * 60 * 1000; // 24 hours in ms
 
     private AdminAuthManager() {
@@ -58,6 +59,9 @@ public class AdminAuthManager {
             if (!credentials.has("blacklist")) {
                 credentials.add("blacklist", new JsonObject());
             }
+            if (!credentials.has("ipBlacklist")) {
+                credentials.add("ipBlacklist", new JsonObject());
+            }
         } catch (IOException e) {
             MySubMod.LOGGER.error("Failed to load admin credentials", e);
             credentials = new JsonObject();
@@ -70,6 +74,7 @@ public class AdminAuthManager {
         credentials = new JsonObject();
         credentials.add("admins", new JsonObject());
         credentials.add("blacklist", new JsonObject());
+        credentials.add("ipBlacklist", new JsonObject());
         saveCredentials();
         MySubMod.LOGGER.info("Created default admin_credentials.json");
     }
@@ -144,13 +149,19 @@ public class AdminAuthManager {
 
     /**
      * Attempt to authenticate a player
-     * Returns: 0 = success, -1 = wrong password, -2 = max attempts reached
+     * Returns: 0 = success, -1 = wrong password, -2 = max attempts reached (account), -3 = IP blacklisted
      */
     public int attemptLogin(ServerPlayer player, String password) {
         String playerName = player.getName().getString().toLowerCase();
         UUID playerId = player.getUUID();
+        String ipAddress = player.getIpAddress();
 
-        // Check if blacklisted
+        // Check if IP is blacklisted
+        if (isIPBlacklisted(ipAddress)) {
+            return -3;
+        }
+
+        // Check if account is blacklisted
         if (isBlacklisted(playerName)) {
             return -2;
         }
@@ -181,16 +192,18 @@ public class AdminAuthManager {
         if (verifyPassword(playerName, password)) {
             // Success - clear attempts and authenticate
             clearAttempts(playerName);
+            clearIPAttempts(ipAddress);
             authenticatedAdmins.add(playerId);
             MySubMod.LOGGER.info("Admin {} successfully authenticated", playerName);
             return 0;
         } else {
             // Wrong password
-            MySubMod.LOGGER.warn("Failed login attempt {}/{} for admin {}", attempts, MAX_ATTEMPTS, playerName);
+            MySubMod.LOGGER.warn("Failed login attempt {}/{} for admin {} from IP {}", attempts, MAX_ATTEMPTS, playerName, ipAddress);
 
             if (attempts >= MAX_ATTEMPTS) {
-                // Max attempts reached - blacklist
+                // Max attempts reached - blacklist account (3 minutes fixed) and IP (with escalation)
                 blacklistPlayer(playerName);
+                blacklistIP(ipAddress);
                 return -2;
             } else {
                 // Save current attempts to persist across reconnects
@@ -252,12 +265,29 @@ public class AdminAuthManager {
     private void blacklistPlayer(String playerName) {
         JsonObject blacklist = credentials.getAsJsonObject("blacklist");
 
-        // Get current failure count
+        // Fixed 3 minutes blacklist for accounts
+        long until = System.currentTimeMillis() + ACCOUNT_BLACKLIST_DURATION;
+
+        // Create blacklist entry
+        JsonObject entry = new JsonObject();
+        entry.addProperty("until", until);
+        entry.addProperty("lastAttempt", System.currentTimeMillis());
+
+        blacklist.add(playerName.toLowerCase(), entry);
+        saveCredentials();
+
+        MySubMod.LOGGER.warn("Account {} blacklisted for 3 minutes", playerName);
+    }
+
+    private void blacklistIP(String ipAddress) {
+        JsonObject ipBlacklist = credentials.getAsJsonObject("ipBlacklist");
+
+        // Get current failure count for IP
         int failureCount = 0;
         long lastAttempt = System.currentTimeMillis();
 
-        if (blacklist.has(playerName.toLowerCase())) {
-            JsonObject entry = blacklist.getAsJsonObject(playerName.toLowerCase());
+        if (ipBlacklist.has(ipAddress)) {
+            JsonObject entry = ipBlacklist.getAsJsonObject(ipAddress);
             if (entry.has("failureCount")) {
                 failureCount = entry.get("failureCount").getAsInt();
             }
@@ -269,26 +299,86 @@ public class AdminAuthManager {
         // Check if we should reset failure count (24h since last attempt)
         if (System.currentTimeMillis() - lastAttempt > FAILURE_RESET_TIME) {
             failureCount = 0;
-            MySubMod.LOGGER.info("Reset failure count for {} (24h elapsed)", playerName);
+            MySubMod.LOGGER.info("Reset IP failure count for {} (24h elapsed)", ipAddress);
         }
 
         failureCount++;
 
-        // Calculate blacklist duration (3min * 10^(failureCount-1))
-        long duration = (long) (BASE_BLACKLIST_DURATION * Math.pow(10, failureCount - 1));
+        // Calculate blacklist duration with escalation (3min * 10^(failureCount-1))
+        long duration = (long) (BASE_IP_BLACKLIST_DURATION * Math.pow(10, failureCount - 1));
         long until = System.currentTimeMillis() + duration;
 
-        // Create blacklist entry
+        // Create IP blacklist entry
         JsonObject entry = new JsonObject();
         entry.addProperty("until", until);
         entry.addProperty("failureCount", failureCount);
         entry.addProperty("lastAttempt", System.currentTimeMillis());
 
-        blacklist.add(playerName.toLowerCase(), entry);
+        ipBlacklist.add(ipAddress, entry);
         saveCredentials();
 
-        MySubMod.LOGGER.warn("Player {} blacklisted for {} minutes (failure count: {})",
-            playerName, duration / 60000, failureCount);
+        MySubMod.LOGGER.warn("IP {} blacklisted for {} minutes (failure count: {})",
+            ipAddress, duration / 60000, failureCount);
+    }
+
+    /**
+     * Check if an IP is blacklisted
+     */
+    public boolean isIPBlacklisted(String ipAddress) {
+        JsonObject ipBlacklist = credentials.getAsJsonObject("ipBlacklist");
+        if (!ipBlacklist.has(ipAddress)) {
+            return false;
+        }
+
+        JsonObject entry = ipBlacklist.getAsJsonObject(ipAddress);
+
+        // Check if this entry has an "until" field
+        if (!entry.has("until")) {
+            return false;
+        }
+
+        long until = entry.get("until").getAsLong();
+
+        if (System.currentTimeMillis() < until) {
+            return true;
+        } else {
+            // Blacklist expired, remove it
+            ipBlacklist.remove(ipAddress);
+            saveCredentials();
+            return false;
+        }
+    }
+
+    /**
+     * Get remaining IP blacklist time in milliseconds
+     */
+    public long getRemainingIPBlacklistTime(String ipAddress) {
+        JsonObject ipBlacklist = credentials.getAsJsonObject("ipBlacklist");
+        if (!ipBlacklist.has(ipAddress)) {
+            return 0;
+        }
+
+        JsonObject entry = ipBlacklist.getAsJsonObject(ipAddress);
+        if (!entry.has("until")) {
+            return 0;
+        }
+
+        long until = entry.get("until").getAsLong();
+        long remaining = until - System.currentTimeMillis();
+
+        return Math.max(0, remaining);
+    }
+
+    /**
+     * Clear IP attempts after successful login
+     */
+    private void clearIPAttempts(String ipAddress) {
+        JsonObject ipBlacklist = credentials.getAsJsonObject("ipBlacklist");
+
+        if (ipBlacklist.has(ipAddress)) {
+            ipBlacklist.remove(ipAddress);
+            saveCredentials();
+        }
     }
 
     /**
@@ -350,6 +440,16 @@ public class AdminAuthManager {
             saveCredentials();
             MySubMod.LOGGER.info("Reset failure count for {}", playerName);
         }
+    }
+
+    /**
+     * Reset IP blacklist
+     */
+    public void resetIPBlacklist(String ipAddress) {
+        JsonObject ipBlacklist = credentials.getAsJsonObject("ipBlacklist");
+        ipBlacklist.remove(ipAddress);
+        saveCredentials();
+        MySubMod.LOGGER.info("Reset IP blacklist for {}", ipAddress);
     }
 
     /**

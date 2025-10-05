@@ -69,17 +69,32 @@ public class AdminAuthPacket {
                     new AdminAuthResponsePacket(false, remaining, "Mot de passe incorrect"), player);
 
             } else if (result == -2) {
-                // Max attempts or already blacklisted
+                // Max attempts - account blacklisted (3 minutes)
                 long remainingTime = authManager.getRemainingBlacklistTime(playerName);
                 long minutes = remainingTime / 60000;
 
                 player.sendSystemMessage(net.minecraft.network.chat.Component.literal(
-                    "§4§lTrop de tentatives échouées! Vous êtes blacklisté pour " + minutes + " minute(s)."));
+                    "§4§lTrop de tentatives échouées! Compte blacklisté pour " + minutes + " minute(s)."));
 
                 // Kick player
                 player.getServer().execute(() -> {
                     player.connection.disconnect(net.minecraft.network.chat.Component.literal(
-                        "§4§lBlacklisted\n\n§cTrop de tentatives de connexion échouées.\n§7Temps restant: §e" + minutes + " minute(s)"));
+                        "§4§lCompte Blacklisté\n\n§cTrop de tentatives de connexion échouées.\n§7Temps restant: §e" + minutes + " minute(s)"));
+                });
+
+            } else if (result == -3) {
+                // IP blacklisted
+                String ipAddress = player.getIpAddress();
+                long remainingTime = authManager.getRemainingIPBlacklistTime(ipAddress);
+                long minutes = remainingTime / 60000;
+
+                player.sendSystemMessage(net.minecraft.network.chat.Component.literal(
+                    "§4§lIP blacklistée pour " + minutes + " minute(s)!"));
+
+                // Kick player
+                player.getServer().execute(() -> {
+                    player.connection.disconnect(net.minecraft.network.chat.Component.literal(
+                        "§4§lIP Blacklistée\n\n§cTrop de tentatives de connexion depuis cette IP.\n§7Temps restant: §e" + minutes + " minute(s)"));
                 });
             }
         });

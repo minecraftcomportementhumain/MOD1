@@ -1,5 +1,68 @@
 # Changelog - MySubMod
 
+## 🛡️ Session du 5 octobre 2025 (Protection Connexions Duplicates)
+
+### Système de Protection contre les Connexions Doubles
+
+**Objectif** : Empêcher les connexions simultanées avec le même compte via Mixins
+
+**Fichier créé** (1 nouveau) :
+- **MixinServerLoginPacketListenerImplPlaceNewPlayer.java** : Mixin injectant dans `handleAcceptedLogin`
+  - Injection à `@At("HEAD")` pour intercepter AVANT le kick vanilla
+  - Détection des duplicatas par nom (UUID null en phase login)
+  - Logique personnalisée selon type de compte et état authentification
+  - Utilisation de `ClientboundLoginDisconnectPacket` pour messages visibles
+
+**Fichiers modifiés** (3) :
+- **build.gradle** : Configuration MixinGradle plugin 0.7.+
+  - Annotation processor Mixin 0.8.5
+  - Bloc mixin avec refmap configuration
+- **mysubmod.mixins.json** : Déclaration du Mixin
+  - Package et compatibilité JAVA_17
+  - Référence au refmap généré
+- **mods.toml** : Déclaration de la config Mixin à Forge
+
+**Fonctionnalités** :
+- ✅ Admin authentifié : Bloque nouvelle connexion, garde session existante
+- ✅ Admin non-authentifié : Laisse vanilla kicker l'ancienne session
+- ✅ Joueur normal : Bloque nouvelle connexion, garde session existante
+- ✅ Messages personnalisés selon type de compte et situation
+- ✅ Logging détaillé de chaque tentative de connexion
+
+**Logique de protection** :
+```java
+if (joueur existe déjà) {
+  if (est admin) {
+    if (authentifié) {
+      → Bloquer nouvelle connexion avec message
+    } else {
+      → Laisser vanilla kicker ancienne session
+    }
+  } else {
+    → Bloquer nouvelle connexion avec message
+  }
+}
+```
+
+**Messages affichés** :
+- Admin authentifié : "§c§lConnexion refusée\n\n§eUn administrateur authentifié utilise déjà ce compte."
+- Joueur normal : "§c§lConnexion refusée\n\n§eCe compte est déjà utilisé par un autre joueur."
+
+**Technique** :
+- Injection point : `ServerLoginPacketListenerImpl.handleAcceptedLogin` (avant kick vanilla)
+- Shadow fields : `connection`, `gameProfile`, `server`
+- Détection : Itération sur `PlayerList.getPlayers()` avec comparaison par nom
+- Callback cancellable : `CallbackInfo ci` avec `ci.cancel()`
+- Packet de déconnexion : `ClientboundLoginDisconnectPacket` (phase login)
+
+**Nettoyage** :
+- Suppression de `MixinPlayerList.java` (approche abandonnée - trop tard)
+- Suppression de `MixinPlayerListPlaceNewPlayer.java` (approche abandonnée - trop tard)
+
+**Résultat** : Protection robuste contre connexions doubles avec logique différenciée selon authentification admin
+
+---
+
 ## 🔐 Session du 4 octobre 2025 (Système d'Authentification Admin)
 
 ### 🛡️ Système d'Authentification Complet
@@ -633,4 +696,4 @@
 
 ---
 
-*Dernière mise à jour : 4 octobre 2025*
+*Dernière mise à jour : 5 octobre 2025*

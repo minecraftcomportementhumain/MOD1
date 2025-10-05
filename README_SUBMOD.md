@@ -149,6 +149,17 @@ Ce mod ajoute un système de sous-modes qui fonctionne côté client et serveur 
 
 ## Nouveautés de la Dernière Version
 
+### Protection contre Connexions Duplicates (5 octobre 2025)
+- **Système Mixin** : Injection dans `ServerLoginPacketListenerImpl.handleAcceptedLogin`
+- **Logique différenciée** :
+  - Admin authentifié → Bloque nouvelle connexion
+  - Admin non-authentifié → Permet kick de l'ancienne session
+  - Joueur normal → Bloque nouvelle connexion
+- **Messages personnalisés** : Affichage clair du motif de refus
+- **Détection par nom** : Comparaison des noms de joueurs (UUID null en phase login)
+- **MixinGradle configuré** : Plugin 0.7.+ avec annotation processor 0.8.5
+- **Logging détaillé** : Trace de toutes les tentatives de connexion duplicate
+
 ### Système d'Authentification Admin (4 octobre 2025)
 - **Authentification complète** : Système de mot de passe pour tous les comptes admin
 - **Prompt automatique** : Interface de saisie avec masquage du mot de passe (astérisques)

@@ -39,7 +39,10 @@ public class SubModeCommand {
                         .executes(SubModeCommand::resetBlacklist)))
                 .then(Commands.literal("resetfailures")
                     .then(Commands.argument("player", StringArgumentType.string())
-                        .executes(SubModeCommand::resetFailures))))
+                        .executes(SubModeCommand::resetFailures)))
+                .then(Commands.literal("resetip")
+                    .then(Commands.argument("ip", StringArgumentType.string())
+                        .executes(SubModeCommand::resetIPBlacklist))))
             .then(Commands.literal("current")
                 .executes(SubModeCommand::getCurrentMode))
         );
@@ -122,20 +125,11 @@ public class SubModeCommand {
     private static int setAdminPassword(CommandContext<CommandSourceStack> context) throws CommandSyntaxException {
         ServerPlayer player = context.getSource().getPlayerOrException();
         String targetPlayer = StringArgumentType.getString(context, "player");
-        String playerName = player.getName().getString();
 
         com.example.mysubmod.auth.AdminAuthManager authManager = com.example.mysubmod.auth.AdminAuthManager.getInstance();
 
-        // Check permissions
-        boolean isSelf = playerName.equalsIgnoreCase(targetPlayer);
-        boolean isOp = player.hasPermissions(2);
-        boolean targetHasNoPassword = !authManager.isAdminAccount(targetPlayer);
-        boolean isAuthenticated = authManager.isAuthenticated(player);
-
-        // Allow if:
-        // 1. Op setting their own password for the first time
-        // 2. Authenticated admin setting anyone's password
-        if (!(isSelf && isOp && targetHasNoPassword) && !isAuthenticated) {
+        // Check if player is authenticated admin
+        if (!authManager.isAuthenticated(player)) {
             context.getSource().sendFailure(Component.literal("§cVous devez être un administrateur authentifié pour utiliser cette commande"));
             return 0;
         }
@@ -185,6 +179,25 @@ public class SubModeCommand {
 
         context.getSource().sendSuccess(() ->
             Component.literal("§aCompteur d'échecs réinitialisé pour " + targetPlayer), true);
+        return 1;
+    }
+
+    private static int resetIPBlacklist(CommandContext<CommandSourceStack> context) throws CommandSyntaxException {
+        ServerPlayer player = context.getSource().getPlayerOrException();
+
+        // Check if player is authenticated admin
+        if (!com.example.mysubmod.auth.AdminAuthManager.getInstance().isAuthenticated(player)) {
+            context.getSource().sendFailure(Component.literal("§cVous devez être un administrateur authentifié pour utiliser cette commande"));
+            return 0;
+        }
+
+        String ipAddress = StringArgumentType.getString(context, "ip");
+
+        // Reset IP blacklist
+        com.example.mysubmod.auth.AdminAuthManager.getInstance().resetIPBlacklist(ipAddress);
+
+        context.getSource().sendSuccess(() ->
+            Component.literal("§aBlacklist IP réinitialisée pour " + ipAddress), true);
         return 1;
     }
 

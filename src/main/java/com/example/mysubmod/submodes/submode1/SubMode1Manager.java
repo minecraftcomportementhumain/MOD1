@@ -29,7 +29,7 @@ public class SubMode1Manager {
     private final Map<UUID, IslandType> playerIslandSelections = new ConcurrentHashMap<>();
     private final Set<UUID> alivePlayers = ConcurrentHashMap.newKeySet();
     private final Set<UUID> spectatorPlayers = ConcurrentHashMap.newKeySet();
-    private final Map<UUID, Long> disconnectedPlayers = new ConcurrentHashMap<>(); // Track disconnect time
+    private final Map<UUID, DisconnectInfo> disconnectedPlayers = new ConcurrentHashMap<>(); // Track disconnect time and position
     private final Map<UUID, Integer> playerCandyCount = new ConcurrentHashMap<>(); // Track candies collected
     private final Map<UUID, Long> playerDeathTime = new ConcurrentHashMap<>(); // Track when players died
     private final Set<UUID> playersInSelectionPhase = ConcurrentHashMap.newKeySet(); // Players who were present during selection
@@ -37,6 +37,19 @@ public class SubMode1Manager {
     private final List<PendingLogEvent> pendingLogEvents = new ArrayList<>(); // Events before dataLogger exists
     private long gameStartTime; // Track game start time
     private long selectionStartTime; // Track selection phase start time
+
+    // Inner class to store disconnection info
+    private static class DisconnectInfo {
+        long disconnectTime;
+        double x, y, z;
+
+        DisconnectInfo(long disconnectTime, double x, double y, double z) {
+            this.disconnectTime = disconnectTime;
+            this.x = x;
+            this.y = y;
+            this.z = z;
+        }
+    }
 
     private boolean gameActive = false;
     private boolean selectionPhase = false;
@@ -1656,11 +1669,18 @@ public class SubMode1Manager {
     }
 
     /**
-     * Handle player disconnection - track when they left
+     * Handle player disconnection - track when and where they left
      */
     public void handlePlayerDisconnection(ServerPlayer player) {
-        disconnectedPlayers.put(player.getUUID(), System.currentTimeMillis());
-        MySubMod.LOGGER.info("Player {} disconnected during SubMode1 - tracking disconnect time", player.getName().getString());
+        DisconnectInfo info = new DisconnectInfo(
+            System.currentTimeMillis(),
+            player.getX(),
+            player.getY(),
+            player.getZ()
+        );
+        disconnectedPlayers.put(player.getUUID(), info);
+        MySubMod.LOGGER.info("Player {} disconnected during SubMode1 at ({}, {}, {}) - tracking disconnect time and position",
+            player.getName().getString(), player.getX(), player.getY(), player.getZ());
 
         // Log disconnection (if logger exists, otherwise queue for later)
         if (dataLogger != null) {
@@ -1702,12 +1722,14 @@ public class SubMode1Manager {
      */
     public void handlePlayerReconnection(ServerPlayer player) {
         UUID playerId = player.getUUID();
-        Long disconnectTime = disconnectedPlayers.remove(playerId);
+        DisconnectInfo disconnectInfo = disconnectedPlayers.remove(playerId);
 
-        if (disconnectTime == null) {
-            MySubMod.LOGGER.warn("No disconnect time found for reconnecting player {}", player.getName().getString());
+        if (disconnectInfo == null) {
+            MySubMod.LOGGER.warn("No disconnect info found for reconnecting player {}", player.getName().getString());
             return;
         }
+
+        long disconnectTime = disconnectInfo.disconnectTime;
 
         // Calculate time disconnected DURING THE ACTIVE GAME only
         long currentTime = System.currentTimeMillis();
@@ -1750,13 +1772,26 @@ public class SubMode1Manager {
             }
 
             if (selectedIsland != null && gameActive) {
-                // Teleport to their island
+                // Determine if player disconnected before game started
+                boolean disconnectedBeforeGameStart = (gameStartTime > 0 && disconnectTime < gameStartTime);
+
+                // Teleport logic
                 MinecraftServer server = player.getServer();
                 if (server != null) {
                     ServerLevel overworld = server.getLevel(ServerLevel.OVERWORLD);
                     if (overworld != null) {
-                        BlockPos spawnPos = getIslandSpawnPosition(selectedIsland);
-                        safeTeleport(player, overworld, spawnPos.getX() + 0.5, spawnPos.getY() + 1, spawnPos.getZ() + 0.5);
+                        if (disconnectedBeforeGameStart) {
+                            // Player disconnected before game started - teleport to island center (they never got to their island)
+                            BlockPos spawnPos = getIslandSpawnPosition(selectedIsland);
+                            safeTeleport(player, overworld, spawnPos.getX() + 0.5, spawnPos.getY() + 1, spawnPos.getZ() + 0.5);
+                            MySubMod.LOGGER.info("Teleported player {} to island center (disconnected before game started)",
+                                player.getName().getString());
+                        } else {
+                            // Player disconnected during active game - teleport to exact position where they disconnected
+                            safeTeleport(player, overworld, disconnectInfo.x, disconnectInfo.y, disconnectInfo.z);
+                            MySubMod.LOGGER.info("Teleported player {} to exact disconnect position ({}, {}, {})",
+                                player.getName().getString(), disconnectInfo.x, disconnectInfo.y, disconnectInfo.z);
+                        }
                     }
                 }
 
@@ -1768,11 +1803,10 @@ public class SubMode1Manager {
 
                 // Reset health to 100% ONLY if player disconnected BEFORE game started
                 // (Players who disconnect during active game keep their current health minus penalty)
-                boolean disconnectedBeforeGameStart = (gameStartTime > 0 && disconnectTime < gameStartTime);
                 float currentHealth = player.getHealth();
 
                 if (disconnectedBeforeGameStart) {
-                    // Player was disconnected before game started - reset to 100% like other players
+                    // Player was disconnected before game started - reset to 100% THEN apply penalty
                     player.setHealth(player.getMaxHealth());
                     player.getFoodData().setFoodLevel(10);
                     player.getFoodData().setSaturation(5.0f);
@@ -1794,7 +1828,7 @@ public class SubMode1Manager {
                     }
                 }
 
-                // Apply health penalty for time disconnected
+                // ALWAYS apply health penalty for time disconnected (whether before or during game)
                 float newHealth = Math.max(0.5f, currentHealth - healthLoss); // Minimum 0.5 HP to avoid instant death
                 player.setHealth(newHealth);
 

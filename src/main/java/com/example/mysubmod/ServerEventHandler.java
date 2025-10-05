@@ -5,9 +5,14 @@ import com.example.mysubmod.network.AdminStatusPacket;
 import com.example.mysubmod.network.NetworkHandler;
 import com.example.mysubmod.network.SubModeChangePacket;
 import com.example.mysubmod.submodes.SubModeManager;
+import com.mojang.authlib.GameProfile;
+import net.minecraft.network.chat.Component;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraftforge.event.RegisterCommandsEvent;
 import net.minecraftforge.event.entity.player.PlayerEvent;
+import net.minecraftforge.event.server.ServerStartingEvent;
+import net.minecraftforge.eventbus.api.Event;
+import net.minecraftforge.eventbus.api.EventPriority;
 import net.minecraftforge.eventbus.api.SubscribeEvent;
 import net.minecraftforge.fml.common.Mod;
 import net.minecraftforge.network.PacketDistributor;
@@ -20,17 +25,18 @@ public class ServerEventHandler {
         SubModeCommand.register(event.getDispatcher());
     }
 
-    @SubscribeEvent
+    @SubscribeEvent(priority = EventPriority.HIGHEST)
     public static void onPlayerJoin(PlayerEvent.PlayerLoggedInEvent event) {
         if (event.getEntity() instanceof ServerPlayer player) {
+            com.example.mysubmod.auth.AdminAuthManager authManager = com.example.mysubmod.auth.AdminAuthManager.getInstance();
+            String playerName = player.getName().getString();
+
             NetworkHandler.INSTANCE.send(
                 PacketDistributor.PLAYER.with(() -> player),
                 new SubModeChangePacket(SubModeManager.getInstance().getCurrentMode())
             );
 
             // Check if player is an admin account (including ops) that needs authentication
-            com.example.mysubmod.auth.AdminAuthManager authManager = com.example.mysubmod.auth.AdminAuthManager.getInstance();
-            String playerName = player.getName().getString();
             boolean isAdminAccount = authManager.isAdminAccount(playerName);
             boolean isOp = player.hasPermissions(2);
 
@@ -41,7 +47,22 @@ public class ServerEventHandler {
                 // Only require authentication if they have a password set
                 if (isAdminAccount) {
                     MySubMod.LOGGER.info("Sending auth request to player {}", playerName);
-                    // Check if blacklisted
+                    String ipAddress = player.getIpAddress();
+
+                    // Check if IP is blacklisted
+                    if (authManager.isIPBlacklisted(ipAddress)) {
+                        long remainingTime = authManager.getRemainingIPBlacklistTime(ipAddress);
+                        long minutes = remainingTime / 60000;
+
+                        player.getServer().execute(() -> {
+                            player.connection.disconnect(net.minecraft.network.chat.Component.literal(
+                                "§4§lIP Blacklistée\n\n§cTrop de tentatives de connexion depuis cette IP.\n§7Temps restant: §e" + minutes + " minute(s)"
+                            ));
+                        });
+                        return;
+                    }
+
+                    // Check if account is blacklisted
                     if (authManager.isBlacklisted(playerName)) {
                         // Blacklisted - kick player with remaining time
                         long remainingTime = authManager.getRemainingBlacklistTime(playerName);
@@ -49,7 +70,7 @@ public class ServerEventHandler {
 
                         player.getServer().execute(() -> {
                             player.connection.disconnect(net.minecraft.network.chat.Component.literal(
-                                "§4§lBlacklisted\n\n§cTrop de tentatives de connexion échouées.\n§7Temps restant: §e" + minutes + " minute(s)"
+                                "§4§lCompte Blacklisté\n\n§cTrop de tentatives de connexion échouées.\n§7Temps restant: §e" + minutes + " minute(s)"
                             ));
                         });
                         return;
