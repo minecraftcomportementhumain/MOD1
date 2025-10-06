@@ -86,10 +86,18 @@ public class ServerEventHandler {
                 // Start 30-second protection against duplicate connections
                 authManager.startAuthenticationProtection(player);
 
-                // Send auth request
+                // Get remaining attempts for this account
+                int remainingAttempts;
+                if (accountType == com.example.mysubmod.auth.AuthManager.AccountType.ADMIN) {
+                    remainingAttempts = com.example.mysubmod.auth.AdminAuthManager.getInstance().getRemainingAttemptsByName(playerName);
+                } else {
+                    remainingAttempts = authManager.getRemainingProtectedPlayerAttempts(playerName);
+                }
+
+                // Send auth request with account type and timeout
                 NetworkHandler.INSTANCE.send(
                     PacketDistributor.PLAYER.with(() -> player),
-                    new com.example.mysubmod.auth.AdminAuthRequestPacket(3) // 3 attempts
+                    new com.example.mysubmod.auth.AdminAuthRequestPacket(accountTypeStr, remainingAttempts, 60)
                 );
 
                 MySubMod.LOGGER.info("Player {} added to parking lobby as {}", playerName, accountTypeStr);
@@ -106,10 +114,26 @@ public class ServerEventHandler {
     @SubscribeEvent
     public static void onPlayerLogout(PlayerEvent.PlayerLoggedOutEvent event) {
         if (event.getEntity() instanceof ServerPlayer player) {
+            String playerName = player.getName().getString();
+            com.example.mysubmod.auth.ParkingLobbyManager parkingLobby = com.example.mysubmod.auth.ParkingLobbyManager.getInstance();
+
+            // Check if player was in parking lobby (unauthenticated)
+            boolean wasInLobby = parkingLobby.isInParkingLobby(player.getUUID());
+
+            // Get remaining time BEFORE removing player
+            long remainingTime = wasInLobby ? parkingLobby.getRemainingTimeForAccount(playerName) : 0;
+
             // Clear authentication state when player disconnects
             com.example.mysubmod.auth.AdminAuthManager.getInstance().handleDisconnect(player);
             com.example.mysubmod.auth.AuthManager.getInstance().handleDisconnect(player);
-            com.example.mysubmod.auth.ParkingLobbyManager.getInstance().removePlayer(player.getUUID());
+            parkingLobby.removePlayer(player.getUUID());
+
+            // If player was in lobby (unauthenticated), authorize next in queue with remaining time
+            if (wasInLobby) {
+                MySubMod.LOGGER.info("Player {} disconnected from parking lobby with {}ms remaining - authorizing next in queue",
+                    playerName, remainingTime);
+                parkingLobby.authorizeNextInQueue(playerName, remainingTime);
+            }
         }
     }
 

@@ -77,31 +77,115 @@ public abstract class MixinServerLoginPacketListenerImplPlaceNewPlayer {
         if (existingPlayer != null) {
             MySubMod.LOGGER.info("MIXIN: Found existing player with name {}", playerName);
 
-            if (adminAuthManager.isAdminAccount(playerName)) {
-                if (adminAuthManager.isAuthenticated(existingPlayer)) {
-                    // Deny new connection - keep authenticated admin
-                    MySubMod.LOGGER.warn("MIXIN: Denying connection for {} - admin already authenticated", playerName);
+            // Get IP address for queue system
+            String ipAddress = this.connection.getRemoteAddress().toString();
+
+            if (isProtectedAccount) {
+                // Protected account (admin or protected player)
+                boolean isAuthenticated = false;
+                if (adminAuthManager.isAdminAccount(playerName)) {
+                    isAuthenticated = adminAuthManager.isAuthenticated(existingPlayer);
+                } else {
+                    isAuthenticated = authManager.isAuthenticated(existingPlayer.getUUID());
+                }
+
+                if (isAuthenticated) {
+                    // Deny new connection - keep authenticated user (admin or protected player)
+                    String accountLabel = adminAuthManager.isAdminAccount(playerName) ? "administrateur" : "joueur protégé";
+                    MySubMod.LOGGER.warn("MIXIN: Denying connection for {} - {} already authenticated", playerName, accountLabel);
                     this.connection.send(new ClientboundLoginDisconnectPacket(
-                        Component.literal("§c§lConnexion refusée\n\n§eUn administrateur authentifié utilise déjà ce compte.")
+                        Component.literal(String.format("§c§lConnexion refusée\n\n§eUn %s authentifié utilise déjà ce compte.", accountLabel))
                     ));
-                    this.connection.disconnect(Component.literal("Authenticated admin already connected"));
-                    ci.cancel();
-                } else if (adminAuthManager.isProtectedDuringAuth(existingPlayer)) {
-                    // Admin is currently authenticating (30s protection) - deny new connection
-                    MySubMod.LOGGER.warn("MIXIN: Denying connection for {} - admin is authenticating (protected)", playerName);
-                    this.connection.send(new ClientboundLoginDisconnectPacket(
-                        Component.literal("§c§lConnexion refusée\n\n§eUn administrateur est en cours d'authentification sur ce compte.\n§7Veuillez patienter 30 secondes.")
-                    ));
-                    this.connection.disconnect(Component.literal("Admin authenticating"));
+                    this.connection.disconnect(Component.literal("Authenticated user already connected"));
                     ci.cancel();
                 } else {
-                    // Allow vanilla to kick old unauthenticated admin
-                    MySubMod.LOGGER.info("MIXIN: Allowing connection for {} - will kick unauthenticated admin", playerName);
-                    // Don't cancel - let vanilla handle the kick
+                    // Check if user is protected during authentication (30s window)
+                    boolean isProtectedDuringAuth = false;
+                    if (adminAuthManager.isAdminAccount(playerName)) {
+                        isProtectedDuringAuth = adminAuthManager.isProtectedDuringAuth(existingPlayer);
+                    } else {
+                        isProtectedDuringAuth = authManager.isProtectedDuringAuth(existingPlayer);
+                    }
+
+                    if (isProtectedDuringAuth) {
+                        // User is currently authenticating (30s protection) - deny new connection
+                        String accountLabel = adminAuthManager.isAdminAccount(playerName) ? "administrateur" : "joueur protégé";
+                        MySubMod.LOGGER.warn("MIXIN: Denying connection for {} - {} is authenticating (protected)", playerName, accountLabel);
+                        this.connection.send(new ClientboundLoginDisconnectPacket(
+                            Component.literal(String.format("§c§lConnexion refusée\n\n§eUn %s est en cours d'authentification sur ce compte.\n§7Veuillez patienter 30 secondes.", accountLabel))
+                        ));
+                        this.connection.disconnect(Component.literal("User authenticating"));
+                        ci.cancel();
+                    } else {
+                        // Check if this IP has temporary authorization
+                        com.example.mysubmod.auth.ParkingLobbyManager parkingLobby = com.example.mysubmod.auth.ParkingLobbyManager.getInstance();
+                        if (parkingLobby.isAuthorized(playerName, ipAddress)) {
+                            // Authorized - allow connection and consume authorization
+                            MySubMod.LOGGER.info("MIXIN: IP {} authorized for {} - allowing connection", ipAddress, playerName);
+                            parkingLobby.consumeAuthorization(playerName, ipAddress);
+                            // Don't cancel - let vanilla kick the old player
+                        } else {
+                            // Not authorized - add to queue
+                            int queuePosition = parkingLobby.addToQueue(playerName, ipAddress);
+                            if (queuePosition == -2) {
+                                // IP is currently authenticating on this account
+                                MySubMod.LOGGER.warn("MIXIN: IP {} rejected - already authenticating on {}", ipAddress, playerName);
+                                this.connection.send(new ClientboundLoginDisconnectPacket(
+                                    Component.literal("§c§lConnexion refusée\n\n§eVotre IP est déjà en cours d'authentification sur ce compte.")
+                                ));
+                                this.connection.disconnect(Component.literal("IP already authenticating"));
+                                ci.cancel();
+                            } else if (queuePosition == -1) {
+                                // Too many queue positions for this IP
+                                MySubMod.LOGGER.warn("MIXIN: IP {} rejected - too many queue positions", ipAddress);
+                                this.connection.send(new ClientboundLoginDisconnectPacket(
+                                    Component.literal("§c§lConnexion refusée\n\n§eTrop de tentatives de connexion simultanées.\n§7Limite: 3 comptes en attente par IP.")
+                                ));
+                                this.connection.disconnect(Component.literal("Too many queue positions"));
+                                ci.cancel();
+                            } else {
+                                // Added to queue - calculate monopoly window
+                                long[] monopolyWindow = parkingLobby.getMonopolyWindow(playerName, ipAddress);
+                                MySubMod.LOGGER.info("MIXIN: IP {} added to queue for {} at position {}", ipAddress, playerName, queuePosition);
+
+                                String message;
+                                if (monopolyWindow != null) {
+                                    // Format times (HH:MM:SS)
+                                    java.text.SimpleDateFormat timeFormat = new java.text.SimpleDateFormat("HH:mm:ss");
+                                    String startTime = timeFormat.format(new java.util.Date(monopolyWindow[0]));
+                                    String endTime = timeFormat.format(new java.util.Date(monopolyWindow[1]));
+
+                                    message = String.format(
+                                        "§c§lCe compte est occupé\n\n" +
+                                        "§eVous êtes en file d'attente\n" +
+                                        "§7Position: §f%d\n\n" +
+                                        "§eFenêtre de monopole:\n" +
+                                        "§7De §f%s §7à §f%s\n\n" +
+                                        "§7Vous aurez §e30 secondes§7 pour vous connecter pendant cette fenêtre.",
+                                        queuePosition, startTime, endTime
+                                    );
+                                } else {
+                                    // Fallback if calculation fails
+                                    message = String.format(
+                                        "§c§lCe compte est occupé\n\n" +
+                                        "§eVous êtes en file d'attente\n" +
+                                        "§7Position: §f%d\n\n" +
+                                        "§7Réessayez dans §e60 secondes maximum§7.\n" +
+                                        "§7Vous aurez §e30 secondes§7 pour vous connecter quand ce sera votre tour.",
+                                        queuePosition
+                                    );
+                                }
+
+                                this.connection.send(new ClientboundLoginDisconnectPacket(Component.literal(message)));
+                                this.connection.disconnect(Component.literal("Account occupied - queued"));
+                                ci.cancel();
+                            }
+                        }
+                    }
                 }
             } else {
-                // Non-admin - deny new connection
-                MySubMod.LOGGER.warn("MIXIN: Denying connection for {} - player already connected", playerName);
+                // Free player - deny new connection (no queue for free players)
+                MySubMod.LOGGER.warn("MIXIN: Denying connection for {} - free player already connected", playerName);
                 this.connection.send(new ClientboundLoginDisconnectPacket(
                     Component.literal("§c§lConnexion refusée\n\n§eCe compte est déjà utilisé par un autre joueur.")
                 ));

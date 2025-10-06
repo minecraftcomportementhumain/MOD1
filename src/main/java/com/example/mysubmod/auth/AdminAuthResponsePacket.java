@@ -54,7 +54,12 @@ public class AdminAuthResponsePacket {
             } else {
                 // Failure - update screen with remaining attempts or show error
                 minecraft.execute(() -> {
-                    if (minecraft.screen instanceof AdminPasswordScreen passwordScreen) {
+                    if (minecraft.screen instanceof AuthPasswordScreen authScreen) {
+                        // Update unified auth screen
+                        authScreen.setRemainingAttempts(packet.remainingAttempts);
+                        authScreen.showError(packet.message);
+                    } else if (minecraft.screen instanceof AdminPasswordScreen passwordScreen) {
+                        // Legacy support for old admin screen
                         passwordScreen.setRemainingAttempts(packet.remainingAttempts);
                         passwordScreen.showError(packet.message);
                     }

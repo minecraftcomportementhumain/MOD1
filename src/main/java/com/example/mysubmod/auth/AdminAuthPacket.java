@@ -56,8 +56,9 @@ public class AdminAuthPacket {
             }
 
             if (result == 0) {
-                // Success - Remove from parking lobby
+                // Success - Remove from parking lobby and clear queue
                 parkingLobby.removePlayer(player.getUUID());
+                parkingLobby.clearQueueForAccount(playerName);
 
                 player.sendSystemMessage(net.minecraft.network.chat.Component.literal(
                     "§a§lAuthentification réussie! Bienvenue, " + playerName + "."));

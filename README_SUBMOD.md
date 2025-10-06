@@ -73,12 +73,17 @@ Ce mod ajoute un système de sous-modes qui fonctionne côté client et serveur 
 - **Stockage sécurisé** : Mots de passe hashés avec SHA-256 + salt unique par compte
 - **Fichier de credentials** : `auth_credentials.json` contient tous les hashes et blacklists
 
-### Système de Priorité d'Accès
+### Système de Priorité d'Accès et File d'Attente
 - **Accès prioritaire** : Les comptes protégés (admin + joueurs protégés) peuvent se connecter même si serveur plein
 - **Mixin System** : Injection dans `PlayerList.canPlayerLogin` pour contourner vérification vanilla
 - **Kick automatique** : Un joueur libre (FREE_PLAYER) aléatoire est kick pour faire de la place
 - **Protection complète** : Si tous les joueurs sont protégés, le serveur refuse la connexion (message "serveur plein")
 - **Limite dynamique** : Utilise la valeur `max-players` du server.properties (pas de limite hardcodée)
+- **File d'attente** : Si compte protégé occupé, système de queue avec fenêtres de monopole garanties
+- **Fenêtres garanties** : Plage horaire exacte (HH:MM:SS) promise et toujours respectée
+- **Timeouts différenciés** : 60s connexion directe, 30s depuis la file d'attente
+- **Protection anti-abus** : Max 3 positions en file par IP, une seule position par compte
+- **Bonus temps** : Temps non utilisé transféré au prochain (déconnexion précoce = fenêtre prolongée)
 
 ### Permissions
 - Les administrateurs du serveur (niveau OP 2+) doivent s'authentifier pour accéder aux privilèges
@@ -170,6 +175,16 @@ Ce mod ajoute un système de sous-modes qui fonctionne côté client et serveur 
 - **Fin de partie** : Automatique si tous morts ou timer expiré
 
 ## Nouveautés de la Dernière Version
+
+### Système de File d'Attente avec Fenêtres Garanties (6 octobre 2025)
+- **File d'attente intelligente** : Système de queue par compte avec fenêtres de monopole garanties
+- **Fenêtres horaires exactes** : Affichage HH:MM:SS de la période d'accès exclusif (ex: 15:51:00 → 15:51:30)
+- **Promesse absolue** : Fenêtre affichée reste valide quoi qu'il arrive (déconnexions, timeouts)
+- **Timeouts différenciés** : 60s connexion directe, 30s depuis file d'attente
+- **Bonus temps cumulé** : Temps non utilisé transféré au suivant (déconnexion = prolongation)
+- **Protection anti-abus** : Max 3 positions par IP, une seule fois par compte
+- **Autorisation automatique** : Prochain en file obtient monopole lors timeout/déconnexion
+- **Messages clairs** : Position en file + fenêtre horaire garantie affichées
 
 ### Système de Joueurs Protégés et Priorité d'Accès (6 octobre 2025)
 - **Joueurs protégés** : Système de 10 comptes protégés avec mot de passe (en plus des admins)

@@ -1,6 +1,163 @@
 # Changelog - MySubMod
 
-## 🔐 Session du 6 octobre 2025 - Système de Joueurs Protégés et Priorité d'Accès
+## 🚦 Session du 6 octobre 2025 - Partie 2 (Système de File d'Attente)
+
+### Nouvelles fonctionnalités majeures
+
+**1. File d'attente pour comptes protégés**
+- **Protection anti-monopole** : Maximum 3 positions en file par IP globalement
+- **File par compte** : Chaque compte protégé a sa propre file indépendante
+- **Détection duplicata** : Une IP ne peut être qu'une seule fois par file
+- **Blocage IP en auth** : Une IP en cours d'authentification ne peut pas rejoindre la file du même compte
+
+**2. Fenêtres de monopole garanties**
+- **Calcul initial garanti** : Fenêtre basée sur le pire scénario (tout le monde utilise son timeout complet)
+- **Affichage horaire exact** : Format HH:MM:SS (ex: "De 15:51:00 à 15:51:30")
+- **Promesse tenue** : La fenêtre affichée reste valide quoi qu'il arrive
+- **Stockage persistant** : `monopolyStartMs` et `monopolyEndMs` dans chaque `QueueEntry`
+- **Mise à jour intelligente** : Fenêtres peuvent s'avancer (jamais reculer)
+- **Bonus temps** : Temps non utilisé transféré au suivant (reste + 30s)
+
+**3. Timeouts différenciés**
+- **Direct (60s)** : Connexion directe sur compte libre
+- **Queue (30s)** : Connexion après autorisation depuis la file
+- **Tracking origine** : Map `authorizedIPsFromQueue` avec clé "account:ip"
+- **Application automatique** : Détection à l'ajout du joueur au parking lobby
+
+**4. Gestion dynamique des files**
+- **Autorisation automatique** : Prochain en file autorisé lors timeout/déconnexion
+- **Extension de fenêtre** : Si déconnexion précoce, fenêtre prolongée (jamais raccourcie)
+- **Nettoyage automatique** : File vidée en cas d'authentification réussie
+- **Expiration entries** : Entrées de file expirées après 5 minutes
+
+### Flux complet de la file d'attente
+
+**Scénario: Individu2 essaie de se connecter pendant qu'Individu1 s'authentifie**
+
+1. **Individu1 s'authentifie** (15:50:00, timeout 60s → 15:51:00)
+2. **Individu2 se connecte** (15:50:15)
+   - Mixin détecte compte occupé → Appelle `addToQueue()`
+   - Calcul fenêtre garantie: 15:51:00 → 15:51:30 (pire cas)
+   - `QueueEntry` créé avec cette fenêtre stockée
+   - Message affiché: "Fenêtre de monopole: De 15:51:00 à 15:51:30"
+3. **Individu2 réessaie** (15:50:25)
+   - IP déjà en queue → Retourne même position
+   - `getMonopolyWindow()` retourne fenêtre stockée (inchangée)
+   - Message identique: "De 15:51:00 à 15:51:30" ✅
+4. **Individu1 déconnecte** (15:50:30, reste 30s)
+   - `ServerEventHandler` obtient `remainingTime = 30000ms`
+   - `authorizeNextInQueue("joueur1", 30000)` appelé
+   - Whitelist jusqu'à: 15:51:30 (fenêtre garantie honorée)
+   - Temps réel: 15:50:30 + 30s + 30s = 15:51:30 ✅ Promesse tenue
+5. **Individu2 se connecte** (15:51:00)
+   - IP whitelistée jusqu'à 15:51:30 → Autorisé
+   - `consumeAuthorization()` marque "joueur1:ip2" comme fromQueue
+   - Timeout appliqué: 30s (détecté via map)
+
+**Garantie absolue**: Peu importe les déconnexions, la fenêtre "15:51:00 → 15:51:30" reste valide.
+
+### Architecture technique
+
+**Classes modifiées**:
+- `QueueEntry` : Ajout `monopolyStartMs` et `monopolyEndMs` (non-final, mutables)
+- `AuthSession` : Ajout `timeoutMs` pour stocker durée exacte (60s ou 30s)
+
+**Nouvelles méthodes**:
+- `calculateGuaranteedMonopolyWindow(accountName, position)` : Calcul pire cas
+- `getMonopolyWindow(accountName, ipAddress)` : Retourne fenêtre stockée
+- `updateQueueWindowsAfterAuthorization(queue, newBaseTime)` : Avance fenêtres si possible
+- `getRemainingTimeForAccount(accountName)` : Temps restant session active
+
+**Méthodes modifiées**:
+- `addToQueue()` : Calcule et stocke fenêtre garantie lors de l'ajout
+- `authorizeNextInQueue()` : Accepte `remainingTimeMs`, prolonge fenêtre si bonus
+- `addPlayer()` : Détecte origine queue via map, applique timeout approprié
+
+### Messages affichés
+
+**En file d'attente**:
+```
+§c§lCe compte est occupé
+
+§eVous êtes en file d'attente
+§7Position: §f1
+
+§eFenêtre de monopole:
+§7De §f15:51:00 §7à §f15:51:30
+
+§7Vous aurez §e30 secondes§7 pour vous connecter pendant cette fenêtre.
+```
+
+**IP déjà en auth sur compte**:
+```
+§c§lConnexion refusée
+
+§eVotre IP est déjà en cours d'authentification sur ce compte.
+```
+
+**Trop de files**:
+```
+§c§lConnexion refusée
+
+§eTrop de tentatives de connexion simultanées.
+§7Limite: 3 comptes en attente par IP.
+```
+
+### Corrections de bugs
+
+**1. Fix calcul fenêtre garantie**
+- **Problème**: Fenêtre changeait si déconnexion précoce
+- **Solution**: Stockage dans `QueueEntry`, jamais raccourcie, seulement prolongée
+- **Résultat**: Promesse toujours tenue
+
+**2. Fix obtention temps restant**
+- **Problème**: `getRemainingTimeForAccount()` appelé après `removePlayer()`
+- **Solution**: Obtention du temps AVANT suppression de la session
+- **Fichier**: `ServerEventHandler.java:124`
+
+**3. Fix tracking origine queue**
+- **Problème**: UUID n'existe pas encore au moment du Mixin
+- **Solution**: Clé "accountname:ipaddress" au lieu de UUID
+- **Timing**: Ajout lors `consumeAuthorization()`, lecture lors `addPlayer()`
+
+### Fichiers modifiés (4)
+
+- `ParkingLobbyManager.java` :
+  - `QueueEntry` avec fenêtres garanties
+  - `AuthSession` avec timeout stocké
+  - Nouvelles méthodes de calcul et mise à jour
+  - Gestion du temps restant
+
+- `ServerEventHandler.java` :
+  - Obtention temps restant AVANT cleanup
+  - Passage temps à `authorizeNextInQueue()`
+
+- `MixinServerLoginPacketListenerImplPlaceNewPlayer.java` :
+  - Appel `getMonopolyWindow()` pour affichage
+  - Format HH:MM:SS avec `SimpleDateFormat`
+
+### Exemples de scénarios garantis
+
+**Timeout normal (60s)**:
+- Individu1 timeout → Individu2 obtient 0s + 30s = **30s**
+
+**Déconnexion précoce (40s restant)**:
+- Individu1 déconnecte → Individu2 obtient 40s + 30s = **70s**
+- Fenêtre garantie: 15:51:00 → 15:51:30 (durée 30s)
+- Fenêtre réelle: 15:50:20 → 15:51:30 (durée 70s) ✅ Prolongée
+
+**Multiple personnes**:
+- Position 1: Fenêtre basée sur timeout session active
+- Position 2: Fenêtre basée sur position 1 + 60s (pire cas)
+- Position 3: Fenêtre basée sur position 2 + 60s (pire cas)
+
+**Déconnexion en cascade**:
+- Chaque déconnexion avance les fenêtres (jamais reculer)
+- Durée de fenêtre préservée (toujours 30s minimum)
+
+---
+
+## 🔐 Session du 6 octobre 2025 - Partie 1 (Système de Joueurs Protégés et Priorité d'Accès)
 
 ### Nouvelles fonctionnalités majeures
 

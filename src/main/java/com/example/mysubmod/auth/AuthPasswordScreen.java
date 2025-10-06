@@ -15,15 +15,16 @@ import net.minecraftforge.api.distmarker.OnlyIn;
 @OnlyIn(Dist.CLIENT)
 public class AuthPasswordScreen extends Screen {
     private EditBox passwordField;
+    private Button loginButton;
     private final String accountType; // "ADMIN" or "PROTECTED_PLAYER"
-    private final int remainingAttempts;
-    private final int timeoutSeconds;
+    private int remainingAttempts;
+    private Component errorMessage;
 
     public AuthPasswordScreen(String accountType, int remainingAttempts, int timeoutSeconds) {
-        super(Component.literal(accountType.equals("ADMIN") ? "Authentification Admin" : "Authentification Compte Protégé"));
+        super(Component.literal(accountType.equals("ADMIN") ? "Authentification Administrateur" : "Authentification Compte Protégé"));
         this.accountType = accountType;
         this.remainingAttempts = remainingAttempts;
-        this.timeoutSeconds = timeoutSeconds;
+        this.errorMessage = null;
     }
 
     @Override
@@ -33,106 +34,110 @@ public class AuthPasswordScreen extends Screen {
         int centerX = this.width / 2;
         int centerY = this.height / 2;
 
-        // Password field
-        this.passwordField = new EditBox(
-            this.font,
-            centerX - 100,
-            centerY - 10,
-            200,
-            20,
-            Component.literal("Mot de passe")
-        );
-        this.passwordField.setMaxLength(50);
-        this.passwordField.setFocused(true);
-        this.addWidget(this.passwordField);
-        this.setInitialFocus(this.passwordField);
+        // Password field with masking (same as AdminPasswordScreen)
+        passwordField = new EditBox(this.font, centerX - 100, centerY + 30, 200, 20,
+            Component.literal("Mot de passe"));
+        passwordField.setMaxLength(50);
+        passwordField.setHint(Component.literal("Entrez votre mot de passe..."));
+        passwordField.setFormatter((text, cursorPos) -> {
+            // Replace all characters with asterisks for password masking
+            return Component.literal("*".repeat(text.length())).getVisualOrderText();
+        });
+        passwordField.setFocused(true);
+        this.addWidget(passwordField);
 
-        // Submit button
-        this.addRenderableWidget(Button.builder(
-            Component.literal("Confirmer"),
+        // Login button
+        loginButton = Button.builder(
+            Component.literal("Se connecter"),
             button -> submitPassword()
-        ).bounds(centerX - 75, centerY + 30, 150, 20).build());
+        ).bounds(centerX - 100, centerY + 65, 200, 20).build();
+        this.addRenderableWidget(loginButton);
     }
 
     @Override
     public void render(GuiGraphics guiGraphics, int mouseX, int mouseY, float partialTick) {
         this.renderBackground(guiGraphics);
 
-        int centerX = this.width / 2;
-        int centerY = this.height / 2;
-
         // Title
-        String titleText = accountType.equals("ADMIN") ? "§c§lAuthentification Admin" : "§e§lCompte Protégé";
-        guiGraphics.drawCenteredString(this.font, titleText, centerX, centerY - 60, 0xFFFFFF);
+        guiGraphics.drawCenteredString(this.font, this.title, this.width / 2, 40, 0xFFFFFF);
 
         // Instructions
-        String instruction = "§7Entrez votre mot de passe :";
-        guiGraphics.drawCenteredString(this.font, instruction, centerX, centerY - 35, 0xFFFFFF);
+        String instructionLine1 = accountType.equals("ADMIN")
+            ? "Vous vous connectez avec un compte administrateur."
+            : "Vous vous connectez avec un compte protégé.";
+        Component instructions = Component.literal(instructionLine1);
+        guiGraphics.drawCenteredString(this.font, instructions, this.width / 2, 70, 0xAAAAAA);
+
+        Component instructions2 = Component.literal("Veuillez entrer votre mot de passe pour continuer.");
+        guiGraphics.drawCenteredString(this.font, instructions2, this.width / 2, 85, 0xAAAAAA);
 
         // Remaining attempts
-        String attemptsText = "§eTentatives restantes: §f" + remainingAttempts;
-        guiGraphics.drawCenteredString(this.font, attemptsText, centerX, centerY + 60, 0xFFFFFF);
+        Component attemptsText = Component.literal(String.format("§eTentatives restantes: §f%d/3", remainingAttempts));
+        guiGraphics.drawCenteredString(this.font, attemptsText, this.width / 2, 110, 0xFFFFFF);
 
-        // Timeout warning
-        String timeoutText = "§cTemps restant: §f" + timeoutSeconds + "s";
-        guiGraphics.drawCenteredString(this.font, timeoutText, centerX, centerY + 75, 0xFFFFFF);
+        // Warning if few attempts left
+        if (remainingAttempts <= 1) {
+            Component warningText = Component.literal("§c§lATTENTION: Dernier essai avant blacklist!");
+            guiGraphics.drawCenteredString(this.font, warningText, this.width / 2, 125, 0xFF0000);
+        }
 
-        // Render masked password field
-        String password = this.passwordField.getValue();
-        String masked = "*".repeat(password.length());
-        guiGraphics.drawString(
-            this.font,
-            masked,
-            this.passwordField.getX() + 4,
-            this.passwordField.getY() + 6,
-            0xFFFFFF
-        );
+        // Password field
+        passwordField.render(guiGraphics, mouseX, mouseY, partialTick);
 
-        // Render widgets
+        // Error message - below button
+        if (errorMessage != null) {
+            guiGraphics.drawCenteredString(this.font, errorMessage, this.width / 2, this.height / 2 + 95, 0xFF5555);
+        }
+
         super.render(guiGraphics, mouseX, mouseY, partialTick);
     }
 
     private void submitPassword() {
-        String password = this.passwordField.getValue();
-
+        String password = passwordField.getValue();
         if (password.isEmpty()) {
+            errorMessage = Component.literal("§cLe mot de passe ne peut pas être vide");
             return;
         }
 
-        // Send to server - use AdminAuthPacket for now (will work for both)
-        if (accountType.equals("ADMIN")) {
-            NetworkHandler.INSTANCE.sendToServer(new com.example.mysubmod.auth.AdminAuthPacket(password));
-        } else {
-            // Same packet structure works for protected players
-            NetworkHandler.INSTANCE.sendToServer(new com.example.mysubmod.auth.AdminAuthPacket(password));
-        }
+        // Send authentication packet to server (same packet for both types)
+        NetworkHandler.INSTANCE.sendToServer(new AdminAuthPacket(password));
 
-        this.passwordField.setValue("");
+        // Clear password field for security
+        passwordField.setValue("");
     }
 
     @Override
     public boolean keyPressed(int keyCode, int scanCode, int modifiers) {
-        // Enter key submits
+        // Enter key to submit
         if (keyCode == 257) { // ENTER
             submitPassword();
             return true;
         }
-
-        // Don't allow ESC to close
-        if (keyCode == 256) { // ESC
-            return true;
-        }
-
         return super.keyPressed(keyCode, scanCode, modifiers);
     }
 
     @Override
-    public boolean isPauseScreen() {
-        return false; // Don't pause game
+    public boolean shouldCloseOnEsc() {
+        // Cannot close with ESC - must authenticate
+        return false;
     }
 
     @Override
-    public boolean shouldCloseOnEsc() {
-        return false; // Can't close with ESC
+    public boolean isPauseScreen() {
+        return true;
+    }
+
+    /**
+     * Update remaining attempts (called from packet handler when server sends update)
+     */
+    public void setRemainingAttempts(int attempts) {
+        this.remainingAttempts = attempts;
+    }
+
+    /**
+     * Show error message (called from packet handler)
+     */
+    public void showError(String error) {
+        this.errorMessage = Component.literal("§c" + error);
     }
 }

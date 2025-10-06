@@ -11,18 +11,24 @@ import java.util.function.Supplier;
  * Packet sent from server to client to request authentication (open password screen)
  */
 public class AdminAuthRequestPacket {
+    private final String accountType; // "ADMIN" or "PROTECTED_PLAYER"
     private final int remainingAttempts;
+    private final int timeoutSeconds;
 
-    public AdminAuthRequestPacket(int remainingAttempts) {
+    public AdminAuthRequestPacket(String accountType, int remainingAttempts, int timeoutSeconds) {
+        this.accountType = accountType;
         this.remainingAttempts = remainingAttempts;
+        this.timeoutSeconds = timeoutSeconds;
     }
 
     public static void encode(AdminAuthRequestPacket packet, FriendlyByteBuf buf) {
+        buf.writeUtf(packet.accountType);
         buf.writeInt(packet.remainingAttempts);
+        buf.writeInt(packet.timeoutSeconds);
     }
 
     public static AdminAuthRequestPacket decode(FriendlyByteBuf buf) {
-        return new AdminAuthRequestPacket(buf.readInt());
+        return new AdminAuthRequestPacket(buf.readUtf(), buf.readInt(), buf.readInt());
     }
 
     public static void handle(AdminAuthRequestPacket packet, Supplier<NetworkEvent.Context> ctx) {
@@ -38,7 +44,7 @@ public class AdminAuthRequestPacket {
         public static void handleAuthRequest(AdminAuthRequestPacket packet) {
             net.minecraft.client.Minecraft minecraft = net.minecraft.client.Minecraft.getInstance();
             minecraft.execute(() -> {
-                minecraft.setScreen(new AdminPasswordScreen(packet.remainingAttempts));
+                minecraft.setScreen(new AuthPasswordScreen(packet.accountType, packet.remainingAttempts, packet.timeoutSeconds));
             });
         }
     }
