@@ -195,9 +195,11 @@ public class ParkingLobbyManager {
      * Check if an IP is currently authenticating on an account
      */
     public boolean isIPAuthenticatingOnAccount(String accountName, String ipAddress) {
+        String ipOnly = extractIPWithoutPort(ipAddress);
         for (AuthSession session : activeSessions.values()) {
-            if (session.playerName.equalsIgnoreCase(accountName) && session.ipAddress.equals(ipAddress)) {
-                MySubMod.LOGGER.info("IP {} is currently authenticating on {}", ipAddress, accountName);
+            String sessionIP = extractIPWithoutPort(session.ipAddress);
+            if (session.playerName.equalsIgnoreCase(accountName) && sessionIP.equals(ipOnly)) {
+                MySubMod.LOGGER.info("IP {} is currently authenticating on {}", ipOnly, accountName);
                 return true;
             }
         }
@@ -205,20 +207,46 @@ public class ParkingLobbyManager {
     }
 
     /**
+     * Extract IP address without port
+     * Handles both IPv4 (/127.0.0.1:port) and IPv6 (/[::1]:port) formats
+     */
+    private String extractIPWithoutPort(String ipAddress) {
+        if (ipAddress == null) return ipAddress;
+
+        // Check for IPv6 format: /[address]:port
+        int bracketIndex = ipAddress.lastIndexOf(']');
+        if (bracketIndex > 0) {
+            // IPv6 - extract everything up to and including the closing bracket
+            return ipAddress.substring(0, bracketIndex + 1);
+        }
+
+        // IPv4 format: /address:port
+        int colonIndex = ipAddress.lastIndexOf(':');
+        if (colonIndex > 0) {
+            return ipAddress.substring(0, colonIndex);
+        }
+
+        return ipAddress;
+    }
+
+    /**
      * Add IP to queue for account (returns position in queue, or -1 if rejected, -2 if IP is authenticating)
      */
     public int addToQueue(String accountName, String ipAddress) {
+        // Extract IP without port for comparison
+        String ipOnly = extractIPWithoutPort(ipAddress);
+
         // Check if this IP is currently authenticating on this account
-        if (isIPAuthenticatingOnAccount(accountName, ipAddress)) {
-            MySubMod.LOGGER.warn("IP {} rejected from queue - already authenticating on {}", ipAddress, accountName);
+        if (isIPAuthenticatingOnAccount(accountName, ipOnly)) {
+            MySubMod.LOGGER.warn("IP {} rejected from queue - already authenticating on {}", ipOnly, accountName);
             return -2; // Special code: IP is authenticating
         }
 
         // Check if IP already has too many queue positions globally
-        int globalCount = countQueueEntriesForIP(ipAddress);
+        int globalCount = countQueueEntriesForIP(ipOnly);
         if (globalCount >= MAX_QUEUE_ENTRIES_PER_IP) {
             MySubMod.LOGGER.warn("IP {} rejected from queue - already has {} positions (max {})",
-                ipAddress, globalCount, MAX_QUEUE_ENTRIES_PER_IP);
+                ipOnly, globalCount, MAX_QUEUE_ENTRIES_PER_IP);
             return -1;
         }
 
@@ -227,10 +255,10 @@ public class ParkingLobbyManager {
 
         // Check if this IP is already in queue for this account (avoid duplicates)
         for (QueueEntry entry : queue) {
-            if (entry.ipAddress.equals(ipAddress)) {
+            if (extractIPWithoutPort(entry.ipAddress).equals(ipOnly)) {
                 // Already in queue - return current position
-                int position = getPositionInQueue(queue, ipAddress);
-                MySubMod.LOGGER.info("IP {} already in queue for {} at position {}", ipAddress, accountName, position);
+                int position = getPositionInQueue(queue, entry.ipAddress);
+                MySubMod.LOGGER.info("IP {} already in queue for {} at position {}", ipOnly, accountName, position);
                 return position;
             }
         }
@@ -272,7 +300,8 @@ public class ParkingLobbyManager {
             // Not first in queue - calculate based on worst case (everyone before times out fully)
             long baseTime = activeSession != null ? activeSession.getTimeoutEndMs() : System.currentTimeMillis();
             // Each person ahead gets their full timeout (worst case)
-            monopolyStartMs = baseTime + ((position - 2) * AUTH_TIMEOUT_MS);
+            // Position 2 = baseTime + 1*60s, Position 3 = baseTime + 2*60s, etc.
+            monopolyStartMs = baseTime + ((position - 1) * AUTH_TIMEOUT_MS);
         }
 
         long monopolyEndMs = monopolyStartMs + WHITELIST_EXPIRY_MS;
@@ -290,9 +319,12 @@ public class ParkingLobbyManager {
             return null;
         }
 
+        // Extract IP without port for comparison
+        String ipOnly = extractIPWithoutPort(ipAddress);
+
         // Find entry and return its guaranteed window
         for (QueueEntry entry : queue) {
-            if (entry.ipAddress.equals(ipAddress)) {
+            if (extractIPWithoutPort(entry.ipAddress).equals(ipOnly)) {
                 return new long[]{entry.monopolyStartMs, entry.monopolyEndMs};
             }
         }
@@ -305,7 +337,14 @@ public class ParkingLobbyManager {
      */
     public boolean isAuthorized(String accountName, String ipAddress) {
         String authorizedIP = temporaryWhitelist.get(accountName);
-        if (authorizedIP == null || !authorizedIP.equals(ipAddress)) {
+        if (authorizedIP == null) {
+            return false;
+        }
+
+        // Compare IPs without port (allow reconnection with different port)
+        String ipOnly = extractIPWithoutPort(ipAddress);
+        String authorizedIPOnly = extractIPWithoutPort(authorizedIP);
+        if (!authorizedIPOnly.equals(ipOnly)) {
             return false;
         }
 
@@ -333,10 +372,11 @@ public class ParkingLobbyManager {
         String accountIPKey = accountName.toLowerCase() + ":" + ipAddress;
         authorizedIPsFromQueue.put(accountIPKey, true);
 
-        // Remove from queue as well
+        // Remove from queue as well (compare IPs without port)
         Queue<QueueEntry> queue = waitingQueues.get(accountName);
         if (queue != null) {
-            queue.removeIf(entry -> entry.ipAddress.equals(ipAddress));
+            String ipOnly = extractIPWithoutPort(ipAddress);
+            queue.removeIf(entry -> extractIPWithoutPort(entry.ipAddress).equals(ipOnly));
         }
 
         MySubMod.LOGGER.info("Authorization consumed for {} (IP: {}, marked as fromQueue)", accountName, ipAddress);
@@ -436,10 +476,12 @@ public class ParkingLobbyManager {
      * Count total queue entries for an IP across all accounts
      */
     private int countQueueEntriesForIP(String ipAddress) {
+        String ipOnly = extractIPWithoutPort(ipAddress);
         int count = 0;
         for (Queue<QueueEntry> queue : waitingQueues.values()) {
             for (QueueEntry entry : queue) {
-                if (entry.ipAddress.equals(ipAddress) && !entry.isExpired()) {
+                String entryIP = extractIPWithoutPort(entry.ipAddress);
+                if (entryIP.equals(ipOnly) && !entry.isExpired()) {
                     count++;
                 }
             }
@@ -451,9 +493,10 @@ public class ParkingLobbyManager {
      * Get position of IP in queue
      */
     private int getPositionInQueue(Queue<QueueEntry> queue, String ipAddress) {
+        String ipOnly = extractIPWithoutPort(ipAddress);
         int position = 1;
         for (QueueEntry entry : queue) {
-            if (entry.ipAddress.equals(ipAddress)) {
+            if (extractIPWithoutPort(entry.ipAddress).equals(ipOnly)) {
                 return position;
             }
             position++;

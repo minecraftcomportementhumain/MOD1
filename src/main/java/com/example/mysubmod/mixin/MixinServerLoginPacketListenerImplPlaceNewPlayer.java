@@ -99,15 +99,29 @@ public abstract class MixinServerLoginPacketListenerImplPlaceNewPlayer {
                     this.connection.disconnect(Component.literal("Authenticated user already connected"));
                     ci.cancel();
                 } else {
-                    // Not authenticated - check authorization or add to queue
-                    com.example.mysubmod.auth.ParkingLobbyManager parkingLobby = com.example.mysubmod.auth.ParkingLobbyManager.getInstance();
-                    if (parkingLobby.isAuthorized(playerName, ipAddress)) {
-                        // Authorized - allow connection and consume authorization
-                        MySubMod.LOGGER.info("MIXIN: IP {} authorized for {} - allowing connection", ipAddress, playerName);
-                        parkingLobby.consumeAuthorization(playerName, ipAddress);
-                        // Don't cancel - let vanilla kick the old player
+                    // Not authenticated - check if same IP is already connected
+                    // Normalize IPs for comparison (handle different formats)
+                    String newIPNormalized = normalizeIP(ipAddress);
+                    String existingIPNormalized = normalizeIP(existingPlayer.getIpAddress());
+
+                    if (newIPNormalized.equals(existingIPNormalized)) {
+                        // Same IP already connected on this account - deny without queue
+                        MySubMod.LOGGER.warn("MIXIN: IP {} denied - same IP already connected on {}", newIPNormalized, playerName);
+                        this.connection.send(new ClientboundLoginDisconnectPacket(
+                            Component.literal("§c§lConnexion refusée\n\n§eVous êtes déjà connecté sur ce compte.")
+                        ));
+                        this.connection.disconnect(Component.literal("Same IP already connected"));
+                        ci.cancel();
                     } else {
-                        // Not authorized - add to queue
+                        // Different IP - check authorization or add to queue
+                        com.example.mysubmod.auth.ParkingLobbyManager parkingLobby = com.example.mysubmod.auth.ParkingLobbyManager.getInstance();
+                        if (parkingLobby.isAuthorized(playerName, ipAddress)) {
+                            // Authorized - allow connection and consume authorization
+                            MySubMod.LOGGER.info("MIXIN: IP {} authorized for {} - allowing connection", ipAddress, playerName);
+                            parkingLobby.consumeAuthorization(playerName, ipAddress);
+                            // Don't cancel - let vanilla kick the old player
+                        } else {
+                            // Not authorized - add to queue
                         int queuePosition = parkingLobby.addToQueue(playerName, ipAddress);
                         if (queuePosition == -2) {
                             // IP is currently authenticating on this account
@@ -162,6 +176,7 @@ public abstract class MixinServerLoginPacketListenerImplPlaceNewPlayer {
                             this.connection.disconnect(Component.literal("Account occupied - queued"));
                             ci.cancel();
                         }
+                        }
                     }
                 }
             } else {
@@ -176,5 +191,45 @@ public abstract class MixinServerLoginPacketListenerImplPlaceNewPlayer {
         } else {
             MySubMod.LOGGER.info("MIXIN: No existing player found with name {}, allowing login", playerName);
         }
+    }
+
+    /**
+     * Normalize IP address to a comparable format
+     * Handles: /[0:0:0:0:0:0:0:1]:port, /127.0.0.1:port, ::1, 127.0.0.1, etc.
+     */
+    private String normalizeIP(String ip) {
+        if (ip == null) return "";
+
+        // Remove leading slash if present
+        String normalized = ip.startsWith("/") ? ip.substring(1) : ip;
+
+        // Handle IPv6 in brackets: [0:0:0:0:0:0:0:1]:port -> 0:0:0:0:0:0:0:1
+        if (normalized.startsWith("[")) {
+            int closeBracket = normalized.indexOf(']');
+            if (closeBracket > 0) {
+                normalized = normalized.substring(1, closeBracket);
+            }
+        } else {
+            // Handle IPv4 or simple format: remove port if present
+            // But be careful with IPv6 (has multiple colons)
+            int colonCount = normalized.length() - normalized.replace(":", "").length();
+            if (colonCount == 1) {
+                // IPv4 with port: 127.0.0.1:25565
+                int lastColon = normalized.lastIndexOf(':');
+                normalized = normalized.substring(0, lastColon);
+            }
+            // If colonCount > 1, it's IPv6 without brackets, keep as is
+        }
+
+        // Normalize IPv6: ::1 and 0:0:0:0:0:0:0:1 should be same
+        // Expand ::1 to full form
+        if (normalized.contains("::")) {
+            // Simple expansion for localhost
+            if (normalized.equals("::1")) {
+                normalized = "0:0:0:0:0:0:0:1";
+            }
+        }
+
+        return normalized;
     }
 }

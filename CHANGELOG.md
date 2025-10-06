@@ -1,5 +1,49 @@
 # Changelog - MySubMod
 
+## 🔧 Session du 6 octobre 2025 - Partie 3 (Corrections IP et Queue)
+
+### Corrections critiques
+
+**1. Support complet IPv6 et normalisation IP**
+- **Problème** : Formats IP différents non détectés comme identiques
+  - Nouvelle connexion: `/[0:0:0:0:0:0:0:1]:50645` (format complet avec brackets)
+  - Joueur connecté: `::1` (format court sans brackets/slash)
+  - Résultat: même IP créait doublons dans queue
+- **Solution** : Méthode `normalizeIP()` dans Mixin
+  - Supprime `/` et `[]`
+  - Extrait IP sans port (gère IPv4 et IPv6)
+  - Normalise `::1` → `0:0:0:0:0:0:0:1`
+  - Appliquée dans `ParkingLobbyManager.extractIPWithoutPort()`
+- **Tests** : IPv4 (`127.0.0.1:port`), IPv6 complet (`/[0:0:0:0:0:0:0:1]:port`), IPv6 court (`::1`)
+
+**2. Refus connexion même IP sur même compte**
+- **Problème** : Même IP se reconnectant pendant auth était ajoutée à queue
+- **Solution** : Vérification AVANT `addToQueue()` dans Mixin
+  - Compare IP normalisées (nouvelle vs connectée)
+  - Si identiques → Refus direct avec message "Vous êtes déjà connecté"
+  - Pas d'ajout à la queue, pas de kick
+- **Log** : `MIXIN: IP 0:0:0:0:0:0:0:1 denied - same IP already connected on Joueur1`
+
+**3. Affichage fenêtre monopole lors reconnexions**
+- **Problème** : Reconnexion avec port différent ne récupérait pas fenêtre stockée
+- **Cause** : Comparaison IP incluait port
+- **Corrections appliquées** :
+  - `getMonopolyWindow()` : compare sans port
+  - `getPositionInQueue()` : compare sans port
+  - `isAuthorized()` : compare sans port
+  - `consumeAuthorization()` : supprime de queue sans port
+- **Résultat** : Fenêtre affichée correctement à chaque reconnexion
+
+**4. Formule fenêtre de monopole**
+- **Avant** : `(position - 2) * 60s` → position 2 donnait 0ms
+- **Après** : `(position - 1) * 60s` → position 2 donne +60s, position 3 donne +120s
+
+### Fichiers modifiés
+- `MixinServerLoginPacketListenerImplPlaceNewPlayer.java` : normalisation IP, vérification même IP
+- `ParkingLobbyManager.java` : support IPv6 dans extraction IP
+
+---
+
 ## 🚦 Session du 6 octobre 2025 - Partie 2 (Système de File d'Attente)
 
 ### Nouvelles fonctionnalités majeures
