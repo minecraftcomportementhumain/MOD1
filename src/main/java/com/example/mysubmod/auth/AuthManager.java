@@ -4,6 +4,7 @@ import com.example.mysubmod.MySubMod;
 import com.google.gson.JsonObject;
 import net.minecraft.server.level.ServerPlayer;
 
+import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.security.SecureRandom;
