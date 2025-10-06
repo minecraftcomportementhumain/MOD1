@@ -43,6 +43,20 @@ public class SubModeCommand {
                 .then(Commands.literal("resetip")
                     .then(Commands.argument("ip", StringArgumentType.string())
                         .executes(SubModeCommand::resetIPBlacklist))))
+            .then(Commands.literal("player")
+                .then(Commands.literal("add")
+                    .then(Commands.argument("player", StringArgumentType.string())
+                        .then(Commands.argument("password", StringArgumentType.string())
+                            .executes(SubModeCommand::addProtectedPlayer))))
+                .then(Commands.literal("remove")
+                    .then(Commands.argument("player", StringArgumentType.string())
+                        .executes(SubModeCommand::removeProtectedPlayer)))
+                .then(Commands.literal("list")
+                    .executes(SubModeCommand::listProtectedPlayers))
+                .then(Commands.literal("setpassword")
+                    .then(Commands.argument("player", StringArgumentType.string())
+                        .then(Commands.argument("password", StringArgumentType.string())
+                            .executes(SubModeCommand::setProtectedPlayerPassword)))))
             .then(Commands.literal("current")
                 .executes(SubModeCommand::getCurrentMode))
         );
@@ -205,5 +219,107 @@ public class SubModeCommand {
         SubMode current = SubModeManager.getInstance().getCurrentMode();
         context.getSource().sendSuccess(() -> Component.literal("Mode actuel: " + current.getDisplayName()), false);
         return 1;
+    }
+
+    // ========== Protected Player Commands ==========
+
+    private static int addProtectedPlayer(CommandContext<CommandSourceStack> context) throws CommandSyntaxException {
+        ServerPlayer player = context.getSource().getPlayerOrException();
+
+        // Check if player is authenticated admin
+        if (!com.example.mysubmod.auth.AdminAuthManager.getInstance().isAuthenticated(player)) {
+            context.getSource().sendFailure(Component.literal("§cVous devez être un administrateur authentifié pour utiliser cette commande"));
+            return 0;
+        }
+
+        String playerName = StringArgumentType.getString(context, "player");
+        String password = StringArgumentType.getString(context, "password");
+
+        // Add protected player
+        boolean success = com.example.mysubmod.auth.AuthManager.getInstance().addProtectedPlayer(playerName, password);
+
+        if (success) {
+            context.getSource().sendSuccess(() ->
+                Component.literal("§aJoueur protégé ajouté: " + playerName), true);
+            return 1;
+        } else {
+            context.getSource().sendFailure(Component.literal("§cÉchec: Le joueur existe déjà ou le mot de passe est invalide"));
+            return 0;
+        }
+    }
+
+    private static int removeProtectedPlayer(CommandContext<CommandSourceStack> context) throws CommandSyntaxException {
+        ServerPlayer player = context.getSource().getPlayerOrException();
+
+        // Check if player is authenticated admin
+        if (!com.example.mysubmod.auth.AdminAuthManager.getInstance().isAuthenticated(player)) {
+            context.getSource().sendFailure(Component.literal("§cVous devez être un administrateur authentifié pour utiliser cette commande"));
+            return 0;
+        }
+
+        String playerName = StringArgumentType.getString(context, "player");
+
+        // Remove protected player
+        boolean success = com.example.mysubmod.auth.AuthManager.getInstance().removeProtectedPlayer(playerName);
+
+        if (success) {
+            context.getSource().sendSuccess(() ->
+                Component.literal("§aJoueur protégé retiré: " + playerName), true);
+            return 1;
+        } else {
+            context.getSource().sendFailure(Component.literal("§cÉchec: Le joueur n'existe pas"));
+            return 0;
+        }
+    }
+
+    private static int listProtectedPlayers(CommandContext<CommandSourceStack> context) throws CommandSyntaxException {
+        ServerPlayer player = context.getSource().getPlayerOrException();
+
+        // Check if player is authenticated admin
+        if (!com.example.mysubmod.auth.AdminAuthManager.getInstance().isAuthenticated(player)) {
+            context.getSource().sendFailure(Component.literal("§cVous devez être un administrateur authentifié pour utiliser cette commande"));
+            return 0;
+        }
+
+        java.util.List<String> protectedPlayers = com.example.mysubmod.auth.AuthManager.getInstance().listProtectedPlayers();
+
+        if (protectedPlayers.isEmpty()) {
+            context.getSource().sendSuccess(() ->
+                Component.literal("§eAucun joueur protégé enregistré"), false);
+        } else {
+            context.getSource().sendSuccess(() ->
+                Component.literal("§aJoueurs protégés (" + protectedPlayers.size() + "/10):"), false);
+            for (String name : protectedPlayers) {
+                context.getSource().sendSuccess(() ->
+                    Component.literal("  §7- §f" + name), false);
+            }
+        }
+
+        return 1;
+    }
+
+    private static int setProtectedPlayerPassword(CommandContext<CommandSourceStack> context) throws CommandSyntaxException {
+        ServerPlayer player = context.getSource().getPlayerOrException();
+
+        // Check if player is authenticated admin
+        if (!com.example.mysubmod.auth.AdminAuthManager.getInstance().isAuthenticated(player)) {
+            context.getSource().sendFailure(Component.literal("§cVous devez être un administrateur authentifié pour utiliser cette commande"));
+            return 0;
+        }
+
+        String playerName = StringArgumentType.getString(context, "player");
+        String password = StringArgumentType.getString(context, "password");
+
+        // Set password
+        boolean success = com.example.mysubmod.auth.AuthManager.getInstance().setProtectedPlayerPassword(playerName, password);
+
+        if (success) {
+            context.getSource().sendSuccess(() ->
+                Component.literal("§aMot de passe mis à jour pour " + playerName), true);
+            return 1;
+        } else {
+            context.getSource().sendFailure(Component.literal("§cÉchec: Le joueur n'existe pas ou le mot de passe est invalide"));
+            return 0;
+        }
     }
 }

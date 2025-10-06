@@ -30,20 +30,35 @@ public class AdminAuthPacket {
             ServerPlayer player = ctx.get().getSender();
             if (player == null) return;
 
-            AdminAuthManager authManager = AdminAuthManager.getInstance();
+            AdminAuthManager adminAuthManager = AdminAuthManager.getInstance();
+            AuthManager authManager = AuthManager.getInstance();
+            ParkingLobbyManager parkingLobby = ParkingLobbyManager.getInstance();
+
             String playerName = player.getName().getString();
 
-            // Check if this is an admin account
-            if (!authManager.isAdminAccount(playerName)) {
-                MySubMod.LOGGER.warn("Non-admin player {} attempted authentication", playerName);
+            // Check if player is in parking lobby
+            if (!parkingLobby.isInParkingLobby(player.getUUID())) {
+                MySubMod.LOGGER.warn("Player {} attempted auth but not in parking lobby", playerName);
                 return;
             }
 
-            // Attempt login
-            int result = authManager.attemptLogin(player, packet.password);
+            String accountType = parkingLobby.getAccountType(player.getUUID());
+            boolean isAdmin = "ADMIN".equals(accountType);
+
+            int result;
+
+            if (isAdmin) {
+                // Admin authentication
+                result = adminAuthManager.attemptLogin(player, packet.password);
+            } else {
+                // Protected player authentication (with blacklist tracking)
+                result = authManager.attemptProtectedPlayerLogin(player, packet.password);
+            }
 
             if (result == 0) {
-                // Success
+                // Success - Remove from parking lobby
+                parkingLobby.removePlayer(player.getUUID());
+
                 player.sendSystemMessage(net.minecraft.network.chat.Component.literal(
                     "§a§lAuthentification réussie! Bienvenue, " + playerName + "."));
 
@@ -60,7 +75,9 @@ public class AdminAuthPacket {
 
             } else if (result == -1) {
                 // Wrong password
-                int remaining = authManager.getRemainingAttemptsByName(playerName);
+                int remaining = isAdmin ?
+                    adminAuthManager.getRemainingAttemptsByName(playerName) :
+                    authManager.getRemainingProtectedPlayerAttempts(playerName);
                 player.sendSystemMessage(net.minecraft.network.chat.Component.literal(
                     "§c§lMot de passe incorrect! Tentatives restantes: " + remaining));
 
@@ -70,7 +87,9 @@ public class AdminAuthPacket {
 
             } else if (result == -2) {
                 // Max attempts - account blacklisted (3 minutes)
-                long remainingTime = authManager.getRemainingBlacklistTime(playerName);
+                long remainingTime = isAdmin ?
+                    adminAuthManager.getRemainingBlacklistTime(playerName) :
+                    authManager.getRemainingProtectedPlayerBlacklistTime(playerName);
                 long minutes = remainingTime / 60000;
 
                 player.sendSystemMessage(net.minecraft.network.chat.Component.literal(
@@ -80,21 +99,6 @@ public class AdminAuthPacket {
                 player.getServer().execute(() -> {
                     player.connection.disconnect(net.minecraft.network.chat.Component.literal(
                         "§4§lCompte Blacklisté\n\n§cTrop de tentatives de connexion échouées.\n§7Temps restant: §e" + minutes + " minute(s)"));
-                });
-
-            } else if (result == -3) {
-                // IP blacklisted
-                String ipAddress = player.getIpAddress();
-                long remainingTime = authManager.getRemainingIPBlacklistTime(ipAddress);
-                long minutes = remainingTime / 60000;
-
-                player.sendSystemMessage(net.minecraft.network.chat.Component.literal(
-                    "§4§lIP blacklistée pour " + minutes + " minute(s)!"));
-
-                // Kick player
-                player.getServer().execute(() -> {
-                    player.connection.disconnect(net.minecraft.network.chat.Component.literal(
-                        "§4§lIP Blacklistée\n\n§cTrop de tentatives de connexion depuis cette IP.\n§7Temps restant: §e" + minutes + " minute(s)"));
                 });
             }
         });

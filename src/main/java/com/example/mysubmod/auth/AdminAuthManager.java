@@ -1,13 +1,9 @@
 package com.example.mysubmod.auth;
 
 import com.example.mysubmod.MySubMod;
-import com.google.gson.Gson;
-import com.google.gson.GsonBuilder;
 import com.google.gson.JsonObject;
 import net.minecraft.server.level.ServerPlayer;
 
-import java.io.*;
-import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.security.SecureRandom;
@@ -16,15 +12,10 @@ import java.util.concurrent.ConcurrentHashMap;
 
 public class AdminAuthManager {
     private static AdminAuthManager instance;
-    private final File credentialsFile;
-    private final Gson gson;
 
     // Runtime state
     private final Set<UUID> authenticatedAdmins = ConcurrentHashMap.newKeySet();
     private final Map<UUID, Long> authenticationStartTime = new ConcurrentHashMap<>(); // Track when auth started
-
-    // Persistent data
-    private JsonObject credentials;
 
     private static final int MAX_ATTEMPTS = 3;
     private static final long ACCOUNT_BLACKLIST_DURATION = 3 * 60 * 1000; // 3 minutes in ms (fixed for accounts)
@@ -33,9 +24,11 @@ public class AdminAuthManager {
     private static final long AUTH_PROTECTION_DURATION = 30 * 1000; // 30 seconds protection
 
     private AdminAuthManager() {
-        this.credentialsFile = new File("admin_credentials.json");
-        this.gson = new GsonBuilder().setPrettyPrinting().create();
-        loadCredentials();
+        // No initialization needed - using CredentialsStore
+    }
+
+    private JsonObject getCredentials() {
+        return CredentialsStore.getInstance().getCredentials();
     }
 
     public static AdminAuthManager getInstance() {
@@ -45,55 +38,12 @@ public class AdminAuthManager {
         return instance;
     }
 
-    private void loadCredentials() {
-        if (!credentialsFile.exists()) {
-            createDefaultCredentials();
-        }
-
-        try (Reader reader = new FileReader(credentialsFile, StandardCharsets.UTF_8)) {
-            credentials = gson.fromJson(reader, JsonObject.class);
-            if (credentials == null) {
-                credentials = new JsonObject();
-            }
-            if (!credentials.has("admins")) {
-                credentials.add("admins", new JsonObject());
-            }
-            if (!credentials.has("blacklist")) {
-                credentials.add("blacklist", new JsonObject());
-            }
-            if (!credentials.has("ipBlacklist")) {
-                credentials.add("ipBlacklist", new JsonObject());
-            }
-        } catch (IOException e) {
-            MySubMod.LOGGER.error("Failed to load admin credentials", e);
-            credentials = new JsonObject();
-            credentials.add("admins", new JsonObject());
-            credentials.add("blacklist", new JsonObject());
-        }
-    }
-
-    private void createDefaultCredentials() {
-        credentials = new JsonObject();
-        credentials.add("admins", new JsonObject());
-        credentials.add("blacklist", new JsonObject());
-        credentials.add("ipBlacklist", new JsonObject());
-        saveCredentials();
-        MySubMod.LOGGER.info("Created default admin_credentials.json");
-    }
-
-    private void saveCredentials() {
-        try (Writer writer = new FileWriter(credentialsFile, StandardCharsets.UTF_8)) {
-            gson.toJson(credentials, writer);
-        } catch (IOException e) {
-            MySubMod.LOGGER.error("Failed to save admin credentials", e);
-        }
-    }
 
     /**
      * Check if a player name is registered as an admin (has credentials)
      */
     public boolean isAdminAccount(String playerName) {
-        JsonObject admins = credentials.getAsJsonObject("admins");
+        JsonObject admins = getCredentials().getAsJsonObject("admins");
         return admins.has(playerName.toLowerCase());
     }
 
@@ -108,7 +58,7 @@ public class AdminAuthManager {
      * Check if a player is currently blacklisted
      */
     public boolean isBlacklisted(String playerName) {
-        JsonObject blacklist = credentials.getAsJsonObject("blacklist");
+        JsonObject blacklist = getCredentials().getAsJsonObject("blacklist");
         if (!blacklist.has(playerName.toLowerCase())) {
             return false;
         }
@@ -128,7 +78,7 @@ public class AdminAuthManager {
         } else {
             // Blacklist expired, remove it
             blacklist.remove(playerName.toLowerCase());
-            saveCredentials();
+            CredentialsStore.getInstance().save();
             return false;
         }
     }
@@ -137,7 +87,7 @@ public class AdminAuthManager {
      * Get remaining blacklist time in milliseconds
      */
     public long getRemainingBlacklistTime(String playerName) {
-        JsonObject blacklist = credentials.getAsJsonObject("blacklist");
+        JsonObject blacklist = getCredentials().getAsJsonObject("blacklist");
         if (!blacklist.has(playerName.toLowerCase())) {
             return 0;
         }
@@ -169,7 +119,7 @@ public class AdminAuthManager {
         }
 
         // Get current attempt count from blacklist entry (persistent across reconnects)
-        JsonObject blacklist = credentials.getAsJsonObject("blacklist");
+        JsonObject blacklist = getCredentials().getAsJsonObject("blacklist");
         int attempts = 0;
         long lastAttempt = 0;
 
@@ -220,7 +170,7 @@ public class AdminAuthManager {
      * Get remaining attempts for a player by name
      */
     public int getRemainingAttemptsByName(String playerName) {
-        JsonObject blacklist = credentials.getAsJsonObject("blacklist");
+        JsonObject blacklist = getCredentials().getAsJsonObject("blacklist");
         int attempts = 0;
 
         if (blacklist.has(playerName.toLowerCase())) {
@@ -237,7 +187,7 @@ public class AdminAuthManager {
      * Save current attempts to JSON (persists across reconnects)
      */
     private void saveAttempts(String playerName, int attempts) {
-        JsonObject blacklist = credentials.getAsJsonObject("blacklist");
+        JsonObject blacklist = getCredentials().getAsJsonObject("blacklist");
         JsonObject entry;
 
         if (blacklist.has(playerName)) {
@@ -249,23 +199,23 @@ public class AdminAuthManager {
 
         entry.addProperty("currentAttempts", attempts);
         entry.addProperty("lastAttempt", System.currentTimeMillis());
-        saveCredentials();
+        CredentialsStore.getInstance().save();
     }
 
     /**
      * Clear attempts after successful login
      */
     private void clearAttempts(String playerName) {
-        JsonObject blacklist = credentials.getAsJsonObject("blacklist");
+        JsonObject blacklist = getCredentials().getAsJsonObject("blacklist");
 
         if (blacklist.has(playerName)) {
             blacklist.remove(playerName);
-            saveCredentials();
+            CredentialsStore.getInstance().save();
         }
     }
 
     private void blacklistPlayer(String playerName) {
-        JsonObject blacklist = credentials.getAsJsonObject("blacklist");
+        JsonObject blacklist = getCredentials().getAsJsonObject("blacklist");
 
         // Fixed 3 minutes blacklist for accounts
         long until = System.currentTimeMillis() + ACCOUNT_BLACKLIST_DURATION;
@@ -276,13 +226,13 @@ public class AdminAuthManager {
         entry.addProperty("lastAttempt", System.currentTimeMillis());
 
         blacklist.add(playerName.toLowerCase(), entry);
-        saveCredentials();
+        CredentialsStore.getInstance().save();
 
         MySubMod.LOGGER.warn("Account {} blacklisted for 3 minutes", playerName);
     }
 
     private void blacklistIP(String ipAddress) {
-        JsonObject ipBlacklist = credentials.getAsJsonObject("ipBlacklist");
+        JsonObject ipBlacklist = getCredentials().getAsJsonObject("ipBlacklist");
 
         // Get current failure count for IP
         int failureCount = 0;
@@ -317,7 +267,7 @@ public class AdminAuthManager {
         entry.addProperty("lastAttempt", System.currentTimeMillis());
 
         ipBlacklist.add(ipAddress, entry);
-        saveCredentials();
+        CredentialsStore.getInstance().save();
 
         MySubMod.LOGGER.warn("IP {} blacklisted for {} minutes (failure count: {})",
             ipAddress, duration / 60000, failureCount);
@@ -327,7 +277,7 @@ public class AdminAuthManager {
      * Check if an IP is blacklisted
      */
     public boolean isIPBlacklisted(String ipAddress) {
-        JsonObject ipBlacklist = credentials.getAsJsonObject("ipBlacklist");
+        JsonObject ipBlacklist = getCredentials().getAsJsonObject("ipBlacklist");
         if (!ipBlacklist.has(ipAddress)) {
             return false;
         }
@@ -346,7 +296,7 @@ public class AdminAuthManager {
         } else {
             // Blacklist expired, remove it
             ipBlacklist.remove(ipAddress);
-            saveCredentials();
+            CredentialsStore.getInstance().save();
             return false;
         }
     }
@@ -355,7 +305,7 @@ public class AdminAuthManager {
      * Get remaining IP blacklist time in milliseconds
      */
     public long getRemainingIPBlacklistTime(String ipAddress) {
-        JsonObject ipBlacklist = credentials.getAsJsonObject("ipBlacklist");
+        JsonObject ipBlacklist = getCredentials().getAsJsonObject("ipBlacklist");
         if (!ipBlacklist.has(ipAddress)) {
             return 0;
         }
@@ -375,11 +325,11 @@ public class AdminAuthManager {
      * Clear IP attempts after successful login
      */
     private void clearIPAttempts(String ipAddress) {
-        JsonObject ipBlacklist = credentials.getAsJsonObject("ipBlacklist");
+        JsonObject ipBlacklist = getCredentials().getAsJsonObject("ipBlacklist");
 
         if (ipBlacklist.has(ipAddress)) {
             ipBlacklist.remove(ipAddress);
-            saveCredentials();
+            CredentialsStore.getInstance().save();
         }
     }
 
@@ -387,7 +337,7 @@ public class AdminAuthManager {
      * Verify a password against stored credentials
      */
     private boolean verifyPassword(String playerName, String password) {
-        JsonObject admins = credentials.getAsJsonObject("admins");
+        JsonObject admins = getCredentials().getAsJsonObject("admins");
         if (!admins.has(playerName.toLowerCase())) {
             return false;
         }
@@ -404,7 +354,7 @@ public class AdminAuthManager {
      * Set or update admin password
      */
     public void setAdminPassword(String playerName, String password) {
-        JsonObject admins = credentials.getAsJsonObject("admins");
+        JsonObject admins = getCredentials().getAsJsonObject("admins");
 
         // Generate salt
         String salt = generateSalt();
@@ -415,7 +365,7 @@ public class AdminAuthManager {
         admin.addProperty("salt", salt);
 
         admins.add(playerName.toLowerCase(), admin);
-        saveCredentials();
+        CredentialsStore.getInstance().save();
 
         MySubMod.LOGGER.info("Set password for admin {}", playerName);
     }
@@ -424,9 +374,9 @@ public class AdminAuthManager {
      * Reset blacklist for a player
      */
     public void resetBlacklist(String playerName) {
-        JsonObject blacklist = credentials.getAsJsonObject("blacklist");
+        JsonObject blacklist = getCredentials().getAsJsonObject("blacklist");
         blacklist.remove(playerName.toLowerCase());
-        saveCredentials();
+        CredentialsStore.getInstance().save();
         MySubMod.LOGGER.info("Reset blacklist for {}", playerName);
     }
 
@@ -434,12 +384,12 @@ public class AdminAuthManager {
      * Reset failure count for a player (keeps active blacklist)
      */
     public void resetFailureCount(String playerName) {
-        JsonObject blacklist = credentials.getAsJsonObject("blacklist");
+        JsonObject blacklist = getCredentials().getAsJsonObject("blacklist");
         if (blacklist.has(playerName.toLowerCase())) {
             JsonObject entry = blacklist.getAsJsonObject(playerName.toLowerCase());
             entry.addProperty("failureCount", 0);
             entry.addProperty("lastAttempt", System.currentTimeMillis());
-            saveCredentials();
+            CredentialsStore.getInstance().save();
             MySubMod.LOGGER.info("Reset failure count for {}", playerName);
         }
     }
@@ -448,19 +398,26 @@ public class AdminAuthManager {
      * Reset IP blacklist
      */
     public void resetIPBlacklist(String ipAddress) {
-        JsonObject ipBlacklist = credentials.getAsJsonObject("ipBlacklist");
+        JsonObject ipBlacklist = getCredentials().getAsJsonObject("ipBlacklist");
         ipBlacklist.remove(ipAddress);
-        saveCredentials();
+        CredentialsStore.getInstance().save();
         MySubMod.LOGGER.info("Reset IP blacklist for {}", ipAddress);
+    }
+
+    /**
+     * Record IP failure and blacklist if necessary (for protected players)
+     */
+    public void recordIPFailure(String ipAddress) {
+        blacklistIP(ipAddress);
     }
 
     /**
      * Remove admin account
      */
     public void removeAdmin(String playerName) {
-        JsonObject admins = credentials.getAsJsonObject("admins");
+        JsonObject admins = getCredentials().getAsJsonObject("admins");
         admins.remove(playerName.toLowerCase());
-        saveCredentials();
+        CredentialsStore.getInstance().save();
         MySubMod.LOGGER.info("Removed admin account for {}", playerName);
     }
 
@@ -529,7 +486,7 @@ public class AdminAuthManager {
      * Get list of all admin accounts
      */
     public Set<String> getAdminAccounts() {
-        JsonObject admins = credentials.getAsJsonObject("admins");
+        JsonObject admins = getCredentials().getAsJsonObject("admins");
         Set<String> accounts = new HashSet<>();
         admins.keySet().forEach(accounts::add);
         return accounts;

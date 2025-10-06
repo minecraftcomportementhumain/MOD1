@@ -1,5 +1,131 @@
 # Changelog - MySubMod
 
+## 🔐 Session du 6 octobre 2025 - Système de Joueurs Protégés et Priorité d'Accès
+
+### Nouvelles fonctionnalités majeures
+
+**1. Système de joueurs protégés (10 comptes max)**
+- **Nouveau type de compte** : PROTECTED_PLAYER (entre ADMIN et FREE_PLAYER)
+- **Authentification obligatoire** : Mot de passe requis pour se connecter
+- **Commandes dédiées** :
+  - `/submode player add <joueur> <mdp>` : Ajouter un joueur protégé
+  - `/submode player remove <joueur>` : Retirer un joueur protégé
+  - `/submode player list` : Lister les 10 joueurs protégés
+  - `/submode player setpassword <joueur> <mdp>` : Changer le mot de passe
+- **Persistance** : Données sauvegardées dans `auth_credentials.json`
+- **Sécurité** : SHA-256 + salt unique par joueur, comme pour les admins
+
+**2. Parking Lobby avec timeout**
+- **Zone d'attente** : Joueurs protégés gelés en spectateur jusqu'à authentification
+- **Timer 60 secondes** : Kick automatique si pas d'authentification dans les 60s
+- **Message clair** : "Temps d'authentification écoulé - Vous aviez 60 secondes"
+- **Support des deux types** : Admins et joueurs protégés dans le même lobby
+- **Cleanup automatique** : Timer annulé lors de la déconnexion ou succès auth
+
+**3. Système de priorité d'accès**
+- **Accès prioritaire** : Les comptes protégés peuvent se connecter même si serveur plein
+- **Mixin PlayerList** : Injection dans `canPlayerLogin` pour contourner vérification vanilla
+- **Kick intelligent** : Sélection aléatoire d'un FREE_PLAYER pour faire de la place
+- **Protection complète** : Si tous les joueurs sont protégés, refuse connexion (message "serveur plein")
+- **Limite dynamique** : Utilise `max-players` du server.properties au lieu de valeur hardcodée 10
+- **Message kick** : "Vous avez été déconnecté pour faire de la place à un joueur prioritaire"
+
+**4. Blacklist unifiée (comptes uniquement)**
+- **3 tentatives = 3 minutes de blacklist** : Fixe pour tous les comptes protégés
+- **Suppression IP blacklist** : Système d'IP blacklist complètement retiré du code
+- **Tracking persistant** : Tentatives sauvegardées dans `account_blacklist` du JSON
+- **Réinitialisation 24h** : Compteur remis à zéro après 24h d'inactivité
+- **Section dédiée** : `account_blacklist` sépare des blacklists admins
+
+**5. CredentialsStore - Gestionnaire centralisé**
+- **Singleton unique** : Une seule instance pour tous les managers
+- **Fichier unifié** : `auth_credentials.json` remplace `admin_credentials.json`
+- **Synchronisation garantie** : Même objet JsonObject partagé entre AdminAuthManager et AuthManager
+- **Sections structurées** :
+  - `admins` : Comptes administrateurs
+  - `protected_players` : 10 joueurs protégés
+  - `blacklist` : Blacklist admins (3min fixe)
+  - `account_blacklist` : Blacklist joueurs protégés (3min fixe)
+  - `ipBlacklist` : Vide (legacy, inutilisé)
+
+### Corrections de bugs
+
+**1. Fix synchronisation credentials**
+- **Problème** : Changements de mot de passe non persistants (deux fichiers séparés)
+- **Solution** : CredentialsStore singleton avec un seul fichier auth_credentials.json
+- **Méthodes retirées** : loadCredentials, saveCredentials, reloadCredentials dans les managers
+
+**2. Fix case sensitivity**
+- **Problème** : "Joueur5" ne pouvait pas se connecter avec nouveau mot de passe
+- **Cause** : `.toLowerCase()` dans attemptProtectedPlayerLogin transformait en "joueur5"
+- **Solution** : Préservation de la casse originale + fallback pour compatibilité
+- **Ligne modifiée** : AuthManager.java:194
+
+**3. Fix condition priority kick**
+- **Problème** : FREE_PLAYER non kick quand serveur plein et joueur protégé se connecte
+- **Cause** : Condition `<= maxPlayers` au lieu de `< maxPlayers`
+- **Solution** : Changement de condition dans ServerEventHandler.java:126
+- **Résultat** : Kick correct quand nombre de joueurs atteint la limite
+
+**4. Fix Mixin bypass sans vérification FREE_PLAYER**
+- **Problème** : Joueur protégé pouvait bypass même si tous les joueurs étaient protégés
+- **Solution** : Ajout de boucle de vérification pour détecter au moins un FREE_PLAYER
+- **Comportement** : Si aucun FREE_PLAYER, laisse vanilla gérer "serveur plein"
+
+### Nettoyage de code
+
+**Imports retirés** :
+- `Gson`, `GsonBuilder` : AdminAuthManager et AuthManager
+- `File`, `FileReader`, `FileWriter` : AdminAuthManager et AuthManager
+- `StandardCharsets`, `IOException` : AdminAuthManager et AuthManager
+
+**Méthodes supprimées** :
+- `loadCredentials()` : AdminAuthManager et AuthManager
+- `saveCredentials()` : AdminAuthManager et AuthManager
+- `reloadCredentials()` : AdminAuthManager
+
+**Code redondant éliminé** :
+- Gestion des fichiers en double dans les deux managers
+- Appels croisés entre managers pour reload
+
+### Fichiers créés (3)
+
+- `ParkingLobbyManager.java` : Gestion lobby d'attente avec timer 60s
+- `CredentialsStore.java` : Singleton pour auth_credentials.json
+- `MixinPlayerListServerFull.java` : Injection canPlayerLogin pour priorité
+
+### Fichiers modifiés (8)
+
+- `AuthManager.java` : Support joueurs protégés + CredentialsStore
+- `AdminAuthManager.java` : Migration vers CredentialsStore + nettoyage
+- `ServerEventHandler.java` : Parking lobby + priority kick + fix condition
+- `SubModeCommand.java` : 4 nouvelles commandes joueurs protégés
+- `AdminAuthPacket.java` : Support joueurs protégés avec blacklist
+- `AdminAuthScreen.java` : Support joueurs protégés dans UI
+- `mysubmod.mixins.json` : Ajout MixinPlayerListServerFull
+- `README_SUBMOD.md` : Documentation complète du nouveau système
+
+### Architecture technique
+
+**Flux d'authentification joueur protégé** :
+1. Connexion → AuthManager détecte PROTECTED_PLAYER
+2. ParkingLobbyManager ajoute joueur avec timer 60s
+3. Client reçoit packet auth request
+4. AdminAuthScreen affiche prompt (réutilisé pour joueurs protégés)
+5. Joueur entre mot de passe → packet vers serveur
+6. AuthManager.attemptProtectedPlayerLogin vérifie et suit tentatives
+7. Succès → retire du lobby + authentifie | Échec → compte tentatives | 3 échecs → blacklist 3min
+
+**Flux priorité d'accès** :
+1. Mixin intercepte canPlayerLogin quand serveur >= max-players
+2. Vérifie AccountType du joueur qui se connecte
+3. Si ADMIN ou PROTECTED_PLAYER → cherche FREE_PLAYER disponible
+4. Si FREE_PLAYER trouvé → retourne null (autorise connexion)
+5. ServerEventHandler détecte dépassement capacité → kick FREE_PLAYER aléatoire
+6. Si aucun FREE_PLAYER → laisse vanilla refuser (message "serveur plein")
+
+---
+
 ## 🎮 Session du 5 octobre 2025 - Partie 2 (Améliorations UX et Logs)
 
 ### Corrections de bugs et améliorations

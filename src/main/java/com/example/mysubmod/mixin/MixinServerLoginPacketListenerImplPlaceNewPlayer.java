@@ -40,10 +40,30 @@ public abstract class MixinServerLoginPacketListenerImplPlaceNewPlayer {
         String playerName = this.gameProfile.getName();
         MySubMod.LOGGER.info("MIXIN: Processing login for player: {}", playerName);
 
-        AdminAuthManager authManager = AdminAuthManager.getInstance();
+        AdminAuthManager adminAuthManager = AdminAuthManager.getInstance();
+        com.example.mysubmod.auth.AuthManager authManager = com.example.mysubmod.auth.AuthManager.getInstance();
+
+        // Check if this is a protected account (admin or protected player)
+        com.example.mysubmod.auth.AuthManager.AccountType accountType = authManager.getAccountType(playerName);
+        boolean isProtectedAccount = (accountType == com.example.mysubmod.auth.AuthManager.AccountType.ADMIN ||
+                                      accountType == com.example.mysubmod.auth.AuthManager.AccountType.PROTECTED_PLAYER);
+
+        MySubMod.LOGGER.info("MIXIN: Player {} account type: {}, isProtected: {}", playerName, accountType, isProtectedAccount);
 
         // Get the player list to check for existing connection
         PlayerList playerList = this.server.getPlayerList();
+
+        // PRIORITY SYSTEM: If server is full and this is a protected account, allow connection
+        // The actual kick will happen in ServerEventHandler after the player joins
+        int currentPlayers = playerList.getPlayerCount();
+        int maxPlayers = playerList.getMaxPlayers();
+
+        if (currentPlayers >= maxPlayers && isProtectedAccount) {
+            MySubMod.LOGGER.info("MIXIN: Server full ({}/{}) but allowing protected account {} to connect. Will kick FREE player after join.",
+                currentPlayers, maxPlayers, playerName);
+            // Don't cancel - allow the connection to proceed
+            // The ServerEventHandler will kick a FREE player after this player joins
+        }
 
         // Check by iterating through all players to find duplicate by NAME (since UUID is null at this point)
         ServerPlayer existingPlayer = null;
@@ -57,8 +77,8 @@ public abstract class MixinServerLoginPacketListenerImplPlaceNewPlayer {
         if (existingPlayer != null) {
             MySubMod.LOGGER.info("MIXIN: Found existing player with name {}", playerName);
 
-            if (authManager.isAdminAccount(playerName)) {
-                if (authManager.isAuthenticated(existingPlayer)) {
+            if (adminAuthManager.isAdminAccount(playerName)) {
+                if (adminAuthManager.isAuthenticated(existingPlayer)) {
                     // Deny new connection - keep authenticated admin
                     MySubMod.LOGGER.warn("MIXIN: Denying connection for {} - admin already authenticated", playerName);
                     this.connection.send(new ClientboundLoginDisconnectPacket(
@@ -66,7 +86,7 @@ public abstract class MixinServerLoginPacketListenerImplPlaceNewPlayer {
                     ));
                     this.connection.disconnect(Component.literal("Authenticated admin already connected"));
                     ci.cancel();
-                } else if (authManager.isProtectedDuringAuth(existingPlayer)) {
+                } else if (adminAuthManager.isProtectedDuringAuth(existingPlayer)) {
                     // Admin is currently authenticating (30s protection) - deny new connection
                     MySubMod.LOGGER.warn("MIXIN: Denying connection for {} - admin is authenticating (protected)", playerName);
                     this.connection.send(new ClientboundLoginDisconnectPacket(

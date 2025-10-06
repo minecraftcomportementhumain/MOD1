@@ -35,34 +35,56 @@ Ce mod ajoute un système de sous-modes qui fonctionne côté client et serveur 
 
 ### Gestion des administrateurs
 ```
-/submode admin add <joueur>              - Ajoute un administrateur
-/submode admin remove <joueur>           - Supprime un administrateur
-/submode admin list                      - Liste les administrateurs
+/submode admin add <joueur>               - Ajoute un administrateur
+/submode admin remove <joueur>            - Supprime un administrateur
+/submode admin list                       - Liste les administrateurs
 /submode admin setpassword <joueur> <mdp> - Définir mot de passe admin
-/submode admin resetblacklist <joueur>   - Réinitialiser blacklist d'un joueur
-/submode admin resetfailures <joueur>    - Réinitialiser compteur d'échecs
+/submode admin resetblacklist <joueur>    - Réinitialiser blacklist admin
+/submode admin resetfailures <joueur>     - Réinitialiser compteur d'échecs admin
+/submode admin resetip <ip>               - Débloquer une IP
+```
+
+### Gestion des joueurs protégés
+```
+/submode player add <joueur> <mdp>        - Ajouter un joueur protégé (max 10)
+/submode player remove <joueur>           - Retirer un joueur protégé
+/submode player list                      - Lister les joueurs protégés
+/submode player setpassword <joueur> <mdp> - Changer mot de passe joueur protégé
 ```
 
 ## Permissions et Authentification
 
-### Système d'Authentification Admin
+### Système d'Authentification Unifié
 - **Mode offline** : Le serveur fonctionne en `online-mode=false` pour permettre connexions sans compte Mojang
-- **Authentification obligatoire** : Tous les comptes admin (OP 2+ ou liste admin) doivent s'authentifier
-- **Prompt automatique** : Menu de saisie du mot de passe à la connexion pour les comptes admin
+- **Trois types de comptes** :
+  - **ADMIN** : Comptes admin (OP 2+ ou liste admin) avec accès complet
+  - **PROTECTED_PLAYER** : Joueurs protégés (max 10) avec accès prioritaire au serveur
+  - **FREE_PLAYER** : Joueurs libres sans authentification requise
+- **Parking Lobby** : Zone d'attente où les comptes protégés sont gelés jusqu'à authentification
+- **Timeout de 60 secondes** : Kick automatique si aucune authentification dans les 60s
+- **Prompt automatique** : Menu de saisie du mot de passe à la connexion pour les comptes protégés
 - **Masquage du mot de passe** : Caractères remplacés par des asterisques
-- **Système d'essais** : 3 tentatives par session
-- **Blacklist progressive** :
-  - 3 échecs → 3 minutes de blacklist
-  - 3 échecs supplémentaires → 30 minutes (×10)
-  - Progression : 3min, 30min, 300min, 3000min... (×10 à chaque fois)
+- **Système d'essais** : 3 tentatives par session pour tous les comptes protégés
+- **Blacklist de compte** :
+  - 3 échecs → 3 minutes de blacklist fixe
+  - S'applique aux admins et joueurs protégés
 - **Réinitialisation automatique** : Compteur d'échecs réinitialisé après 24h d'inactivité
 - **Persistance des tentatives** : Les tentatives persistent même si le joueur se déconnecte
-- **Stockage sécurisé** : Mots de passe hashés avec SHA-256 + salt unique par admin
-- **Fichier de credentials** : `admin_credentials.json` contient les hashes et la blacklist
+- **Stockage sécurisé** : Mots de passe hashés avec SHA-256 + salt unique par compte
+- **Fichier de credentials** : `auth_credentials.json` contient tous les hashes et blacklists
+
+### Système de Priorité d'Accès
+- **Accès prioritaire** : Les comptes protégés (admin + joueurs protégés) peuvent se connecter même si serveur plein
+- **Mixin System** : Injection dans `PlayerList.canPlayerLogin` pour contourner vérification vanilla
+- **Kick automatique** : Un joueur libre (FREE_PLAYER) aléatoire est kick pour faire de la place
+- **Protection complète** : Si tous les joueurs sont protégés, le serveur refuse la connexion (message "serveur plein")
+- **Limite dynamique** : Utilise la valeur `max-players` du server.properties (pas de limite hardcodée)
 
 ### Permissions
 - Les administrateurs du serveur (niveau OP 2+) doivent s'authentifier pour accéder aux privilèges
 - Les admins ajoutés via commande doivent s'authentifier pour changer les sous-modes
+- Les joueurs protégés doivent s'authentifier pour accéder au serveur
+- Les joueurs libres peuvent se connecter normalement sans authentification
 - Tous les joueurs peuvent voir l'interface mais seuls les admins authentifiés peuvent l'utiliser
 - Les ops peuvent définir leur propre mot de passe la première fois sans authentification
 
@@ -149,6 +171,19 @@ Ce mod ajoute un système de sous-modes qui fonctionne côté client et serveur 
 
 ## Nouveautés de la Dernière Version
 
+### Système de Joueurs Protégés et Priorité d'Accès (6 octobre 2025)
+- **Joueurs protégés** : Système de 10 comptes protégés avec mot de passe (en plus des admins)
+- **Parking Lobby** : Zone d'attente avec timeout de 60 secondes pour authentification
+- **Accès prioritaire** : Les comptes protégés peuvent se connecter même si serveur plein
+- **Kick intelligent** : Un joueur libre aléatoire est kick pour faire de la place aux comptes protégés
+- **Protection totale** : Si tous les joueurs sont protégés, le serveur refuse la connexion
+- **Mixin PlayerList** : Contournement de la vérification vanilla "serveur plein"
+- **CredentialsStore** : Gestionnaire centralisé unique pour auth_credentials.json
+- **Suppression IP blacklist** : Système d'IP blacklist retiré, seule la blacklist de compte reste
+- **Blacklist de compte fixe** : 3 tentatives = 3 minutes de blacklist pour tous les comptes protégés
+- **Commandes joueurs protégés** : add, remove, list, setpassword pour gérer les 10 comptes
+- **Limite dynamique** : Utilise max-players du server.properties au lieu de valeur hardcodée
+
 ### Protection contre Connexions Duplicates (5 octobre 2025)
 - **Système Mixin** : Injection dans `ServerLoginPacketListenerImpl.handleAcceptedLogin`
 - **Logique différenciée** :
@@ -163,8 +198,8 @@ Ce mod ajoute un système de sous-modes qui fonctionne côté client et serveur 
 ### Système d'Authentification Admin (4 octobre 2025)
 - **Authentification complète** : Système de mot de passe pour tous les comptes admin
 - **Prompt automatique** : Interface de saisie avec masquage du mot de passe (astérisques)
-- **Blacklist progressive** : 3min → 30min → 300min (×10 à chaque série d'échecs)
-- **Persistance** : Tentatives sauvegardées dans `admin_credentials.json`
+- **Blacklist de compte** : 3 tentatives = 3 minutes de blacklist fixe
+- **Persistance** : Tentatives sauvegardées dans auth_credentials.json
 - **Sécurité** : SHA-256 + salt unique par admin, réinitialisation auto 24h
 - **Commandes admin** : setpassword, resetblacklist, resetfailures
 - **Protection** : Impossible de fermer le prompt avec ESC, kick automatique si blacklisté

@@ -28,7 +28,10 @@ public class ServerEventHandler {
     @SubscribeEvent(priority = EventPriority.HIGHEST)
     public static void onPlayerJoin(PlayerEvent.PlayerLoggedInEvent event) {
         if (event.getEntity() instanceof ServerPlayer player) {
-            com.example.mysubmod.auth.AdminAuthManager authManager = com.example.mysubmod.auth.AdminAuthManager.getInstance();
+            com.example.mysubmod.auth.AdminAuthManager adminAuthManager = com.example.mysubmod.auth.AdminAuthManager.getInstance();
+            com.example.mysubmod.auth.AuthManager authManager = com.example.mysubmod.auth.AuthManager.getInstance();
+            com.example.mysubmod.auth.ParkingLobbyManager parkingLobby = com.example.mysubmod.auth.ParkingLobbyManager.getInstance();
+
             String playerName = player.getName().getString();
 
             NetworkHandler.INSTANCE.send(
@@ -36,56 +39,63 @@ public class ServerEventHandler {
                 new SubModeChangePacket(SubModeManager.getInstance().getCurrentMode())
             );
 
-            // Check if player is an admin account (including ops) that needs authentication
-            boolean isAdminAccount = authManager.isAdminAccount(playerName);
-            boolean isOp = player.hasPermissions(2);
+            // Check account type
+            com.example.mysubmod.auth.AuthManager.AccountType accountType = authManager.getAccountType(playerName);
+            MySubMod.LOGGER.info("Player {} login check: accountType={}", playerName, accountType);
 
-            MySubMod.LOGGER.info("Player {} (UUID: {}) login check: isAdminAccount={}, isOp={}", playerName, player.getUUID(), isAdminAccount, isOp);
-
-            // Check if this player needs authentication (admin list OR ops with password set)
-            if (isAdminAccount || isOp) {
-                // Only require authentication if they have a password set
-                if (isAdminAccount) {
-                    MySubMod.LOGGER.info("Sending auth request to player {}", playerName);
-                    String ipAddress = player.getIpAddress();
-
-                    // Check if IP is blacklisted
-                    if (authManager.isIPBlacklisted(ipAddress)) {
-                        long remainingTime = authManager.getRemainingIPBlacklistTime(ipAddress);
-                        long minutes = remainingTime / 60000;
-
-                        player.getServer().execute(() -> {
-                            player.connection.disconnect(net.minecraft.network.chat.Component.literal(
-                                "§4§lIP Blacklistée\n\n§cTrop de tentatives de connexion depuis cette IP.\n§7Temps restant: §e" + minutes + " minute(s)"
-                            ));
-                        });
-                        return;
-                    }
-
-                    // Check if account is blacklisted
-                    if (authManager.isBlacklisted(playerName)) {
-                        // Blacklisted - kick player with remaining time
-                        long remainingTime = authManager.getRemainingBlacklistTime(playerName);
-                        long minutes = remainingTime / 60000;
-
-                        player.getServer().execute(() -> {
-                            player.connection.disconnect(net.minecraft.network.chat.Component.literal(
-                                "§4§lCompte Blacklisté\n\n§cTrop de tentatives de connexion échouées.\n§7Temps restant: §e" + minutes + " minute(s)"
-                            ));
-                        });
-                        return;
-                    }
-
-                    // Not blacklisted - send authentication request
-                    authManager.startAuthenticationProtection(player); // Start 30-second protection
-                    NetworkHandler.INSTANCE.send(
-                        PacketDistributor.PLAYER.with(() -> player),
-                        new com.example.mysubmod.auth.AdminAuthRequestPacket(3) // 3 attempts per session
-                    );
-                }
+            // Priority kick system: If server is full and this is a protected account, kick a free player
+            if ((accountType == com.example.mysubmod.auth.AuthManager.AccountType.ADMIN ||
+                 accountType == com.example.mysubmod.auth.AuthManager.AccountType.PROTECTED_PLAYER)) {
+                checkAndKickForPriority(player, accountType);
             }
 
-            // Send admin status (will be false for unauthenticated admins)
+            // If account needs authentication, put in parking lobby
+            if (accountType == com.example.mysubmod.auth.AuthManager.AccountType.ADMIN ||
+                accountType == com.example.mysubmod.auth.AuthManager.AccountType.PROTECTED_PLAYER) {
+
+                // Check if account is blacklisted
+                boolean isBlacklisted = false;
+                long remainingTime = 0;
+
+                if (accountType == com.example.mysubmod.auth.AuthManager.AccountType.ADMIN) {
+                    isBlacklisted = adminAuthManager.isBlacklisted(playerName);
+                    if (isBlacklisted) {
+                        remainingTime = adminAuthManager.getRemainingBlacklistTime(playerName);
+                    }
+                } else if (accountType == com.example.mysubmod.auth.AuthManager.AccountType.PROTECTED_PLAYER) {
+                    isBlacklisted = authManager.isProtectedPlayerBlacklisted(playerName);
+                    if (isBlacklisted) {
+                        remainingTime = authManager.getRemainingProtectedPlayerBlacklistTime(playerName);
+                    }
+                }
+
+                if (isBlacklisted) {
+                    long minutes = remainingTime / 60000;
+                    player.getServer().execute(() -> {
+                        player.connection.disconnect(Component.literal(
+                            "§4§lCompte Blacklisté\n\n§cTrop de tentatives échouées.\n§7Temps restant: §e" + minutes + " minute(s)"
+                        ));
+                    });
+                    return;
+                }
+
+                // Put player in parking lobby with 60s timeout
+                String accountTypeStr = accountType == com.example.mysubmod.auth.AuthManager.AccountType.ADMIN ? "ADMIN" : "PROTECTED_PLAYER";
+                parkingLobby.addPlayer(player, accountTypeStr);
+
+                // Start 30-second protection against duplicate connections
+                authManager.startAuthenticationProtection(player);
+
+                // Send auth request
+                NetworkHandler.INSTANCE.send(
+                    PacketDistributor.PLAYER.with(() -> player),
+                    new com.example.mysubmod.auth.AdminAuthRequestPacket(3) // 3 attempts
+                );
+
+                MySubMod.LOGGER.info("Player {} added to parking lobby as {}", playerName, accountTypeStr);
+            }
+
+            // Send admin status (will be false for unauthenticated)
             NetworkHandler.INSTANCE.send(
                 PacketDistributor.PLAYER.with(() -> player),
                 new AdminStatusPacket(SubModeManager.getInstance().isAdmin(player))
@@ -98,6 +108,63 @@ public class ServerEventHandler {
         if (event.getEntity() instanceof ServerPlayer player) {
             // Clear authentication state when player disconnects
             com.example.mysubmod.auth.AdminAuthManager.getInstance().handleDisconnect(player);
+            com.example.mysubmod.auth.AuthManager.getInstance().handleDisconnect(player);
+            com.example.mysubmod.auth.ParkingLobbyManager.getInstance().removePlayer(player.getUUID());
         }
+    }
+
+    /**
+     * Priority kick system: If server is full (10 players) and a protected account connects,
+     * kick a random FREE_PLAYER to make room
+     */
+    private static void checkAndKickForPriority(ServerPlayer protectedPlayer, com.example.mysubmod.auth.AuthManager.AccountType accountType) {
+        int maxPlayers = protectedPlayer.server.getMaxPlayers();
+        java.util.List<ServerPlayer> onlinePlayers = protectedPlayer.server.getPlayerList().getPlayers();
+
+        // Check if server is full (including the protected player who just joined)
+        // If we have exactly maxPlayers, we need to kick someone to make room
+        if (onlinePlayers.size() < maxPlayers) {
+            return; // Not full, no kick needed
+        }
+
+        MySubMod.LOGGER.info("Server full ({}/{}), checking for free players to kick for protected account {}",
+            onlinePlayers.size(), maxPlayers, protectedPlayer.getName().getString());
+
+        // Find all FREE_PLAYER accounts currently online (exclude the protected player who just joined)
+        java.util.List<ServerPlayer> freePlayers = new java.util.ArrayList<>();
+        com.example.mysubmod.auth.AuthManager authManager = com.example.mysubmod.auth.AuthManager.getInstance();
+
+        for (ServerPlayer p : onlinePlayers) {
+            if (p.getUUID().equals(protectedPlayer.getUUID())) {
+                continue; // Skip the protected player who just joined
+            }
+
+            com.example.mysubmod.auth.AuthManager.AccountType type = authManager.getAccountType(p.getName().getString());
+            if (type == com.example.mysubmod.auth.AuthManager.AccountType.FREE_PLAYER) {
+                freePlayers.add(p);
+            }
+        }
+
+        if (freePlayers.isEmpty()) {
+            MySubMod.LOGGER.warn("Server full but no free players to kick for {}", protectedPlayer.getName().getString());
+            return;
+        }
+
+        // Kick a random free player
+        java.util.Random random = new java.util.Random();
+        ServerPlayer victimPlayer = freePlayers.get(random.nextInt(freePlayers.size()));
+
+        String accountTypeStr = accountType == com.example.mysubmod.auth.AuthManager.AccountType.ADMIN ? "administrateur" : "joueur protégé";
+
+        MySubMod.LOGGER.info("Kicking free player {} to make room for protected account {}",
+            victimPlayer.getName().getString(), protectedPlayer.getName().getString());
+
+        victimPlayer.getServer().execute(() -> {
+            victimPlayer.connection.disconnect(Component.literal(
+                "§e§lServeur Complet\n\n" +
+                "§7Un " + accountTypeStr + " s'est connecté.\n" +
+                "§7Vous avez été déconnecté pour libérer une place."
+            ));
+        });
     }
 }
