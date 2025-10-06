@@ -438,25 +438,6 @@ public class AdminAuthManager {
         MySubMod.LOGGER.info("Started 30-second authentication protection for {}", player.getName().getString());
     }
 
-    /**
-     * Check if admin is protected from disconnect during authentication
-     */
-    public boolean isProtectedDuringAuth(ServerPlayer player) {
-        Long startTime = authenticationStartTime.get(player.getUUID());
-        if (startTime == null) {
-            return false;
-        }
-
-        long elapsed = System.currentTimeMillis() - startTime;
-        boolean isProtected = elapsed < AUTH_PROTECTION_DURATION;
-
-        if (!isProtected) {
-            // Protection expired, remove entry
-            authenticationStartTime.remove(player.getUUID());
-        }
-
-        return isProtected;
-    }
 
     /**
      * Generate a random salt

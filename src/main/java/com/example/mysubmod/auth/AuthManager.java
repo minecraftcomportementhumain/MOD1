@@ -361,24 +361,6 @@ public class AuthManager {
         MySubMod.LOGGER.info("Started 30-second authentication protection for {}", player.getName().getString());
     }
 
-    /**
-     * Check if player is protected during authentication
-     */
-    public boolean isProtectedDuringAuth(ServerPlayer player) {
-        Long startTime = authenticationStartTime.get(player.getUUID());
-        if (startTime == null) {
-            return false;
-        }
-
-        long elapsed = System.currentTimeMillis() - startTime;
-        boolean isProtected = elapsed < AUTH_PROTECTION_DURATION;
-
-        if (!isProtected) {
-            authenticationStartTime.remove(player.getUUID());
-        }
-
-        return isProtected;
-    }
 
     /**
      * Mark user as authenticated

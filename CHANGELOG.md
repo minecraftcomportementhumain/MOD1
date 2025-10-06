@@ -105,22 +105,29 @@
 
 ### Corrections de bugs
 
-**1. Fix calcul fenêtre garantie**
+**1. Fix ajout immédiat à la queue**
+- **Problème**: Individus pas ajoutés à la queue quand quelqu'un s'authentifie
+- **Cause**: Check `isProtectedDuringAuth` bloquait l'ajout avec message "Veuillez patienter 30 secondes"
+- **Solution**: Suppression du check, ajout direct à la queue si compte occupé
+- **Résultat**: Ajout immédiat en file d'attente, fenêtre de monopole affichée
+- **Code nettoyé**: Méthodes `isProtectedDuringAuth()` supprimées (AuthManager + AdminAuthManager)
+
+**2. Fix calcul fenêtre garantie**
 - **Problème**: Fenêtre changeait si déconnexion précoce
 - **Solution**: Stockage dans `QueueEntry`, jamais raccourcie, seulement prolongée
 - **Résultat**: Promesse toujours tenue
 
-**2. Fix obtention temps restant**
+**3. Fix obtention temps restant**
 - **Problème**: `getRemainingTimeForAccount()` appelé après `removePlayer()`
 - **Solution**: Obtention du temps AVANT suppression de la session
 - **Fichier**: `ServerEventHandler.java:124`
 
-**3. Fix tracking origine queue**
+**4. Fix tracking origine queue**
 - **Problème**: UUID n'existe pas encore au moment du Mixin
 - **Solution**: Clé "accountname:ipaddress" au lieu de UUID
 - **Timing**: Ajout lors `consumeAuthorization()`, lecture lors `addPlayer()`
 
-### Fichiers modifiés (4)
+### Fichiers modifiés (6)
 
 - `ParkingLobbyManager.java` :
   - `QueueEntry` avec fenêtres garanties
@@ -133,8 +140,16 @@
   - Passage temps à `authorizeNextInQueue()`
 
 - `MixinServerLoginPacketListenerImplPlaceNewPlayer.java` :
+  - Suppression check `isProtectedDuringAuth`
+  - Ajout direct à queue si compte occupé
   - Appel `getMonopolyWindow()` pour affichage
   - Format HH:MM:SS avec `SimpleDateFormat`
+
+- `AuthManager.java` :
+  - Suppression méthode `isProtectedDuringAuth()` (inutilisée)
+
+- `AdminAuthManager.java` :
+  - Suppression méthode `isProtectedDuringAuth()` (inutilisée)
 
 ### Exemples de scénarios garantis
 
