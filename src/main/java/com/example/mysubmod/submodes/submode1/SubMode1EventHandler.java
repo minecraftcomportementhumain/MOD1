@@ -65,6 +65,13 @@ public class SubMode1EventHandler {
                 event.setCancellationResult(InteractionResult.FAIL);
                 return;
             }
+
+            // Allow candy usage even when targeting blocks
+            ItemStack heldItem = player.getItemInHand(event.getHand());
+            if (heldItem.is(ModItems.CANDY.get())) {
+                return; // Allow candy usage
+            }
+
             if (SubMode1Manager.getInstance().isPlayerAlive(player.getUUID())) {
                 event.setCanceled(true);
                 event.setCancellationResult(InteractionResult.FAIL);
