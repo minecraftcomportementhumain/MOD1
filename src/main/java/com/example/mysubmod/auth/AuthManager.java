@@ -20,7 +20,7 @@ public class AuthManager {
 
     // Runtime state
     private final Set<UUID> authenticatedUsers = ConcurrentHashMap.newKeySet();
-    private final Map<UUID, Long> authenticationStartTime = new ConcurrentHashMap<>();
+    private final Map<String, Long> authenticationProtectionByAccount = new ConcurrentHashMap<>(); // accountName -> protection end time
 
     private static final int MAX_ATTEMPTS = 3;
     private static final long ACCOUNT_BLACKLIST_DURATION = 3 * 60 * 1000; // 3 minutes
@@ -222,6 +222,11 @@ public class AuthManager {
             // Success - clear attempts and authenticate
             clearProtectedPlayerAttempts(playerName);
             authenticatedUsers.add(player.getUUID());
+            clearAuthenticationProtection(playerName);
+
+            // Handle transition from restricted to normal player
+            handleAuthenticationTransition(player.getUUID());
+
             MySubMod.LOGGER.info("Protected player {} successfully authenticated", playerName);
             return 0;
         } else {
@@ -354,11 +359,42 @@ public class AuthManager {
     }
 
     /**
-     * Start authentication protection (30 seconds)
+     * Set authentication protection to current time + 30 seconds
+     * Used when someone connects during monopoly window (with authorized IP)
+     * This gives them 30 seconds to authenticate without others connecting
      */
-    public void startAuthenticationProtection(ServerPlayer player) {
-        authenticationStartTime.put(player.getUUID(), System.currentTimeMillis());
-        MySubMod.LOGGER.info("Started 30-second authentication protection for {}", player.getName().getString());
+    public void updateAuthenticationProtection(String accountName) {
+        long protectionEndTime = System.currentTimeMillis() + AUTH_PROTECTION_DURATION;
+        authenticationProtectionByAccount.put(accountName, protectionEndTime);
+        MySubMod.LOGGER.info("Set 30-second authentication protection for {} (end time: {})", accountName, protectionEndTime);
+    }
+
+    /**
+     * Check if account has active authentication protection
+     * Returns remaining time in milliseconds, or 0 if no protection
+     */
+    public long getRemainingProtectionTime(String accountName) {
+        Long protectionEndTime = authenticationProtectionByAccount.get(accountName);
+        if (protectionEndTime == null) {
+            return 0;
+        }
+
+        long remaining = protectionEndTime - System.currentTimeMillis();
+        if (remaining <= 0) {
+            // Protection expired
+            authenticationProtectionByAccount.remove(accountName);
+            return 0;
+        }
+
+        return remaining;
+    }
+
+    /**
+     * Clear authentication protection for an account
+     */
+    public void clearAuthenticationProtection(String accountName) {
+        authenticationProtectionByAccount.remove(accountName);
+        MySubMod.LOGGER.info("Cleared authentication protection for {}", accountName);
     }
 
 
@@ -367,7 +403,90 @@ public class AuthManager {
      */
     public void markAuthenticated(UUID playerId) {
         authenticatedUsers.add(playerId);
-        authenticationStartTime.remove(playerId);
+
+        // Clear protection by finding the player's account name
+        net.minecraft.server.MinecraftServer server = net.minecraftforge.server.ServerLifecycleHooks.getCurrentServer();
+        if (server != null) {
+            net.minecraft.server.level.ServerPlayer player = server.getPlayerList().getPlayer(playerId);
+            if (player != null) {
+                clearAuthenticationProtection(player.getName().getString());
+            }
+        }
+
+        // Handle transition from restricted to normal player
+        handleAuthenticationTransition(playerId);
+    }
+
+    /**
+     * Handle player transition from unauthenticated (restricted) to authenticated (normal)
+     * Treats the player as if they just connected for the first time
+     */
+    private void handleAuthenticationTransition(UUID playerId) {
+        // Find the player by UUID
+        net.minecraft.server.MinecraftServer server = net.minecraftforge.server.ServerLifecycleHooks.getCurrentServer();
+        if (server == null) return;
+
+        net.minecraft.server.level.ServerPlayer player = server.getPlayerList().getPlayer(playerId);
+        if (player == null) return;
+
+        com.example.mysubmod.MySubMod.LOGGER.info("Handling authentication transition for protected player: {}", player.getName().getString());
+
+        // Check if server is full and kick a FREE_PLAYER if necessary
+        // Must be called BEFORE removing from parking lobby so the count is accurate
+        com.example.mysubmod.ServerEventHandler.checkAndKickForPriority(player, AccountType.PROTECTED_PLAYER);
+
+        // Remove invisibility
+        player.setInvisible(false);
+
+        // Remove from parking lobby
+        com.example.mysubmod.auth.ParkingLobbyManager.getInstance().removePlayer(playerId);
+
+        // Send player info to all clients NOW that they're authenticated (wasn't sent during initial connection)
+        net.minecraft.network.protocol.game.ClientboundPlayerInfoUpdatePacket addPacket =
+            net.minecraft.network.protocol.game.ClientboundPlayerInfoUpdatePacket.createPlayerInitializing(java.util.List.of(player));
+        server.getPlayerList().broadcastAll(addPacket);
+        com.example.mysubmod.MySubMod.LOGGER.info("Broadcasting authenticated player {} to all clients", player.getName().getString());
+
+        // Send success message
+        player.sendSystemMessage(net.minecraft.network.chat.Component.literal("§a§lAuthentification réussie!"));
+
+        // Check if player was disconnected during SubMode1 - if so, restore their state directly
+        com.example.mysubmod.submodes.SubModeManager subModeManager = com.example.mysubmod.submodes.SubModeManager.getInstance();
+        com.example.mysubmod.submodes.SubMode currentMode = subModeManager.getCurrentMode();
+
+        if (currentMode == com.example.mysubmod.submodes.SubMode.SUB_MODE_1) {
+            com.example.mysubmod.submodes.submode1.SubMode1Manager subMode1Manager =
+                com.example.mysubmod.submodes.submode1.SubMode1Manager.getInstance();
+
+            if (subMode1Manager.wasPlayerDisconnected(player.getName().getString())) {
+                // Player was disconnected during the game - restore their position and state
+                com.example.mysubmod.MySubMod.LOGGER.info("Player {} was disconnected during SubMode1, restoring state", player.getName().getString());
+                subMode1Manager.handlePlayerReconnection(player);
+                return;
+            }
+        }
+
+        // Player is authenticating for the first time this session - treat as new join
+        // Call the appropriate submode event handler
+        if (currentMode == com.example.mysubmod.submodes.SubMode.SUB_MODE_1) {
+            com.example.mysubmod.submodes.submode1.SubMode1EventHandler.onPlayerJoin(
+                new net.minecraftforge.event.entity.player.PlayerEvent.PlayerLoggedInEvent(player)
+            );
+        } else if (currentMode == com.example.mysubmod.submodes.SubMode.WAITING_ROOM) {
+            com.example.mysubmod.submodes.waitingroom.WaitingRoomEventHandler.onPlayerJoin(
+                new net.minecraftforge.event.entity.player.PlayerEvent.PlayerLoggedInEvent(player)
+            );
+        } else {
+            // No active submode - teleport to spawn
+            net.minecraft.server.level.ServerLevel overworld = server.overworld();
+            if (overworld != null) {
+                net.minecraft.core.BlockPos spawnPos = overworld.getSharedSpawnPos();
+                net.minecraft.core.BlockPos safePos = overworld.getHeightmapPos(net.minecraft.world.level.levelgen.Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, spawnPos);
+                player.teleportTo(overworld, safePos.getX() + 0.5, safePos.getY(), safePos.getZ() + 0.5, 0, 0);
+            }
+        }
+
+        com.example.mysubmod.MySubMod.LOGGER.info("Protected player {} successfully transitioned from restricted to normal", player.getName().getString());
     }
 
     /**
@@ -382,7 +501,8 @@ public class AuthManager {
      */
     public void handleDisconnect(ServerPlayer player) {
         authenticatedUsers.remove(player.getUUID());
-        authenticationStartTime.remove(player.getUUID());
+        // Note: We intentionally do NOT clear authenticationProtectionByAccount here
+        // The protection should persist even after disconnect to prevent rapid reconnections
     }
 
     // Hash and salt utilities

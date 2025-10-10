@@ -1,12 +1,14 @@
 package com.example.mysubmod.submodes.submode1;
 
 import com.example.mysubmod.MySubMod;
+import com.example.mysubmod.util.PlayerFilterUtil;
 import net.minecraft.network.chat.Component;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerPlayer;
 
 import java.util.Timer;
 import java.util.TimerTask;
+import java.util.UUID;
 
 public class SubMode1HealthManager {
     private static SubMode1HealthManager instance;
@@ -36,11 +38,15 @@ public class SubMode1HealthManager {
                         return;
                     }
 
-                    for (ServerPlayer player : server.getPlayerList().getPlayers()) {
+                    // Degrade health for connected players
+                    for (ServerPlayer player : PlayerFilterUtil.getAuthenticatedPlayers(server)) {
                         if (SubMode1Manager.getInstance().isPlayerAlive(player.getUUID())) {
                             degradePlayerHealth(player);
                         }
                     }
+
+                    // Check disconnected players and handle deaths server-side
+                    checkDisconnectedPlayersHealth(server);
                 });
             }
         }, TICK_INTERVAL, TICK_INTERVAL);
@@ -76,6 +82,94 @@ public class SubMode1HealthManager {
         }
     }
 
+    /**
+     * Check disconnected players' health server-side and handle deaths
+     * This ensures the game ends even if disconnected players die while offline
+     */
+    private void checkDisconnectedPlayersHealth(MinecraftServer server) {
+        SubMode1Manager manager = SubMode1Manager.getInstance();
+
+        // Get snapshot of disconnected players
+        java.util.Map<String, ?> disconnectedPlayers = manager.getDisconnectedPlayersInfo();
+        long currentTime = System.currentTimeMillis();
+        long gameStartTime = manager.getGameStartTime();
+
+        if (gameStartTime <= 0) return; // Game hasn't started yet
+
+        for (java.util.Map.Entry<String, ?> entry : disconnectedPlayers.entrySet()) {
+            String playerName = entry.getKey();
+            Object infoObj = entry.getValue();
+
+            // Use reflection to access DisconnectInfo fields since it's private
+            try {
+                java.lang.reflect.Field uuidField = infoObj.getClass().getDeclaredField("oldUUID");
+                java.lang.reflect.Field disconnectTimeField = infoObj.getClass().getDeclaredField("disconnectTime");
+                java.lang.reflect.Field healthField = infoObj.getClass().getDeclaredField("healthAtDisconnect");
+                java.lang.reflect.Field isDeadField = infoObj.getClass().getDeclaredField("isDead");
+
+                uuidField.setAccessible(true);
+                disconnectTimeField.setAccessible(true);
+                healthField.setAccessible(true);
+                isDeadField.setAccessible(true);
+
+                UUID playerId = (UUID) uuidField.get(infoObj);
+                long disconnectTime = disconnectTimeField.getLong(infoObj);
+                float healthAtDisconnect = healthField.getFloat(infoObj);
+                boolean isDead = isDeadField.getBoolean(infoObj);
+
+                // Skip players already marked as dead
+                if (isDead) {
+                    continue;
+                }
+
+                // Only check players who are still marked as alive
+                if (!manager.isPlayerAlive(playerId)) {
+                    continue;
+                }
+
+                // Calculate health based on time disconnected
+                long effectiveDisconnectTime = Math.max(disconnectTime, gameStartTime);
+                long msFromGameStartAtDisconnect = effectiveDisconnectTime - gameStartTime;
+                long msFromGameStartNow = currentTime - gameStartTime;
+
+                long tickNumberAtDisconnect = msFromGameStartAtDisconnect / 10000;
+                long tickNumberNow = msFromGameStartNow / 10000;
+
+                int missedHealthTicks = (int) (tickNumberNow - tickNumberAtDisconnect);
+                float currentHealth = healthAtDisconnect - (missedHealthTicks * HEALTH_LOSS_PER_TICK);
+
+                // Player has died while disconnected
+                if (currentHealth <= 0.0f) {
+                    MySubMod.LOGGER.info("Disconnected player {} died server-side (health: {} -> {}, missed {} ticks)",
+                        playerName, healthAtDisconnect, currentHealth, missedHealthTicks);
+
+                    // Handle death server-side
+                    manager.handleDisconnectedPlayerDeath(playerName, playerId);
+
+                    // Broadcast death message
+                    String deathMessage = "§e" + playerName + " §cest mort pendant sa déconnexion !";
+                    for (ServerPlayer p : PlayerFilterUtil.getAuthenticatedPlayers(server)) {
+                        p.sendSystemMessage(Component.literal(deathMessage));
+                    }
+
+                    // Check if all players are dead
+                    if (manager.getAlivePlayers().isEmpty()) {
+                        MySubMod.LOGGER.info("All players are dead (including disconnected) - ending game");
+                        server.execute(() -> {
+                            for (ServerPlayer p : PlayerFilterUtil.getAuthenticatedPlayers(server)) {
+                                p.sendSystemMessage(Component.literal("§c§lTous les joueurs sont morts !"));
+                            }
+                            manager.endGame(server);
+                        });
+                        return; // Stop checking, game is ending
+                    }
+                }
+            } catch (Exception e) {
+                MySubMod.LOGGER.error("Error checking disconnected player health: {}", e.getMessage());
+            }
+        }
+    }
+
     private void handlePlayerDeath(ServerPlayer player) {
         player.sendSystemMessage(Component.literal("§cVous êtes mort ! Téléportation vers la zone spectateur..."));
 
@@ -90,7 +184,7 @@ public class SubMode1HealthManager {
 
         // Broadcast death message
         String deathMessage = "§e" + player.getName().getString() + " §cest mort !";
-        for (ServerPlayer p : player.server.getPlayerList().getPlayers()) {
+        for (ServerPlayer p : PlayerFilterUtil.getAuthenticatedPlayers(player.server)) {
             p.sendSystemMessage(Component.literal(deathMessage));
         }
 
@@ -103,7 +197,7 @@ public class SubMode1HealthManager {
         if (SubMode1Manager.getInstance().getAlivePlayers().isEmpty()) {
             MySubMod.LOGGER.info("All players are dead - ending game");
             player.server.execute(() -> {
-                for (ServerPlayer p : player.server.getPlayerList().getPlayers()) {
+                for (ServerPlayer p : PlayerFilterUtil.getAuthenticatedPlayers(player.server)) {
                     p.sendSystemMessage(Component.literal("§c§lTous les joueurs sont morts !"));
                 }
                 SubMode1Manager.getInstance().endGame(player.server);

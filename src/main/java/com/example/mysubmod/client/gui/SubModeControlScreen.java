@@ -16,11 +16,11 @@ public class SubModeControlScreen extends Screen {
     private static final int BUTTON_HEIGHT = 20;
     private static final int BUTTON_SPACING = 25;
 
-    private final int nonAdminPlayerCount;
+    private final int playerCount;
 
-    public SubModeControlScreen(int nonAdminPlayerCount) {
+    public SubModeControlScreen(int playerCount) {
         super(Component.literal("Contrôle des Sous-modes"));
-        this.nonAdminPlayerCount = nonAdminPlayerCount;
+        this.playerCount = playerCount;
     }
 
     @Override
@@ -105,8 +105,8 @@ public class SubModeControlScreen extends Screen {
         String currentModeText = "Mode actuel: " + ClientSubModeManager.getCurrentMode().getDisplayName();
         guiGraphics.drawCenteredString(this.font, Component.literal(currentModeText), centerX, titleY + 20, 0xAAAAAA);
 
-        // Display non-admin player count
-        String playerCountText = "Joueurs connectés: " + nonAdminPlayerCount;
+        // Display player count (same as TAB - excludes unauthenticated and admins)
+        String playerCountText = "Joueurs connectés: " + playerCount;
         guiGraphics.drawCenteredString(this.font, Component.literal(playerCountText), centerX, titleY + 35, 0x00FF00);
 
         super.render(guiGraphics, mouseX, mouseY, partialTick);

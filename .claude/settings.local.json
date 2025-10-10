@@ -4,7 +4,13 @@
       "Bash(git push:*)",
       "Bash(gradlew.bat build:*)",
       "Bash(Select-Object -Last 50)",
-      "Bash(find:*)"
+      "Bash(find:*)",
+      "Bash(./gradlew.bat build:*)",
+      "Bash(./gradlew.bat runServer:*)",
+      "Bash(javac:*)",
+      "mcp__ide__getDiagnostics",
+      "Bash(powershell.exe:*)",
+      "Read(//c/Users/Olivier Lafontaine/Desktop/Projet Minecraft/**)"
     ],
     "deny": [],
     "ask": []

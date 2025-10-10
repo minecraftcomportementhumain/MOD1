@@ -175,19 +175,18 @@ public class SubModeManager {
 
     public boolean isAdmin(ServerPlayer player) {
         String playerName = player.getName().getString().toLowerCase();
+        com.example.mysubmod.auth.AdminAuthManager authManager = com.example.mysubmod.auth.AdminAuthManager.getInstance();
 
         // Check if player is in admin list
         if (admins.contains(playerName)) {
             // Admin accounts MUST be authenticated
-            boolean authenticated = com.example.mysubmod.auth.AdminAuthManager.getInstance().isAuthenticated(player);
+            boolean authenticated = authManager.isAuthenticated(player);
             MySubMod.LOGGER.info("isAdmin check (admin list): {} -> authenticated={}", playerName, authenticated);
             return authenticated;
         }
 
         // Server operators (permission level 2+) are also admins but must authenticate
         if (player.hasPermissions(2)) {
-            // Add them to admin list if not already there
-            com.example.mysubmod.auth.AdminAuthManager authManager = com.example.mysubmod.auth.AdminAuthManager.getInstance();
             if (authManager.isAdminAccount(playerName)) {
                 // They have a password set - require authentication
                 boolean authenticated = authManager.isAuthenticated(player);
@@ -199,7 +198,14 @@ public class SubModeManager {
             return true;
         }
 
-        MySubMod.LOGGER.info("isAdmin check: {} -> false (not op, not in admin list)", playerName);
+        // Check if player has an admin account (even if not op and not in admin list)
+        if (authManager.isAdminAccount(playerName)) {
+            boolean authenticated = authManager.isAuthenticated(player);
+            MySubMod.LOGGER.info("isAdmin check (admin account): {} -> authenticated={}", playerName, authenticated);
+            return authenticated;
+        }
+
+        MySubMod.LOGGER.info("isAdmin check: {} -> false (not op, not in admin list, no admin account)", playerName);
         return false;
     }
 

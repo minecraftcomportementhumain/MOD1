@@ -1,6 +1,7 @@
 package com.example.mysubmod.submodes.waitingroom;
 
 import com.example.mysubmod.MySubMod;
+import com.example.mysubmod.util.PlayerFilterUtil;
 import net.minecraft.core.BlockPos;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerLevel;
@@ -47,9 +48,9 @@ public class WaitingRoomManager {
     public void deactivate(MinecraftServer server) {
         MySubMod.LOGGER.info("Deactivating waiting room mode");
 
-        // Close all open screens for all players
+        // Close all open screens for all authenticated players
         try {
-            for (ServerPlayer player : server.getPlayerList().getPlayers()) {
+            for (ServerPlayer player : PlayerFilterUtil.getAuthenticatedPlayers(server)) {
                 player.closeContainer();
             }
             MySubMod.LOGGER.info("Closed all open screens for players");
@@ -121,7 +122,7 @@ public class WaitingRoomManager {
     }
 
     private void teleportAllPlayersToWaitingRoom(MinecraftServer server) {
-        for (ServerPlayer player : server.getPlayerList().getPlayers()) {
+        for (ServerPlayer player : PlayerFilterUtil.getAuthenticatedPlayers(server)) {
             teleportPlayerToWaitingRoom(player);
         }
     }
@@ -156,7 +157,7 @@ public class WaitingRoomManager {
     }
 
     private void restoreAllInventories(MinecraftServer server) {
-        for (ServerPlayer player : server.getPlayerList().getPlayers()) {
+        for (ServerPlayer player : PlayerFilterUtil.getAuthenticatedPlayers(server)) {
             restorePlayerInventory(player);
         }
     }
@@ -178,7 +179,7 @@ public class WaitingRoomManager {
             @Override
             public void run() {
                 Component message = Component.literal("§e[Salle d'attente] Veuillez attendre qu'un administrateur lance un jeu");
-                for (ServerPlayer player : server.getPlayerList().getPlayers()) {
+                for (ServerPlayer player : PlayerFilterUtil.getAuthenticatedPlayers(server)) {
                     player.sendSystemMessage(message);
                 }
             }

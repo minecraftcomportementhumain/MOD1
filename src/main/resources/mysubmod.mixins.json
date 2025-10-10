@@ -6,7 +6,10 @@
   "refmap": "mysubmod.refmap.json",
   "mixins": [
     "MixinServerLoginPacketListenerImplPlaceNewPlayer",
-    "MixinPlayerListServerFull"
+    "MixinPlayerListServerFull",
+    "MixinPlayerListJoinLeaveMessages",
+    "MixinPlayerListCount",
+    "MixinPlayerListBroadcastFilter"
   ],
   "injectors": {
     "defaultRequire": 1

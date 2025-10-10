@@ -214,6 +214,32 @@ public class NetworkHandler {
             com.example.mysubmod.submodes.submode1.network.GameEndPacket::decode,
             com.example.mysubmod.submodes.submode1.network.GameEndPacket::handle
         );
+
+        // Queue token packets
+        INSTANCE.registerMessage(
+            packetId++,
+            com.example.mysubmod.auth.QueueTokenPacket.class,
+            com.example.mysubmod.auth.QueueTokenPacket::encode,
+            com.example.mysubmod.auth.QueueTokenPacket::decode,
+            com.example.mysubmod.auth.QueueTokenPacket::handle
+        );
+
+        INSTANCE.registerMessage(
+            packetId++,
+            com.example.mysubmod.auth.QueueTokenRequestPacket.class,
+            com.example.mysubmod.auth.QueueTokenRequestPacket::encode,
+            com.example.mysubmod.auth.QueueTokenRequestPacket::decode,
+            com.example.mysubmod.auth.QueueTokenRequestPacket::handle
+        );
+
+        INSTANCE.registerMessage(
+            packetId++,
+            com.example.mysubmod.auth.QueueTokenVerifyPacket.class,
+            com.example.mysubmod.auth.QueueTokenVerifyPacket::encode,
+            com.example.mysubmod.auth.QueueTokenVerifyPacket::decode,
+            com.example.mysubmod.auth.QueueTokenVerifyPacket::handle,
+            java.util.Optional.of(NetworkDirection.PLAY_TO_SERVER)
+        );
     }
 
     /**

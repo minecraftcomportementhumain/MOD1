@@ -3,6 +3,7 @@ package com.example.mysubmod.submodes.waitingroom;
 import com.example.mysubmod.MySubMod;
 import com.example.mysubmod.submodes.SubMode;
 import com.example.mysubmod.submodes.SubModeManager;
+import com.example.mysubmod.util.PlayerFilterUtil;
 import net.minecraft.core.BlockPos;
 import net.minecraft.network.chat.Component;
 import net.minecraft.server.level.ServerPlayer;
@@ -30,10 +31,15 @@ public class WaitingRoomEventHandler {
         }
 
         if (event.getSource().getEntity() instanceof ServerPlayer attacker) {
-            if (WaitingRoomManager.getInstance().isPlayerInWaitingRoom(attacker)) {
+            // Skip restricted players (unauthenticated)
+            if (PlayerFilterUtil.isRestrictedPlayer(attacker)) {
                 event.setCanceled(true);
-                attacker.sendSystemMessage(Component.literal("§cVous ne pouvez pas attaquer en salle d'attente"));
+                return;
             }
+
+            // All authenticated players in waiting room cannot attack
+            event.setCanceled(true);
+            attacker.sendSystemMessage(Component.literal("§cVous ne pouvez pas attaquer en salle d'attente"));
         }
     }
 
@@ -44,11 +50,17 @@ public class WaitingRoomEventHandler {
         }
 
         if (event.getEntity() instanceof ServerPlayer player) {
-            if (WaitingRoomManager.getInstance().isPlayerInWaitingRoom(player)) {
+            // Skip restricted players (unauthenticated)
+            if (PlayerFilterUtil.isRestrictedPlayer(player)) {
                 event.setCanceled(true);
                 event.setCancellationResult(InteractionResult.FAIL);
-                player.sendSystemMessage(Component.literal("§cVous ne pouvez pas interagir avec les blocs en salle d'attente"));
+                return;
             }
+
+            // All authenticated players in waiting room cannot interact with blocks
+            event.setCanceled(true);
+            event.setCancellationResult(InteractionResult.FAIL);
+            player.sendSystemMessage(Component.literal("§cVous ne pouvez pas interagir avec les blocs en salle d'attente"));
         }
     }
 
@@ -59,11 +71,17 @@ public class WaitingRoomEventHandler {
         }
 
         if (event.getEntity() instanceof ServerPlayer player) {
-            if (WaitingRoomManager.getInstance().isPlayerInWaitingRoom(player)) {
+            // Skip restricted players (unauthenticated)
+            if (PlayerFilterUtil.isRestrictedPlayer(player)) {
                 event.setCanceled(true);
                 event.setCancellationResult(InteractionResult.FAIL);
-                player.sendSystemMessage(Component.literal("§cVous ne pouvez pas utiliser d'objets en salle d'attente"));
+                return;
             }
+
+            // All authenticated players in waiting room cannot use items
+            event.setCanceled(true);
+            event.setCancellationResult(InteractionResult.FAIL);
+            player.sendSystemMessage(Component.literal("§cVous ne pouvez pas utiliser d'objets en salle d'attente"));
         }
     }
 
@@ -74,10 +92,15 @@ public class WaitingRoomEventHandler {
         }
 
         if (event.getPlayer() instanceof ServerPlayer player) {
-            if (WaitingRoomManager.getInstance().isPlayerInWaitingRoom(player)) {
+            // Skip restricted players (unauthenticated)
+            if (PlayerFilterUtil.isRestrictedPlayer(player)) {
                 event.setCanceled(true);
-                player.sendSystemMessage(Component.literal("§cVous ne pouvez pas casser de blocs en salle d'attente"));
+                return;
             }
+
+            // All authenticated players in waiting room cannot break blocks
+            event.setCanceled(true);
+            player.sendSystemMessage(Component.literal("§cVous ne pouvez pas casser de blocs en salle d'attente"));
         }
     }
 
@@ -88,10 +111,15 @@ public class WaitingRoomEventHandler {
         }
 
         if (event.getEntity() instanceof ServerPlayer player) {
-            if (WaitingRoomManager.getInstance().isPlayerInWaitingRoom(player)) {
+            // Skip restricted players (unauthenticated)
+            if (PlayerFilterUtil.isRestrictedPlayer(player)) {
                 event.setCanceled(true);
-                player.sendSystemMessage(Component.literal("§cVous ne pouvez pas placer de blocs en salle d'attente"));
+                return;
             }
+
+            // All authenticated players in waiting room cannot place blocks
+            event.setCanceled(true);
+            player.sendSystemMessage(Component.literal("§cVous ne pouvez pas placer de blocs en salle d'attente"));
         }
     }
 
@@ -102,10 +130,15 @@ public class WaitingRoomEventHandler {
         }
 
         if (event.getEntity() instanceof ServerPlayer player) {
-            if (WaitingRoomManager.getInstance().isPlayerInWaitingRoom(player)) {
+            // Skip restricted players (unauthenticated)
+            if (PlayerFilterUtil.isRestrictedPlayer(player)) {
                 event.setCanceled(true);
-                player.sendSystemMessage(Component.literal("§cVous ne pouvez pas fabriquer d'objets en salle d'attente"));
+                return;
             }
+
+            // All authenticated players in waiting room cannot craft
+            event.setCanceled(true);
+            player.sendSystemMessage(Component.literal("§cVous ne pouvez pas fabriquer d'objets en salle d'attente"));
         }
     }
 
@@ -116,10 +149,15 @@ public class WaitingRoomEventHandler {
         }
 
         if (event.getPlayer() instanceof ServerPlayer player) {
-            if (WaitingRoomManager.getInstance().isPlayerInWaitingRoom(player)) {
+            // Skip restricted players (unauthenticated)
+            if (PlayerFilterUtil.isRestrictedPlayer(player)) {
                 event.setCanceled(true);
-                player.sendSystemMessage(Component.literal("§cVous ne pouvez pas jeter d'objets en salle d'attente"));
+                return;
             }
+
+            // All authenticated players in waiting room cannot drop items
+            event.setCanceled(true);
+            player.sendSystemMessage(Component.literal("§cVous ne pouvez pas jeter d'objets en salle d'attente"));
         }
     }
 
@@ -130,10 +168,14 @@ public class WaitingRoomEventHandler {
         }
 
         if (event.getEntity() instanceof ServerPlayer player) {
-            if (WaitingRoomManager.getInstance().isPlayerInWaitingRoom(player)) {
-                // Remove items from inventory immediately since pickup can't be canceled
-                player.getInventory().removeItem(event.getStack());
+            // Skip restricted players (unauthenticated)
+            if (PlayerFilterUtil.isRestrictedPlayer(player)) {
+                return;
             }
+
+            // All authenticated players in waiting room cannot pick up items
+            // Remove items from inventory immediately since pickup can't be canceled
+            player.getInventory().removeItem(event.getStack());
         }
     }
 
@@ -141,6 +183,16 @@ public class WaitingRoomEventHandler {
     public static void onPlayerJoin(PlayerEvent.PlayerLoggedInEvent event) {
         if (SubModeManager.getInstance().getCurrentMode() == SubMode.WAITING_ROOM) {
             if (event.getEntity() instanceof ServerPlayer player) {
+                MySubMod.LOGGER.info("DEBUG: WaitingRoomEventHandler.onPlayerJoin called for {}", player.getName().getString());
+
+                // Skip restricted players (unauthenticated and queue candidates)
+                if (PlayerFilterUtil.isRestrictedPlayer(player)) {
+                    MySubMod.LOGGER.info("DEBUG: Player {} is restricted, skipping WaitingRoom teleport", player.getName().getString());
+                    return;
+                }
+
+                MySubMod.LOGGER.info("DEBUG: Player {} is NOT restricted, teleporting to WaitingRoom", player.getName().getString());
+
                 // Clean up orphaned holograms on first player join (when entities are actually loaded)
                 if (!hologramsCleanedUp) {
                     player.server.execute(() -> {

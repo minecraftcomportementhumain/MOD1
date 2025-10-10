@@ -29,6 +29,9 @@ public abstract class MixinServerLoginPacketListenerImplPlaceNewPlayer {
     @Shadow @Final
     MinecraftServer server;
 
+    // Store the original account name for queue candidates
+    private String originalAccountName = null;
+
     @Inject(
         method = "handleAcceptedLogin",
         at = @At("HEAD"),
@@ -39,6 +42,22 @@ public abstract class MixinServerLoginPacketListenerImplPlaceNewPlayer {
 
         String playerName = this.gameProfile.getName();
         MySubMod.LOGGER.info("MIXIN: Processing login for player: {}", playerName);
+
+        // SECURITY: Block free players trying to exploit the "_Q_" prefix
+        // Only queue candidates created by our system should have this prefix
+        if (playerName.startsWith("_Q_")) {
+            com.example.mysubmod.auth.ParkingLobbyManager parkingLobby = com.example.mysubmod.auth.ParkingLobbyManager.getInstance();
+            if (!parkingLobby.isTemporaryQueueName(playerName)) {
+                // This is NOT a legitimate queue candidate - block connection
+                MySubMod.LOGGER.warn("MIXIN: SECURITY - Blocking unauthorized use of reserved prefix '_Q_' by {}", playerName);
+                this.connection.send(new ClientboundLoginDisconnectPacket(
+                    Component.literal("§c§lNom invalide\n\n§7Le préfixe '_Q_' est réservé au système.\n§7Veuillez choisir un autre nom.")
+                ));
+                this.connection.disconnect(Component.literal("Invalid name - reserved prefix"));
+                ci.cancel();
+                return;
+            }
+        }
 
         AdminAuthManager adminAuthManager = AdminAuthManager.getInstance();
         com.example.mysubmod.auth.AuthManager authManager = com.example.mysubmod.auth.AuthManager.getInstance();
@@ -99,84 +118,84 @@ public abstract class MixinServerLoginPacketListenerImplPlaceNewPlayer {
                     this.connection.disconnect(Component.literal("Authenticated user already connected"));
                     ci.cancel();
                 } else {
-                    // Not authenticated - check if same IP is already connected
-                    // Normalize IPs for comparison (handle different formats)
-                    String newIPNormalized = normalizeIP(ipAddress);
-                    String existingIPNormalized = normalizeIP(existingPlayer.getIpAddress());
+                    // Not authenticated - check authorization, queue status, or request password
+                    com.example.mysubmod.auth.ParkingLobbyManager parkingLobby = com.example.mysubmod.auth.ParkingLobbyManager.getInstance();
 
-                    if (newIPNormalized.equals(existingIPNormalized)) {
-                        // Same IP already connected on this account - deny without queue
-                        MySubMod.LOGGER.warn("MIXIN: IP {} denied - same IP already connected on {}", newIPNormalized, playerName);
+                    // Check if authentication protection is active
+                    long protectionRemaining = 0;
+                    if (adminAuthManager.isAdminAccount(playerName)) {
+                        protectionRemaining = adminAuthManager.getRemainingProtectionTime(playerName);
+                    } else {
+                        protectionRemaining = authManager.getRemainingProtectionTime(playerName);
+                    }
+
+                    if (protectionRemaining > 0 && !parkingLobby.isAuthorized(playerName, ipAddress)) {
+                        // Protection active and IP not authorized - BLOCK
+                        long remainingSeconds = (protectionRemaining + 999) / 1000;
+                        MySubMod.LOGGER.warn("MIXIN: IP {} blocked for {} - authentication protection active ({} seconds remaining)",
+                            ipAddress, playerName, remainingSeconds);
                         this.connection.send(new ClientboundLoginDisconnectPacket(
-                            Component.literal("§c§lConnexion refusée\n\n§eVous êtes déjà connecté sur ce compte.")
+                            Component.literal(String.format(
+                                "§c§lCompte en cours d'utilisation\n\n" +
+                                "§eQuelqu'un s'authentifie actuellement sur ce compte.\n" +
+                                "§7Temps restant: §e%d seconde(s)",
+                                remainingSeconds
+                            ))
                         ));
-                        this.connection.disconnect(Component.literal("Same IP already connected"));
+                        this.connection.disconnect(Component.literal("Authentication protection active"));
+                        ci.cancel();
+                        return;
+                    }
+
+                    if (parkingLobby.isAuthorized(playerName, ipAddress)) {
+                        // IP is authorized from monopoly window - SET/UPDATE protection to current time + 30s
+                        MySubMod.LOGGER.info("MIXIN: IP {} authorized for {} - setting protection to current time + 30s", ipAddress, playerName);
+                        if (adminAuthManager.isAdminAccount(playerName)) {
+                            adminAuthManager.updateAuthenticationProtection(playerName);
+                        } else {
+                            authManager.updateAuthenticationProtection(playerName);
+                        }
+
+                        // Don't consume authorization yet - will be consumed after token verification
+                        MySubMod.LOGGER.info("MIXIN: IP {} authorized for {} - allowing connection (token verification pending)", ipAddress, playerName);
+                        // Don't cancel - let vanilla kick the old player
+                    } else if (parkingLobby.isAccountBeingAuthenticated(playerName) && parkingLobby.hasQueueRoom(playerName)) {
+                        // Someone is authenticating AND there's room in queue - assign temporary name to avoid kicking existing player
+                        // Max 16 chars for Minecraft username limit
+                        // Format: _Q_<shortName>_<shortTimestamp>
+                        String shortTimestamp = String.valueOf(System.currentTimeMillis() % 100000); // Last 5 digits
+                        String shortName = playerName.length() > 7 ? playerName.substring(0, 7) : playerName;
+                        String temporaryName = "_Q_" + shortName + "_" + shortTimestamp;
+
+                        // Register the temporary name mapping
+                        parkingLobby.registerTemporaryName(temporaryName, playerName);
+
+                        // Modify the GameProfile to use temporary name
+                        this.gameProfile = new com.mojang.authlib.GameProfile(
+                            this.gameProfile.getId(),
+                            temporaryName
+                        );
+
+                        MySubMod.LOGGER.info("MIXIN: IP {} connecting as queue candidate for {} with temporary name: {}",
+                            ipAddress, playerName, temporaryName);
+
+                        // Don't cancel - let them connect with temporary name and verify password
+                    } else if (!parkingLobby.isAccountBeingAuthenticated(playerName)) {
+                        // No one is authenticating - deny connection (can't join queue if no one is authenticating)
+                        MySubMod.LOGGER.warn("MIXIN: IP {} rejected - no authentication in progress for {}", ipAddress, playerName);
+                        this.connection.send(new ClientboundLoginDisconnectPacket(
+                            Component.literal("§c§lConnexion refusée\n\n§eCe compte n'est pas en cours d'authentification.\n§7Impossible de rejoindre la file d'attente.")
+                        ));
+                        this.connection.disconnect(Component.literal("No authentication in progress"));
                         ci.cancel();
                     } else {
-                        // Different IP - check authorization or add to queue
-                        com.example.mysubmod.auth.ParkingLobbyManager parkingLobby = com.example.mysubmod.auth.ParkingLobbyManager.getInstance();
-                        if (parkingLobby.isAuthorized(playerName, ipAddress)) {
-                            // Authorized - allow connection and consume authorization
-                            MySubMod.LOGGER.info("MIXIN: IP {} authorized for {} - allowing connection", ipAddress, playerName);
-                            parkingLobby.consumeAuthorization(playerName, ipAddress);
-                            // Don't cancel - let vanilla kick the old player
-                        } else {
-                            // Not authorized - add to queue
-                        int queuePosition = parkingLobby.addToQueue(playerName, ipAddress);
-                        if (queuePosition == -2) {
-                            // IP is currently authenticating on this account
-                            MySubMod.LOGGER.warn("MIXIN: IP {} rejected - already authenticating on {}", ipAddress, playerName);
-                            this.connection.send(new ClientboundLoginDisconnectPacket(
-                                Component.literal("§c§lConnexion refusée\n\n§eVotre IP est déjà en cours d'authentification sur ce compte.")
-                            ));
-                            this.connection.disconnect(Component.literal("IP already authenticating"));
-                            ci.cancel();
-                        } else if (queuePosition == -1) {
-                            // Too many queue positions for this IP
-                            MySubMod.LOGGER.warn("MIXIN: IP {} rejected - too many queue positions", ipAddress);
-                            this.connection.send(new ClientboundLoginDisconnectPacket(
-                                Component.literal("§c§lConnexion refusée\n\n§eTrop de tentatives de connexion simultanées.\n§7Limite: 3 comptes en attente par IP.")
-                            ));
-                            this.connection.disconnect(Component.literal("Too many queue positions"));
-                            ci.cancel();
-                        } else {
-                            // Added to queue - calculate monopoly window
-                            long[] monopolyWindow = parkingLobby.getMonopolyWindow(playerName, ipAddress);
-                            MySubMod.LOGGER.info("MIXIN: IP {} added to queue for {} at position {}", ipAddress, playerName, queuePosition);
-
-                            String message;
-                            if (monopolyWindow != null) {
-                                // Format times (HH:MM:SS)
-                                java.text.SimpleDateFormat timeFormat = new java.text.SimpleDateFormat("HH:mm:ss");
-                                String startTime = timeFormat.format(new java.util.Date(monopolyWindow[0]));
-                                String endTime = timeFormat.format(new java.util.Date(monopolyWindow[1]));
-
-                                message = String.format(
-                                    "§c§lCe compte est occupé\n\n" +
-                                    "§eVous êtes en file d'attente\n" +
-                                    "§7Position: §f%d\n\n" +
-                                    "§eFenêtre de monopole:\n" +
-                                    "§7De §f%s §7à §f%s\n\n" +
-                                    "§7Vous aurez §e30 secondes§7 pour vous connecter pendant cette fenêtre.",
-                                    queuePosition, startTime, endTime
-                                );
-                            } else {
-                                // Fallback if calculation fails
-                                message = String.format(
-                                    "§c§lCe compte est occupé\n\n" +
-                                    "§eVous êtes en file d'attente\n" +
-                                    "§7Position: §f%d\n\n" +
-                                    "§7Réessayez dans §e60 secondes maximum§7.\n" +
-                                    "§7Vous aurez §e30 secondes§7 pour vous connecter quand ce sera votre tour.",
-                                    queuePosition
-                                );
-                            }
-
-                            this.connection.send(new ClientboundLoginDisconnectPacket(Component.literal(message)));
-                            this.connection.disconnect(Component.literal("Account occupied - queued"));
-                            ci.cancel();
-                        }
-                        }
+                        // Someone is authenticating but queue is full - reject connection
+                        MySubMod.LOGGER.warn("MIXIN: IP {} rejected - queue full for {}", ipAddress, playerName);
+                        this.connection.send(new ClientboundLoginDisconnectPacket(
+                            Component.literal("§c§lConnexion refusée\n\n§eFile d'attente complète pour ce compte.\n§7Maximum: 1 personne en attente.")
+                        ));
+                        this.connection.disconnect(Component.literal("Queue full"));
+                        ci.cancel();
                     }
                 }
             } else {
@@ -189,47 +208,69 @@ public abstract class MixinServerLoginPacketListenerImplPlaceNewPlayer {
                 ci.cancel();
             }
         } else {
-            MySubMod.LOGGER.info("MIXIN: No existing player found with name {}, allowing login", playerName);
-        }
-    }
+            // No existing player with this name
+            MySubMod.LOGGER.info("MIXIN: No existing player found with name {}", playerName);
 
-    /**
-     * Normalize IP address to a comparable format
-     * Handles: /[0:0:0:0:0:0:0:1]:port, /127.0.0.1:port, ::1, 127.0.0.1, etc.
-     */
-    private String normalizeIP(String ip) {
-        if (ip == null) return "";
+            // For protected accounts, check if there's an active queue with IP authorization
+            if (isProtectedAccount) {
+                com.example.mysubmod.auth.ParkingLobbyManager parkingLobby = com.example.mysubmod.auth.ParkingLobbyManager.getInstance();
+                String ipAddress = this.connection.getRemoteAddress().toString();
 
-        // Remove leading slash if present
-        String normalized = ip.startsWith("/") ? ip.substring(1) : ip;
+                // Check if authentication protection is active (30 seconds after someone started authenticating)
+                long protectionRemaining = 0;
+                if (adminAuthManager.isAdminAccount(playerName)) {
+                    protectionRemaining = adminAuthManager.getRemainingProtectionTime(playerName);
+                } else {
+                    protectionRemaining = authManager.getRemainingProtectionTime(playerName);
+                }
 
-        // Handle IPv6 in brackets: [0:0:0:0:0:0:0:1]:port -> 0:0:0:0:0:0:0:1
-        if (normalized.startsWith("[")) {
-            int closeBracket = normalized.indexOf(']');
-            if (closeBracket > 0) {
-                normalized = normalized.substring(1, closeBracket);
+                if (protectionRemaining > 0 && !parkingLobby.isAuthorized(playerName, ipAddress)) {
+                    // Protection active but IP not authorized - BLOCK connection
+                    long remainingSeconds = (protectionRemaining + 999) / 1000; // Round up
+                    MySubMod.LOGGER.warn("MIXIN: IP {} blocked for {} - authentication protection active ({} seconds remaining)",
+                        ipAddress, playerName, remainingSeconds);
+                    this.connection.send(new ClientboundLoginDisconnectPacket(
+                        Component.literal(String.format(
+                            "§c§lCompte en cours d'utilisation\n\n" +
+                            "§eQuelqu'un s'authentifie actuellement sur ce compte.\n" +
+                            "§7Temps restant: §e%d seconde(s)",
+                            remainingSeconds
+                        ))
+                    ));
+                    this.connection.disconnect(Component.literal("Authentication protection active"));
+                    ci.cancel();
+                    return;
+                }
+
+                // Check if this IP is authorized (from monopoly window)
+                if (parkingLobby.isAuthorized(playerName, ipAddress)) {
+                    // IP is authorized from monopoly window - SET/UPDATE protection to current time + 30s
+                    MySubMod.LOGGER.info("MIXIN: IP {} authorized for {} - setting protection to current time + 30s", ipAddress, playerName);
+                    if (adminAuthManager.isAdminAccount(playerName)) {
+                        adminAuthManager.updateAuthenticationProtection(playerName);
+                    } else {
+                        authManager.updateAuthenticationProtection(playerName);
+                    }
+
+                    MySubMod.LOGGER.info("MIXIN: No existing player, IP {} authorized for {} - allowing connection (token verification pending)", ipAddress, playerName);
+                    // Don't consume authorization yet - will be consumed after token verification
+                    // Don't cancel - allow connection
+                } else if (parkingLobby.hasQueue(playerName)) {
+                    // Queue exists but this IP is not authorized
+                    MySubMod.LOGGER.warn("MIXIN: IP {} rejected - queue exists for {} but IP not authorized", ipAddress, playerName);
+                    this.connection.send(new ClientboundLoginDisconnectPacket(
+                        Component.literal("§c§lConnexion refusée\n\n§eUne file d'attente existe pour ce compte.\n§7Seule l'IP autorisée peut se connecter pendant la fenêtre de monopole.")
+                    ));
+                    this.connection.disconnect(Component.literal("IP not authorized"));
+                    ci.cancel();
+                } else {
+                    // No queue, no authorization - allow normal authentication
+                    MySubMod.LOGGER.info("MIXIN: No queue for {}, allowing login for authentication", playerName);
+                }
+            } else {
+                // Free player - allow login
+                MySubMod.LOGGER.info("MIXIN: Free player {}, allowing login", playerName);
             }
-        } else {
-            // Handle IPv4 or simple format: remove port if present
-            // But be careful with IPv6 (has multiple colons)
-            int colonCount = normalized.length() - normalized.replace(":", "").length();
-            if (colonCount == 1) {
-                // IPv4 with port: 127.0.0.1:25565
-                int lastColon = normalized.lastIndexOf(':');
-                normalized = normalized.substring(0, lastColon);
-            }
-            // If colonCount > 1, it's IPv6 without brackets, keep as is
         }
-
-        // Normalize IPv6: ::1 and 0:0:0:0:0:0:0:1 should be same
-        // Expand ::1 to full form
-        if (normalized.contains("::")) {
-            // Simple expansion for localhost
-            if (normalized.equals("::1")) {
-                normalized = "0:0:0:0:0:0:0:1";
-            }
-        }
-
-        return normalized;
     }
 }

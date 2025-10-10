@@ -3,6 +3,7 @@ package com.example.mysubmod.submodes.submode1.timer;
 import com.example.mysubmod.network.NetworkHandler;
 import com.example.mysubmod.submodes.submode1.SubMode1Manager;
 import com.example.mysubmod.submodes.submode1.network.GameTimerPacket;
+import com.example.mysubmod.util.PlayerFilterUtil;
 import net.minecraft.network.chat.Component;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerPlayer;
@@ -37,11 +38,13 @@ public class GameTimer {
                 server.execute(() -> {
                     secondsLeft--;
 
-                    // Send timer update to all players - with safety check
+                    // Send timer update to authenticated players only
                     try {
                         if (server != null && !server.isStopped() && server.getPlayerList() != null) {
-                            NetworkHandler.INSTANCE.send(PacketDistributor.ALL.noArg(),
-                                new GameTimerPacket(secondsLeft));
+                            for (ServerPlayer player : PlayerFilterUtil.getAuthenticatedPlayers(server)) {
+                                NetworkHandler.INSTANCE.send(PacketDistributor.PLAYER.with(() -> player),
+                                    new GameTimerPacket(secondsLeft));
+                            }
                         }
                     } catch (Exception e) {
                         // Ignore network errors during server shutdown
@@ -79,7 +82,7 @@ public class GameTimer {
     private void broadcastTimeWarning(String message) {
         try {
             if (server != null && !server.isStopped() && server.getPlayerList() != null) {
-                for (ServerPlayer player : server.getPlayerList().getPlayers()) {
+                for (ServerPlayer player : PlayerFilterUtil.getAuthenticatedPlayers(server)) {
                     player.sendSystemMessage(Component.literal(message));
                 }
             }
@@ -92,7 +95,7 @@ public class GameTimer {
         try {
             if (server != null && !server.isStopped() && server.getPlayerList() != null) {
                 // Teleport all alive players to spectator platform
-                for (ServerPlayer player : server.getPlayerList().getPlayers()) {
+                for (ServerPlayer player : PlayerFilterUtil.getAuthenticatedPlayers(server)) {
                     if (SubMode1Manager.getInstance().isPlayerAlive(player.getUUID())) {
                         SubMode1Manager.getInstance().teleportToSpectator(player);
                     }

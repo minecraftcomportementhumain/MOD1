@@ -19,16 +19,19 @@ public class ParkingLobbyManager {
 
     private final Map<UUID, AuthSession> activeSessions = new ConcurrentHashMap<>();
     private final Map<String, Queue<QueueEntry>> waitingQueues = new ConcurrentHashMap<>(); // accountName -> queue
+    private final Map<String, Set<UUID>> queueCandidates = new ConcurrentHashMap<>(); // accountName -> Set of UUIDs awaiting password verification
     private final Map<String, String> temporaryWhitelist = new ConcurrentHashMap<>(); // accountName -> authorizedIP
     private final Map<String, Long> whitelistExpiry = new ConcurrentHashMap<>(); // accountName -> expiryTime
     private final Map<String, Boolean> authorizedIPsFromQueue = new ConcurrentHashMap<>(); // Track IPs authorized from queue (accountName -> true)
+    private final Map<String, String> temporaryNameToAccount = new ConcurrentHashMap<>(); // temporaryName -> original accountName
+    private final Map<String, String> activeTokens = new ConcurrentHashMap<>(); // accountName -> active token for current monopoly window
     private final Timer timeoutTimer = new Timer("ParkingLobby-Timeout", true);
 
     private static final long AUTH_TIMEOUT_MS = 60 * 1000; // 60 seconds (default)
     private static final long AUTH_TIMEOUT_FROM_QUEUE_MS = 30 * 1000; // 30 seconds (from queue)
-    private static final long WHITELIST_EXPIRY_MS = 30 * 1000; // 30 seconds to reconnect
+    private static final long WHITELIST_EXPIRY_MS = 45 * 1000; // 45 seconds to reconnect (monopoly window)
     private static final long QUEUE_ENTRY_EXPIRY_MS = 5 * 60 * 1000; // 5 minutes max in queue
-    private static final int MAX_QUEUE_ENTRIES_PER_IP = 3; // Max 3 queue positions per IP globally
+    private static final int MAX_QUEUE_SIZE = 1; // Max 1 person waiting in queue per account
 
     private ParkingLobbyManager() {
         // Start cleanup task for expired queue entries and whitelists
@@ -77,6 +80,7 @@ public class ParkingLobbyManager {
     private static class QueueEntry {
         final String ipAddress;
         final long timestamp;
+        final String token; // Unique token for this queue entry
         long monopolyStartMs; // Guaranteed start time for monopoly window
         long monopolyEndMs;   // Guaranteed end time for monopoly window
 
@@ -85,10 +89,22 @@ public class ParkingLobbyManager {
             this.timestamp = System.currentTimeMillis();
             this.monopolyStartMs = monopolyStartMs;
             this.monopolyEndMs = monopolyEndMs;
+            this.token = generateToken();
         }
 
         boolean isExpired() {
             return System.currentTimeMillis() - timestamp > QUEUE_ENTRY_EXPIRY_MS;
+        }
+
+        private static String generateToken() {
+            // Generate a 6-character alphanumeric token
+            String chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
+            Random random = new Random();
+            StringBuilder token = new StringBuilder(6);
+            for (int i = 0; i < 6; i++) {
+                token.append(chars.charAt(random.nextInt(chars.length())));
+            }
+            return token.toString();
         }
     }
 
@@ -159,9 +175,250 @@ public class ParkingLobbyManager {
             MySubMod.LOGGER.info("Cleared queue for {} ({} entries removed after successful auth)", accountName, cleared);
         }
 
+        // Also clear all queue candidates if any
+        Set<UUID> candidates = queueCandidates.remove(accountName);
+        if (candidates != null && !candidates.isEmpty()) {
+            MySubMod.LOGGER.info("Cleared {} queue candidate(s) for {} after successful auth", candidates.size(), accountName);
+        }
+
         // Also remove any temporary whitelist
         temporaryWhitelist.remove(accountName);
         whitelistExpiry.remove(accountName);
+    }
+
+    /**
+     * Check if a queue exists for this account (either waiting queue or active IP authorization)
+     */
+    public boolean hasQueue(String accountName) {
+        // Check if there are people waiting in queue
+        Queue<QueueEntry> queue = waitingQueues.get(accountName);
+        if (queue != null && !queue.isEmpty()) {
+            return true;
+        }
+
+        // Check if there's an active IP authorization (monopoly window)
+        if (temporaryWhitelist.containsKey(accountName)) {
+            // Verify the authorization hasn't expired
+            Long expiryTime = whitelistExpiry.get(accountName);
+            if (expiryTime != null && System.currentTimeMillis() < expiryTime) {
+                return true; // Active monopoly window
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * Check if there's room in the queue for this account
+     * Only counts actual queue entries (people who entered correct password)
+     * Queue candidates (awaiting password) do NOT count - they can be multiple
+     * Returns true if queue size < MAX_QUEUE_SIZE
+     */
+    public boolean hasQueueRoom(String accountName) {
+        // Check current queue size (only people who entered password)
+        Queue<QueueEntry> queue = waitingQueues.get(accountName);
+        int queueSize = (queue != null) ? queue.size() : 0;
+
+        // Room in queue if actual queue size is below limit
+        // Candidates don't count - multiple people can try to enter password
+        return queueSize < MAX_QUEUE_SIZE;
+    }
+
+    /**
+     * Mark a player as queue candidate (awaiting password verification)
+     * Multiple candidates can exist for the same account
+     */
+    public void addQueueCandidate(String accountName, UUID playerId) {
+        queueCandidates.computeIfAbsent(accountName, k -> ConcurrentHashMap.newKeySet()).add(playerId);
+        MySubMod.LOGGER.info("Player {} marked as queue candidate for {}", playerId, accountName);
+    }
+
+    /**
+     * Check if a player is a queue candidate
+     */
+    public boolean isQueueCandidate(UUID playerId) {
+        for (Set<UUID> candidates : queueCandidates.values()) {
+            if (candidates.contains(playerId)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
+     * Remove a specific queue candidate by UUID (failed password or kicked)
+     */
+    public void removeQueueCandidate(String accountName, UUID playerId) {
+        Set<UUID> candidates = queueCandidates.get(accountName);
+        if (candidates != null) {
+            boolean removed = candidates.remove(playerId);
+            if (removed) {
+                MySubMod.LOGGER.info("Queue candidate removed for {}: {}", accountName, playerId);
+                // Clean up empty sets
+                if (candidates.isEmpty()) {
+                    queueCandidates.remove(accountName);
+                }
+            }
+        }
+    }
+
+    /**
+     * Promote queue candidate to actual queue (after successful password verification)
+     * Returns the queue position, or -1 if queue is full
+     * Thread-safe: uses synchronized block to prevent race conditions
+     */
+    public synchronized int promoteQueueCandidateToQueue(String accountName, UUID playerId, String ipAddress) {
+        Set<UUID> candidates = queueCandidates.get(accountName);
+        if (candidates == null || !candidates.remove(playerId)) {
+            MySubMod.LOGGER.warn("Attempted to promote non-existent queue candidate {} for {}", playerId, accountName);
+            return -1;
+        }
+
+        // Clean up empty sets
+        if (candidates.isEmpty()) {
+            queueCandidates.remove(accountName);
+        }
+
+        // Check if queue is full BEFORE adding (thread-safe check)
+        Queue<QueueEntry> queue = waitingQueues.get(accountName);
+        int currentSize = (queue != null) ? queue.size() : 0;
+
+        if (currentSize >= MAX_QUEUE_SIZE) {
+            // Queue is full - re-add as candidate and reject
+            candidates = queueCandidates.computeIfAbsent(accountName, k -> ConcurrentHashMap.newKeySet());
+            candidates.add(playerId);
+            MySubMod.LOGGER.warn("Queue full for {} - candidate {} rejected (current size: {})",
+                accountName, playerId, currentSize);
+            return -1;
+        }
+
+        // Add to actual queue (but DON'T use the calculated future window - start immediately)
+        int position = addToQueueImmediately(accountName, ipAddress);
+        MySubMod.LOGGER.info("Queue candidate promoted to queue for {} at position {}", accountName, position);
+
+        return position;
+    }
+
+    /**
+     * Add IP to queue with IMMEDIATE monopoly window (starts NOW, not in the future)
+     * Used when someone enters password while indiv1 is authenticating
+     * @return position in queue (always 1 for first entry)
+     */
+    private synchronized int addToQueueImmediately(String accountName, String ipAddress) {
+        // Extract IP without port
+        String ipOnly = extractIPWithoutPort(ipAddress);
+
+        // Get or create queue for this account
+        Queue<QueueEntry> queue = waitingQueues.computeIfAbsent(accountName, k -> new ConcurrentLinkedQueue<>());
+
+        // Check if queue is full
+        if (queue.size() >= MAX_QUEUE_SIZE) {
+            MySubMod.LOGGER.warn("Queue full for {} - rejecting IP {}", accountName, ipOnly);
+            return -1;
+        }
+
+        // Calculate IMMEDIATE monopoly window (starts NOW)
+        long monopolyStartMs = System.currentTimeMillis();
+        long monopolyEndMs = monopolyStartMs + WHITELIST_EXPIRY_MS; // 45 seconds from NOW
+
+        // Add to queue with immediate window
+        QueueEntry newEntry = new QueueEntry(ipOnly, monopolyStartMs, monopolyEndMs);
+        queue.add(newEntry);
+        int position = queue.size();
+
+        MySubMod.LOGGER.info("IP {} added to queue for {} at position {} with IMMEDIATE monopoly window (starts NOW, ends in 45s, token: {})",
+            ipOnly, accountName, position, newEntry.token);
+
+        return position;
+    }
+
+    /**
+     * Kick the player currently authenticating on this account
+     * Called when someone from the queue gets promoted (indiv2 takes over)
+     * @param accountName The account name
+     * @param server The Minecraft server instance
+     */
+    public void kickAuthenticatingPlayer(String accountName, net.minecraft.server.MinecraftServer server) {
+        // Find the player who is currently authenticating on this account
+        for (Map.Entry<UUID, AuthSession> entry : activeSessions.entrySet()) {
+            if (entry.getValue().playerName.equalsIgnoreCase(accountName)) {
+                UUID playerUUID = entry.getKey();
+                net.minecraft.server.level.ServerPlayer player = server.getPlayerList().getPlayer(playerUUID);
+
+                if (player != null) {
+                    MySubMod.LOGGER.info("Kicking authenticating player {} - queue takes over", accountName);
+
+                    // Kick the authenticating player
+                    player.connection.disconnect(Component.literal(
+                        "§c§lConnexion interrompue\n\n" +
+                        "§eUn joueur en file d'attente a priorité.\n" +
+                        "§7Vous avez été déconnecté pour libérer la place."
+                    ));
+
+                    // Remove from parking lobby
+                    removePlayer(playerUUID);
+                }
+                break;
+            }
+        }
+    }
+
+    /**
+     * Kick all remaining queue candidates for an account
+     * Called when someone successfully enters the queue OR when authentication succeeds
+     * @param accountName The account name
+     * @param server The Minecraft server instance
+     * @param reason The reason for kicking (for custom message)
+     */
+    public void kickRemainingQueueCandidates(String accountName, net.minecraft.server.MinecraftServer server, String reason) {
+        MySubMod.LOGGER.info("DEBUG: kickRemainingQueueCandidates called for account: {}, reason: {}", accountName, reason);
+        MySubMod.LOGGER.info("DEBUG: queueCandidates content: {}", queueCandidates.keySet());
+
+        Set<UUID> candidates = queueCandidates.remove(accountName);
+        if (candidates == null || candidates.isEmpty()) {
+            MySubMod.LOGGER.warn("DEBUG: No queue candidates found for account: {}", accountName);
+            return;
+        }
+
+        MySubMod.LOGGER.info("Kicking {} remaining queue candidate(s) for {} - reason: {}",
+            candidates.size(), accountName, reason);
+
+        // Find and kick all players who are still queue candidates
+        for (UUID candidateUUID : candidates) {
+            net.minecraft.server.level.ServerPlayer player = server.getPlayerList().getPlayer(candidateUUID);
+            if (player != null) {
+                // Find the player name from active sessions
+                AuthSession session = activeSessions.get(candidateUUID);
+                String candidateName = session != null ? session.playerName : "unknown";
+
+                MySubMod.LOGGER.info("Kicking queue candidate {} (temp name: {}) - {}",
+                    candidateUUID, candidateName, reason);
+
+                // Kick the player with appropriate message
+                String message;
+                if ("queue_full".equals(reason)) {
+                    message = "§c§lFile d'attente complète\n\n" +
+                              "§eUn autre joueur a entré le mot de passe avant vous.\n" +
+                              "§7La file d'attente est limitée à §e1 personne§7.";
+                } else if ("auth_success".equals(reason)) {
+                    message = "§c§lFile d'attente annulée\n\n" +
+                              "§eLe joueur s'est authentifié avec succès.\n" +
+                              "§7La file d'attente n'est plus nécessaire.";
+                } else {
+                    message = "§c§lFile d'attente annulée\n\n" +
+                              "§7" + reason;
+                }
+
+                player.connection.disconnect(Component.literal(message));
+            }
+        }
+    }
+
+    /**
+     * Kick all remaining queue candidates (convenience method with default reason)
+     */
+    public void kickRemainingQueueCandidates(String accountName, net.minecraft.server.MinecraftServer server) {
+        kickRemainingQueueCandidates(accountName, server, "queue_full");
     }
 
     /**
@@ -207,71 +464,125 @@ public class ParkingLobbyManager {
     }
 
     /**
-     * Extract IP address without port
+     * Check if anyone is currently authenticating on an account (regardless of IP)
+     */
+    public boolean isAccountBeingAuthenticated(String accountName) {
+        for (AuthSession session : activeSessions.values()) {
+            if (session.playerName.equalsIgnoreCase(accountName)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
+     * Get active sessions (for checking queue candidates)
+     */
+    public Map<UUID, String> getActiveSessionPlayers() {
+        Map<UUID, String> result = new java.util.HashMap<>();
+        for (Map.Entry<UUID, AuthSession> entry : activeSessions.entrySet()) {
+            result.put(entry.getKey(), entry.getValue().playerName);
+        }
+        return result;
+    }
+
+    /**
+     * Register a temporary name mapping for queue candidate
+     */
+    public void registerTemporaryName(String temporaryName, String originalAccountName) {
+        temporaryNameToAccount.put(temporaryName, originalAccountName);
+        MySubMod.LOGGER.info("Registered temporary name: {} -> {}", temporaryName, originalAccountName);
+    }
+
+    /**
+     * Get original account name from temporary name
+     */
+    public String getOriginalAccountName(String temporaryName) {
+        return temporaryNameToAccount.get(temporaryName);
+    }
+
+    /**
+     * Remove temporary name mapping
+     */
+    public void removeTemporaryName(String temporaryName) {
+        temporaryNameToAccount.remove(temporaryName);
+    }
+
+    /**
+     * Check if a player name is a temporary queue candidate name
+     */
+    public boolean isTemporaryQueueName(String playerName) {
+        // Check if the name exists in our temporary name mapping
+        // This prevents exploits where a free player creates an account starting with "_Q_"
+        return playerName != null && temporaryNameToAccount.containsKey(playerName);
+    }
+
+    /**
+     * Extract IP address without port and without leading slash
      * Handles both IPv4 (/127.0.0.1:port) and IPv6 (/[::1]:port) formats
      */
     private String extractIPWithoutPort(String ipAddress) {
         if (ipAddress == null) return ipAddress;
 
-        // Check for IPv6 format: /[address]:port
-        int bracketIndex = ipAddress.lastIndexOf(']');
+        String result = ipAddress;
+
+        // Remove leading slash if present
+        if (result.startsWith("/")) {
+            result = result.substring(1);
+        }
+
+        // Check for IPv6 format: [address]:port
+        int bracketIndex = result.lastIndexOf(']');
         if (bracketIndex > 0) {
             // IPv6 - extract everything up to and including the closing bracket
-            return ipAddress.substring(0, bracketIndex + 1);
+            return result.substring(0, bracketIndex + 1);
         }
 
-        // IPv4 format: /address:port
-        int colonIndex = ipAddress.lastIndexOf(':');
+        // IPv4 format: address:port
+        int colonIndex = result.lastIndexOf(':');
         if (colonIndex > 0) {
-            return ipAddress.substring(0, colonIndex);
+            return result.substring(0, colonIndex);
         }
 
-        return ipAddress;
+        return result;
     }
 
     /**
-     * Add IP to queue for account (returns position in queue, or -1 if rejected, -2 if IP is authenticating)
+     * Add IP to queue for account
+     * Multiple entries with the same IP are allowed (distinguished by unique tokens)
+     * @return position in queue (1-based), or -1 if rejected
      */
     public int addToQueue(String accountName, String ipAddress) {
         // Extract IP without port for comparison
         String ipOnly = extractIPWithoutPort(ipAddress);
 
-        // Check if this IP is currently authenticating on this account
-        if (isIPAuthenticatingOnAccount(accountName, ipOnly)) {
-            MySubMod.LOGGER.warn("IP {} rejected from queue - already authenticating on {}", ipOnly, accountName);
-            return -2; // Special code: IP is authenticating
-        }
-
-        // Check if IP already has too many queue positions globally
-        int globalCount = countQueueEntriesForIP(ipOnly);
-        if (globalCount >= MAX_QUEUE_ENTRIES_PER_IP) {
-            MySubMod.LOGGER.warn("IP {} rejected from queue - already has {} positions (max {})",
-                ipOnly, globalCount, MAX_QUEUE_ENTRIES_PER_IP);
-            return -1;
-        }
+        // Note: We do NOT check if IP is currently authenticating
+        // The token system allows multiple clients from the same IP to queue
+        // Each will get a unique token to distinguish them
 
         // Get or create queue for this account
         Queue<QueueEntry> queue = waitingQueues.computeIfAbsent(accountName, k -> new ConcurrentLinkedQueue<>());
 
-        // Check if this IP is already in queue for this account (avoid duplicates)
-        for (QueueEntry entry : queue) {
-            if (extractIPWithoutPort(entry.ipAddress).equals(ipOnly)) {
-                // Already in queue - return current position
-                int position = getPositionInQueue(queue, entry.ipAddress);
-                MySubMod.LOGGER.info("IP {} already in queue for {} at position {}", ipOnly, accountName, position);
-                return position;
-            }
+        // Check if queue is full (MAX_QUEUE_SIZE = 1 person max)
+        if (queue.size() >= MAX_QUEUE_SIZE) {
+            MySubMod.LOGGER.warn("Queue full for {} - rejecting IP {}", accountName, ipOnly);
+            return -1; // Queue full
         }
+
+        // Note: We allow multiple queue entries with the same IP (for different accounts)
+        // Each entry will have a unique token to distinguish different clients
+        // This supports multiple players from the same IP (e.g., same household, same NAT)
 
         // Calculate guaranteed monopoly window for this new entry
         long[] window = calculateGuaranteedMonopolyWindow(accountName, queue.size() + 1);
 
-        // Add to queue with guaranteed window
-        queue.add(new QueueEntry(ipAddress, window[0], window[1]));
+        // Add to queue with guaranteed window using normalized IP (without port, for consistent comparison)
+        QueueEntry newEntry = new QueueEntry(ipOnly, window[0], window[1]);
+        queue.add(newEntry);
         int position = queue.size();
 
-        MySubMod.LOGGER.info("IP {} added to queue for {} at position {} with guaranteed window {}-{}",
-            ipAddress, accountName, position, window[0], window[1]);
+        MySubMod.LOGGER.info("IP {} added to queue for {} at position {} with token {} (guaranteed window {}-{})",
+            ipOnly, accountName, position, newEntry.token, window[0], window[1]);
         return position;
     }
 
@@ -333,7 +644,31 @@ public class ParkingLobbyManager {
     }
 
     /**
+     * Get token for queued IP
+     * Returns the token or null if not in queue
+     */
+    public String getQueueToken(String accountName, String ipAddress) {
+        Queue<QueueEntry> queue = waitingQueues.get(accountName);
+        if (queue == null || queue.isEmpty()) {
+            return null;
+        }
+
+        // Extract IP without port for comparison
+        String ipOnly = extractIPWithoutPort(ipAddress);
+
+        // Find entry and return its token
+        for (QueueEntry entry : queue) {
+            if (extractIPWithoutPort(entry.ipAddress).equals(ipOnly)) {
+                return entry.token;
+            }
+        }
+
+        return null;
+    }
+
+    /**
      * Check if IP is authorized for account (temporary whitelist)
+     * Note: This only checks IP, not token. Use isAuthorizedWithToken() for full verification.
      */
     public boolean isAuthorized(String accountName, String ipAddress) {
         String authorizedIP = temporaryWhitelist.get(accountName);
@@ -354,6 +689,7 @@ public class ParkingLobbyManager {
             // Expired - remove
             temporaryWhitelist.remove(accountName);
             whitelistExpiry.remove(accountName);
+            activeTokens.remove(accountName);
             MySubMod.LOGGER.info("Whitelist expired for {} (IP: {})", accountName, ipAddress);
             return false;
         }
@@ -362,11 +698,39 @@ public class ParkingLobbyManager {
     }
 
     /**
+     * Check if IP + token combination is authorized for account
+     */
+    public boolean isAuthorizedWithToken(String accountName, String ipAddress, String token) {
+        // First check if IP is authorized
+        if (!isAuthorized(accountName, ipAddress)) {
+            return false;
+        }
+
+        // Then verify token
+        String expectedToken = activeTokens.get(accountName);
+        if (expectedToken == null || !expectedToken.equals(token)) {
+            MySubMod.LOGGER.warn("Token mismatch for {} - expected: {}, got: {}",
+                accountName, expectedToken, token);
+            return false;
+        }
+
+        return true;
+    }
+
+    /**
+     * Get the active token for an account (for displaying to player)
+     */
+    public String getActiveToken(String accountName) {
+        return activeTokens.get(accountName);
+    }
+
+    /**
      * Consume authorization (remove from whitelist after use and mark IP as from queue)
      */
     public void consumeAuthorization(String accountName, String ipAddress) {
         temporaryWhitelist.remove(accountName);
         whitelistExpiry.remove(accountName);
+        activeTokens.remove(accountName); // Clean up token
 
         // Mark this account+IP combination as coming from queue
         String accountIPKey = accountName.toLowerCase() + ":" + ipAddress;
@@ -426,9 +790,10 @@ public class ParkingLobbyManager {
         // Add to temporary whitelist - use the guaranteed end time to honor the promise
         temporaryWhitelist.put(accountName, next.ipAddress);
         whitelistExpiry.put(accountName, next.monopolyEndMs);
+        activeTokens.put(accountName, next.token); // Store the token for verification
 
-        MySubMod.LOGGER.info("Authorized IP {} for account {} (window until {}, {} still waiting)",
-            next.ipAddress, accountName, next.monopolyEndMs, queue.size());
+        MySubMod.LOGGER.info("Authorized IP {} for account {} with token {} (window until {}, {} still waiting)",
+            next.ipAddress, accountName, next.token, next.monopolyEndMs, queue.size());
 
         // Update monopoly windows for remaining queue entries (they may get their turn earlier)
         updateQueueWindowsAfterAuthorization(queue, actualStartMs);

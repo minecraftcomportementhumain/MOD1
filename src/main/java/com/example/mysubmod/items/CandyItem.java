@@ -42,6 +42,15 @@ public class CandyItem extends Item {
 
                 // Only allow alive players to use candy
                 if (SubMode1Manager.getInstance().isPlayerAlive(serverPlayer.getUUID())) {
+                    // Check if healing would exceed max health
+                    float currentHealth = serverPlayer.getHealth();
+                    float maxHealth = serverPlayer.getMaxHealth();
+
+                    if (currentHealth + HEALING_AMOUNT > maxHealth) {
+                        serverPlayer.sendSystemMessage(Component.literal("§cVous ne pouvez pas utiliser ce bonbon car il vous donnerait plus de vie que votre maximum"));
+                        return InteractionResultHolder.fail(itemStack);
+                    }
+
                     healPlayer(serverPlayer);
                     itemStack.shrink(1);
 

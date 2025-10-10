@@ -4,6 +4,7 @@ import com.example.mysubmod.MySubMod;
 import com.example.mysubmod.items.ModItems;
 import com.example.mysubmod.submodes.SubMode;
 import com.example.mysubmod.submodes.SubModeManager;
+import com.example.mysubmod.util.PlayerFilterUtil;
 import net.minecraft.core.BlockPos;
 import net.minecraft.network.chat.Component;
 import net.minecraft.server.level.ServerPlayer;
@@ -36,6 +37,11 @@ public class SubMode1EventHandler {
         }
 
         if (event.getSource().getEntity() instanceof ServerPlayer attacker) {
+            // Skip temporary queue candidate accounts
+            if (PlayerFilterUtil.isRestrictedPlayer(attacker)) {
+                event.setCanceled(true);
+                return;
+            }
             if (SubMode1Manager.getInstance().isPlayerAlive(attacker.getUUID())) {
                 event.setCanceled(true);
                 attacker.sendSystemMessage(Component.literal("§cVous ne pouvez pas attaquer en sous-mode 1"));
@@ -53,6 +59,12 @@ public class SubMode1EventHandler {
         }
 
         if (event.getEntity() instanceof ServerPlayer player) {
+            // Skip temporary queue candidate accounts
+            if (PlayerFilterUtil.isRestrictedPlayer(player)) {
+                event.setCanceled(true);
+                event.setCancellationResult(InteractionResult.FAIL);
+                return;
+            }
             if (SubMode1Manager.getInstance().isPlayerAlive(player.getUUID())) {
                 event.setCanceled(true);
                 event.setCancellationResult(InteractionResult.FAIL);
@@ -72,6 +84,12 @@ public class SubMode1EventHandler {
         }
 
         if (event.getPlayer() instanceof ServerPlayer player) {
+            // Skip temporary queue candidate accounts
+            if (PlayerFilterUtil.isRestrictedPlayer(player)) {
+                event.setCanceled(true);
+                return;
+            }
+
             net.minecraft.world.level.block.Block block = event.getState().getBlock();
 
             // Log ALL block break attempts
@@ -114,6 +132,11 @@ public class SubMode1EventHandler {
         }
 
         if (event.getEntity() instanceof ServerPlayer player) {
+            // Skip temporary queue candidate accounts
+            if (PlayerFilterUtil.isRestrictedPlayer(player)) {
+                event.setCanceled(true);
+                return;
+            }
             if (SubMode1Manager.getInstance().isPlayerAlive(player.getUUID())) {
                 event.setCanceled(true);
                 player.sendSystemMessage(Component.literal("§cVous ne pouvez pas placer de blocs en sous-mode 1"));
@@ -131,6 +154,11 @@ public class SubMode1EventHandler {
         }
 
         if (event.getEntity() instanceof ServerPlayer player) {
+            // Skip temporary queue candidate accounts
+            if (PlayerFilterUtil.isRestrictedPlayer(player)) {
+                event.setCanceled(true);
+                return;
+            }
             if (SubMode1Manager.getInstance().isPlayerAlive(player.getUUID())) {
                 event.setCanceled(true);
                 player.sendSystemMessage(Component.literal("§cVous ne pouvez pas fabriquer d'objets en sous-mode 1"));
@@ -148,6 +176,12 @@ public class SubMode1EventHandler {
         }
 
         if (event.getEntity() instanceof ServerPlayer player) {
+            // Skip temporary queue candidate accounts
+            if (PlayerFilterUtil.isRestrictedPlayer(player)) {
+                event.setCanceled(true);
+                return;
+            }
+
             ItemStack stack = event.getItem().getItem();
 
             // Only allow candy pickup for alive players
@@ -184,11 +218,21 @@ public class SubMode1EventHandler {
     @SubscribeEvent
     public static void onPlayerJoin(PlayerEvent.PlayerLoggedInEvent event) {
         if (event.getEntity() instanceof ServerPlayer player) {
+            MySubMod.LOGGER.info("DEBUG: SubMode1EventHandler.onPlayerJoin called for {}", player.getName().getString());
+
+            // Skip temporary queue candidate accounts
+            if (PlayerFilterUtil.isRestrictedPlayer(player)) {
+                MySubMod.LOGGER.info("DEBUG: Player {} is restricted, skipping SubMode1 processing", player.getName().getString());
+                return;
+            }
+
+            MySubMod.LOGGER.info("DEBUG: Player {} is NOT restricted, proceeding with SubMode1 processing", player.getName().getString());
+
             if (SubModeManager.getInstance().getCurrentMode() == SubMode.SUB_MODE_1) {
                 SubMode1Manager manager = SubMode1Manager.getInstance();
 
                 // Check if player was disconnected during the game
-                if (manager.wasPlayerDisconnected(player.getUUID())) {
+                if (manager.wasPlayerDisconnected(player.getName().getString())) {
                     // Reconnecting player - restore their state
                     manager.handlePlayerReconnection(player);
                 } else {
@@ -229,11 +273,20 @@ public class SubMode1EventHandler {
     @SubscribeEvent
     public static void onPlayerLogout(PlayerEvent.PlayerLoggedOutEvent event) {
         if (event.getEntity() instanceof ServerPlayer player) {
+            MySubMod.LOGGER.info("DEBUG: SubMode1EventHandler.onPlayerLogout called for {}",
+                player.getName().getString());
+
+            // Skip temporary queue candidate accounts (but don't return - they're already filtered in handlePlayerDisconnection)
             if (SubModeManager.getInstance().getCurrentMode() == SubMode.SUB_MODE_1) {
                 SubMode1Manager manager = SubMode1Manager.getInstance();
 
-                // Track disconnection time if player was alive
-                if (manager.isPlayerAlive(player.getUUID())) {
+                boolean isAlive = manager.isPlayerAlive(player.getUUID());
+                boolean inSelectionPhase = manager.isInSelectionPhase(player.getUUID());
+                MySubMod.LOGGER.info("DEBUG: Player {} isAlive: {}, inSelectionPhase: {}",
+                    player.getName().getString(), isAlive, inSelectionPhase);
+
+                // Track disconnection time if player was alive OR in selection phase
+                if (isAlive || inSelectionPhase) {
                     manager.handlePlayerDisconnection(player);
                 }
             }
@@ -251,7 +304,7 @@ public class SubMode1EventHandler {
         }
 
         // Disable sprinting for all players in SubMode1 by setting sprint speed to walk speed
-        for (ServerPlayer player : event.getServer().getPlayerList().getPlayers()) {
+        for (ServerPlayer player : PlayerFilterUtil.getAuthenticatedPlayers(event.getServer())) {
             // Set movement speed attribute modifier to prevent sprint speed boost
             net.minecraft.world.entity.ai.attributes.AttributeInstance movementSpeed =
                 player.getAttribute(net.minecraft.world.entity.ai.attributes.Attributes.MOVEMENT_SPEED);
@@ -298,7 +351,7 @@ public class SubMode1EventHandler {
 
             // Log positions of all alive players and check spectator boundaries
             if (SubMode1Manager.getInstance().getDataLogger() != null) {
-                for (ServerPlayer player : event.getServer().getPlayerList().getPlayers()) {
+                for (ServerPlayer player : PlayerFilterUtil.getAuthenticatedPlayers(event.getServer())) {
                     if (SubMode1Manager.getInstance().isPlayerAlive(player.getUUID())) {
                         SubMode1Manager.getInstance().getDataLogger().logPlayerPosition(player);
                     }
@@ -306,7 +359,7 @@ public class SubMode1EventHandler {
             }
 
             // Check spectator boundaries
-            for (ServerPlayer player : event.getServer().getPlayerList().getPlayers()) {
+            for (ServerPlayer player : PlayerFilterUtil.getAuthenticatedPlayers(event.getServer())) {
                 if (SubMode1Manager.getInstance().isPlayerSpectator(player.getUUID())) {
                     checkSpectatorBoundaries(player);
                 }
@@ -322,11 +375,13 @@ public class SubMode1EventHandler {
             java.util.Map<com.example.mysubmod.submodes.submode1.islands.IslandType, Integer> candyCounts =
                 SubMode1CandyManager.getInstance().getAvailableCandiesPerIsland(event.getServer());
 
-            // Send to all players
+            // Send to authenticated players only
             com.example.mysubmod.submodes.submode1.network.CandyCountUpdatePacket packet =
                 new com.example.mysubmod.submodes.submode1.network.CandyCountUpdatePacket(candyCounts);
-            com.example.mysubmod.network.NetworkHandler.INSTANCE.send(
-                net.minecraftforge.network.PacketDistributor.ALL.noArg(), packet);
+            for (net.minecraft.server.level.ServerPlayer player : com.example.mysubmod.util.PlayerFilterUtil.getAuthenticatedPlayers(event.getServer())) {
+                com.example.mysubmod.network.NetworkHandler.INSTANCE.send(
+                    net.minecraftforge.network.PacketDistributor.PLAYER.with(() -> player), packet);
+            }
         }
 
         // Note: Dandelion cleanup is done once at start of selection phase in SubMode1Manager
@@ -339,6 +394,12 @@ public class SubMode1EventHandler {
         }
 
         if (event.getEntity() instanceof ServerPlayer player) {
+            // Skip temporary queue candidate accounts
+            if (PlayerFilterUtil.isRestrictedPlayer(player)) {
+                event.setCanceled(true);
+                event.setCancellationResult(InteractionResult.FAIL);
+                return;
+            }
             if (SubMode1Manager.getInstance().isPlayerSpectator(player.getUUID())) {
                 event.setCanceled(true);
                 event.setCancellationResult(InteractionResult.FAIL);
@@ -354,6 +415,11 @@ public class SubMode1EventHandler {
         }
 
         if (event.getPlayer() instanceof ServerPlayer player) {
+            // Skip temporary queue candidate accounts
+            if (PlayerFilterUtil.isRestrictedPlayer(player)) {
+                event.setCanceled(true);
+                return;
+            }
             if (SubMode1Manager.getInstance().isPlayerSpectator(player.getUUID())) {
                 event.setCanceled(true);
                 player.sendSystemMessage(Component.literal("§cVous ne pouvez pas jeter d'objets en tant que spectateur"));

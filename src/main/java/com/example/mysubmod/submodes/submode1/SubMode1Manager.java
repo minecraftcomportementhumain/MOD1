@@ -3,6 +3,7 @@ package com.example.mysubmod.submodes.submode1;
 import com.example.mysubmod.MySubMod;
 import com.example.mysubmod.network.NetworkHandler;
 import com.example.mysubmod.submodes.SubModeManager;
+import com.example.mysubmod.util.PlayerFilterUtil;
 import com.example.mysubmod.submodes.submode1.data.CandySpawnEntry;
 import com.example.mysubmod.submodes.submode1.data.CandySpawnFileManager;
 import com.example.mysubmod.submodes.submode1.data.SubMode1DataLogger;
@@ -32,25 +33,37 @@ public class SubMode1Manager {
     private final Set<UUID> playerIslandSelectionLogged = ConcurrentHashMap.newKeySet(); // Track which players had their island selection logged
     private final Set<UUID> alivePlayers = ConcurrentHashMap.newKeySet();
     private final Set<UUID> spectatorPlayers = ConcurrentHashMap.newKeySet();
-    private final Map<UUID, DisconnectInfo> disconnectedPlayers = new ConcurrentHashMap<>(); // Track disconnect time and position
+    private final Map<String, DisconnectInfo> disconnectedPlayers = new ConcurrentHashMap<>(); // Track disconnect time and position by account name
     private final Map<UUID, Integer> playerCandyCount = new ConcurrentHashMap<>(); // Track candies collected
     private final Map<UUID, Long> playerDeathTime = new ConcurrentHashMap<>(); // Track when players died
+    private final Map<UUID, String> playerNames = new ConcurrentHashMap<>(); // Track player names (for disconnected players in leaderboard)
     private final Set<UUID> playersInSelectionPhase = ConcurrentHashMap.newKeySet(); // Players who were present during selection
     private final List<net.minecraft.world.entity.decoration.ArmorStand> holograms = new ArrayList<>(); // Track hologram entities
     private final List<PendingLogEvent> pendingLogEvents = new ArrayList<>(); // Events before dataLogger exists
     private long gameStartTime; // Track game start time
     private long selectionStartTime; // Track selection phase start time
 
+    // Lock to prevent race conditions between UUID migration (handlePlayerReconnection) and server-side death (handleDisconnectedPlayerDeath)
+    private final Object reconnectionLock = new Object();
+
     // Inner class to store disconnection info
     private static class DisconnectInfo {
+        UUID oldUUID; // Store old UUID so we can migrate data when someone else connects on same account
         long disconnectTime;
         double x, y, z;
+        float healthAtDisconnect; // Store health at disconnect to track server-side deaths
+        java.util.List<net.minecraft.world.item.ItemStack> savedInventory; // Save inventory items
+        boolean isDead; // Flag if player died server-side while disconnected
 
-        DisconnectInfo(long disconnectTime, double x, double y, double z) {
+        DisconnectInfo(UUID oldUUID, long disconnectTime, double x, double y, double z, float health, java.util.List<net.minecraft.world.item.ItemStack> inventory) {
+            this.oldUUID = oldUUID;
             this.disconnectTime = disconnectTime;
             this.x = x;
             this.y = y;
             this.z = z;
+            this.healthAtDisconnect = health;
+            this.savedInventory = inventory;
+            this.isDead = false; // Initially alive
         }
     }
 
@@ -86,6 +99,38 @@ public class SubMode1Manager {
         return instance;
     }
 
+    /**
+     * Check if a player should be excluded from SubMode1 (queue candidates OR unauthenticated protected/admin)
+     */
+    private static boolean isRestrictedPlayer(ServerPlayer player) {
+        String playerName = player.getName().getString();
+        com.example.mysubmod.auth.ParkingLobbyManager parkingLobby = com.example.mysubmod.auth.ParkingLobbyManager.getInstance();
+
+        // Check if queue candidate (temporary name)
+        if (parkingLobby.isTemporaryQueueName(playerName)) {
+            return true;
+        }
+
+        // Check if unauthenticated protected/admin
+        com.example.mysubmod.auth.AuthManager authManager = com.example.mysubmod.auth.AuthManager.getInstance();
+        com.example.mysubmod.auth.AdminAuthManager adminAuthManager = com.example.mysubmod.auth.AdminAuthManager.getInstance();
+
+        com.example.mysubmod.auth.AuthManager.AccountType accountType = authManager.getAccountType(playerName);
+        boolean isProtectedOrAdmin = (accountType == com.example.mysubmod.auth.AuthManager.AccountType.PROTECTED_PLAYER ||
+                                      accountType == com.example.mysubmod.auth.AuthManager.AccountType.ADMIN);
+
+        if (isProtectedOrAdmin) {
+            // Check authentication
+            if (accountType == com.example.mysubmod.auth.AuthManager.AccountType.ADMIN) {
+                return !adminAuthManager.isAuthenticated(player);
+            } else {
+                return !authManager.isAuthenticated(player.getUUID());
+            }
+        }
+
+        return false;
+    }
+
     public void activate(MinecraftServer server) {
         activate(server, null);
     }
@@ -95,9 +140,9 @@ public class SubMode1Manager {
         this.gameInitiator = initiator;
 
         // Send loading message to all players
-        server.getPlayerList().getPlayers().forEach(player ->
-            player.sendSystemMessage(net.minecraft.network.chat.Component.literal("§e§lChargement du sous-mode 1..."))
-        );
+        PlayerFilterUtil.getAuthenticatedPlayers(server).forEach(player -> {
+            player.sendSystemMessage(net.minecraft.network.chat.Component.literal("§e§lChargement du sous-mode 1..."));
+        });
 
         // Clean up any leftover candies from previous games first
         try {
@@ -168,7 +213,7 @@ public class SubMode1Manager {
         try {
             // Close all open screens for all players
             try {
-                for (ServerPlayer player : server.getPlayerList().getPlayers()) {
+                for (ServerPlayer player : PlayerFilterUtil.getAuthenticatedPlayers(server)) {
                     player.closeContainer();
                 }
                 MySubMod.LOGGER.info("Closed all open screens for players");
@@ -259,6 +304,7 @@ public class SubMode1Manager {
             disconnectedPlayers.clear(); // Clear disconnect tracking
             playerCandyCount.clear(); // Clear candy counts
             playerDeathTime.clear(); // Clear death times
+            playerNames.clear(); // Clear player names tracking
             playersInSelectionPhase.clear(); // Clear selection phase participants
             gameStartTime = 0; // Reset game start time
             selectionStartTime = 0; // Reset selection start time
@@ -1095,7 +1141,7 @@ public class SubMode1Manager {
     }
 
     private void teleportAdminsToSpectator(MinecraftServer server) {
-        for (ServerPlayer player : server.getPlayerList().getPlayers()) {
+        for (ServerPlayer player : PlayerFilterUtil.getAuthenticatedPlayers(server)) {
             if (SubModeManager.getInstance().isAdmin(player)) {
                 teleportToSpectator(player);
             }
@@ -1109,8 +1155,22 @@ public class SubMode1Manager {
         // Track all non-admin players participating (even if they disconnect later)
         playersInSelectionPhase.clear();
 
-        for (ServerPlayer player : server.getPlayerList().getPlayers()) {
+        for (ServerPlayer player : PlayerFilterUtil.getAuthenticatedPlayers(server)) {
             if (!SubModeManager.getInstance().isAdmin(player)) {
+                // Check if protected player is authenticated
+                com.example.mysubmod.auth.AuthManager authManager = com.example.mysubmod.auth.AuthManager.getInstance();
+                com.example.mysubmod.auth.AuthManager.AccountType accountType = authManager.getAccountType(player.getName().getString());
+                boolean isProtectedPlayer = (accountType == com.example.mysubmod.auth.AuthManager.AccountType.PROTECTED_PLAYER);
+                boolean isAuthenticated = authManager.isAuthenticated(player.getUUID());
+
+                if (isProtectedPlayer && !isAuthenticated) {
+                    // Protected player not authenticated - send to spectator
+                    MySubMod.LOGGER.info("Protected player {} not authenticated - sending to spectator", player.getName().getString());
+                    teleportToSpectator(player);
+                    player.sendSystemMessage(Component.literal("§c§lVous devez être authentifié pour participer au jeu\n\n§7Veuillez vous authentifier et rejoindre le serveur."));
+                    continue;
+                }
+
                 // Add to selection phase tracking
                 playersInSelectionPhase.add(player.getUUID());
 
@@ -1122,6 +1182,7 @@ public class SubMode1Manager {
                 BlockPos spawnPos = centralSquare;
                 safeTeleport(player, overworld, spawnPos.getX() + 0.5, spawnPos.getY() + 1, spawnPos.getZ() + 0.5);
                 alivePlayers.add(player.getUUID());
+                playerNames.put(player.getUUID(), player.getName().getString());
             }
         }
     }
@@ -1158,14 +1219,14 @@ public class SubMode1Manager {
         }
 
         // Add any newly connected non-admin players (don't clear - keep players from file selection phase)
-        for (ServerPlayer player : server.getPlayerList().getPlayers()) {
+        for (ServerPlayer player : PlayerFilterUtil.getAuthenticatedPlayers(server)) {
             if (!SubModeManager.getInstance().isAdmin(player)) {
                 playersInSelectionPhase.add(player.getUUID());
             }
         }
 
         // Send island selection GUI to all non-admin players
-        for (ServerPlayer player : server.getPlayerList().getPlayers()) {
+        for (ServerPlayer player : PlayerFilterUtil.getAuthenticatedPlayers(server)) {
             if (!SubModeManager.getInstance().isAdmin(player)) {
                 storePlayerInventory(player);
                 clearPlayerInventory(player);
@@ -1189,6 +1250,11 @@ public class SubMode1Manager {
 
     public void selectIsland(ServerPlayer player, IslandType island) {
         if (!selectionPhase) return;
+
+        // Skip temporary queue candidate accounts
+        if (isRestrictedPlayer(player)) {
+            return;
+        }
 
         playerIslandSelections.put(player.getUUID(), island);
         playerIslandManualSelection.put(player.getUUID(), true); // Manual selection
@@ -1218,9 +1284,10 @@ public class SubMode1Manager {
                 // Mark them as alive so they'll be properly handled on reconnection
                 alivePlayers.add(playerId);
 
-                // Notify if player is currently connected
+                // Notify if player is currently connected and store their name
                 ServerPlayer player = server.getPlayerList().getPlayer(playerId);
                 if (player != null) {
+                    playerNames.put(playerId, player.getName().getString());
                     player.sendSystemMessage(Component.literal("§eÎle assignée automatiquement: " + randomIsland.getDisplayName()));
                 } else {
                     MySubMod.LOGGER.info("Assigned random island {} to disconnected player {} and marked as alive",
@@ -1249,14 +1316,29 @@ public class SubMode1Manager {
         // Remove dandelions one more time before teleporting (they may have respawned during selection)
         removeDandelionItems(overworld);
 
-        for (ServerPlayer player : server.getPlayerList().getPlayers()) {
+        for (ServerPlayer player : PlayerFilterUtil.getAuthenticatedPlayers(server)) {
             if (SubModeManager.getInstance().isAdmin(player)) continue;
+
+            // Check if protected player is authenticated
+            com.example.mysubmod.auth.AuthManager authManager = com.example.mysubmod.auth.AuthManager.getInstance();
+            com.example.mysubmod.auth.AuthManager.AccountType accountType = authManager.getAccountType(player.getName().getString());
+            boolean isProtectedPlayer = (accountType == com.example.mysubmod.auth.AuthManager.AccountType.PROTECTED_PLAYER);
+            boolean isAuthenticated = authManager.isAuthenticated(player.getUUID());
+
+            if (isProtectedPlayer && !isAuthenticated) {
+                // Protected player lost authentication - send to spectator
+                MySubMod.LOGGER.warn("Protected player {} lost authentication - sending to spectator", player.getName().getString());
+                teleportToSpectator(player);
+                player.sendSystemMessage(Component.literal("§c§lAuthentification perdue\n\n§7Vous avez été placé en spectateur."));
+                continue;
+            }
 
             IslandType selectedIsland = playerIslandSelections.get(player.getUUID());
             if (selectedIsland != null) {
                 BlockPos spawnPos = getIslandSpawnPosition(selectedIsland);
                 safeTeleport(player, overworld, spawnPos.getX() + 0.5, spawnPos.getY() + 1, spawnPos.getZ() + 0.5);
                 alivePlayers.add(player.getUUID());
+                playerNames.put(player.getUUID(), player.getName().getString());
             }
         }
     }
@@ -1488,8 +1570,10 @@ public class SubMode1Manager {
 
         MySubMod.LOGGER.info("Ending SubMode1 game");
 
-        // Notify all clients that game has ended
-        NetworkHandler.INSTANCE.send(PacketDistributor.ALL.noArg(), new GameEndPacket());
+        // Notify authenticated players that game has ended
+        for (ServerPlayer player : PlayerFilterUtil.getAuthenticatedPlayers(server)) {
+            NetworkHandler.INSTANCE.send(PacketDistributor.PLAYER.with(() -> player), new GameEndPacket());
+        }
 
         // Stop systems immediately to prevent further operations
         try {
@@ -1536,7 +1620,7 @@ public class SubMode1Manager {
     }
 
     private void showCongratulations(MinecraftServer server) {
-        for (ServerPlayer player : server.getPlayerList().getPlayers()) {
+        for (ServerPlayer player : PlayerFilterUtil.getAuthenticatedPlayers(server)) {
             player.sendSystemMessage(Component.literal("§6§l=== FÉLICITATIONS ==="));
             player.sendSystemMessage(Component.literal("§eMerci d'avoir participé à cette expérience !"));
             player.sendSystemMessage(Component.literal("§aRetour à la salle d'attente dans 5 secondes..."));
@@ -1556,7 +1640,7 @@ public class SubMode1Manager {
     }
 
     private void restoreAllInventories(MinecraftServer server) {
-        for (ServerPlayer player : server.getPlayerList().getPlayers()) {
+        for (ServerPlayer player : PlayerFilterUtil.getAuthenticatedPlayers(server)) {
             restorePlayerInventory(player);
         }
     }
@@ -1613,13 +1697,13 @@ public class SubMode1Manager {
     }
 
     private void broadcastMessage(MinecraftServer server, String message) {
-        for (ServerPlayer player : server.getPlayerList().getPlayers()) {
+        for (ServerPlayer player : PlayerFilterUtil.getAuthenticatedPlayers(server)) {
             player.sendSystemMessage(Component.literal(message));
         }
     }
 
     private void resetAllPlayersHealth(MinecraftServer server) {
-        for (ServerPlayer player : server.getPlayerList().getPlayers()) {
+        for (ServerPlayer player : PlayerFilterUtil.getAuthenticatedPlayers(server)) {
             // Reset health to maximum (20.0f = 10 hearts)
             player.setHealth(player.getMaxHealth());
 
@@ -1684,15 +1768,55 @@ public class SubMode1Manager {
      * Handle player disconnection - track when and where they left
      */
     public void handlePlayerDisconnection(ServerPlayer player) {
+        MySubMod.LOGGER.info("DEBUG: handlePlayerDisconnection called for {} (UUID: {})",
+            player.getName().getString(), player.getUUID());
+
+        // Skip temporary queue candidate accounts
+        // NOTE: Don't use isRestrictedPlayer() here because authenticatedUsers may already be cleared during logout
+        String playerName = player.getName().getString();
+        com.example.mysubmod.auth.ParkingLobbyManager parkingLobby = com.example.mysubmod.auth.ParkingLobbyManager.getInstance();
+
+        if (parkingLobby.isTemporaryQueueName(playerName)) {
+            MySubMod.LOGGER.info("DEBUG: Player {} is queue candidate, skipping disconnection tracking",
+                playerName);
+            return;
+        }
+
+        // IMPORTANT: Never overwrite existing DisconnectInfo
+        // This is crucial for the queue system where multiple people share the same account:
+        // - Indiv1 disconnects from game → DisconnectInfo saved with island position
+        // - Indiv1 reconnects but doesn't authenticate → goes to parking lobby
+        // - Indiv1 disconnects from parking lobby → we must NOT overwrite with parking lobby position
+        // - Indiv2 gets queue place and authenticates → must restore Indiv1's island position
+        if (disconnectedPlayers.containsKey(playerName)) {
+            MySubMod.LOGGER.info("DEBUG: Player {} already has disconnect info - NOT overwriting (keeping original position for queue system)",
+                playerName);
+            return;
+        }
+
+        // Save player's inventory (copy all items)
+        java.util.List<net.minecraft.world.item.ItemStack> savedInventory = new java.util.ArrayList<>();
+        for (int i = 0; i < player.getInventory().getContainerSize(); i++) {
+            net.minecraft.world.item.ItemStack stack = player.getInventory().getItem(i);
+            if (!stack.isEmpty()) {
+                savedInventory.add(stack.copy()); // Make a copy to preserve the item
+            } else {
+                savedInventory.add(net.minecraft.world.item.ItemStack.EMPTY);
+            }
+        }
+
         DisconnectInfo info = new DisconnectInfo(
+            player.getUUID(),
             System.currentTimeMillis(),
             player.getX(),
             player.getY(),
-            player.getZ()
+            player.getZ(),
+            player.getHealth(),
+            savedInventory
         );
-        disconnectedPlayers.put(player.getUUID(), info);
-        MySubMod.LOGGER.info("Player {} disconnected during SubMode1 at ({}, {}, {}) - tracking disconnect time and position",
-            player.getName().getString(), player.getX(), player.getY(), player.getZ());
+        disconnectedPlayers.put(playerName, info);
+        MySubMod.LOGGER.info("Player {} (UUID: {}) disconnected during SubMode1 at ({}, {}, {}) with {} HP - saved {} inventory items - tracking disconnect (disconnectedPlayers size now: {})",
+            playerName, player.getUUID(), player.getX(), player.getY(), player.getZ(), player.getHealth(), savedInventory.stream().filter(s -> !s.isEmpty()).count(), disconnectedPlayers.size());
 
         // Log disconnection (if logger exists, otherwise queue for later)
         if (dataLogger != null) {
@@ -1704,10 +1828,25 @@ public class SubMode1Manager {
     }
 
     /**
-     * Check if player was disconnected during the game
+     * Check if player was disconnected during the game (by account name)
      */
-    public boolean wasPlayerDisconnected(UUID playerId) {
-        return disconnectedPlayers.containsKey(playerId);
+    public boolean wasPlayerDisconnected(String playerName) {
+        boolean result = disconnectedPlayers.containsKey(playerName);
+        MySubMod.LOGGER.info("DEBUG: wasPlayerDisconnected({}) = {} (disconnectedPlayers size: {})",
+            playerName, result, disconnectedPlayers.size());
+        return result;
+    }
+
+    /**
+     * Clear disconnect info for a player (called when they reconnect to server)
+     * This prevents a second person from being teleported to first person's position
+     * if they authenticate on the same account
+     */
+    public void clearDisconnectInfo(String playerName) {
+        DisconnectInfo removed = disconnectedPlayers.remove(playerName);
+        if (removed != null) {
+            MySubMod.LOGGER.info("Cleared disconnect info for player {} on server reconnection", playerName);
+        }
     }
 
     /**
@@ -1733,35 +1872,317 @@ public class SubMode1Manager {
      * Handle player reconnection - restore their state and apply health penalty
      */
     public void handlePlayerReconnection(ServerPlayer player) {
+        String playerName = player.getName().getString();
         UUID playerId = player.getUUID();
-        DisconnectInfo disconnectInfo = disconnectedPlayers.remove(playerId);
 
-        if (disconnectInfo == null) {
-            MySubMod.LOGGER.warn("No disconnect info found for reconnecting player {}", player.getName().getString());
+        MySubMod.LOGGER.info("DEBUG: handlePlayerReconnection called for {} (UUID: {})",
+            playerName, playerId);
+
+        // Skip temporary queue candidate accounts
+        if (isRestrictedPlayer(player)) {
+            MySubMod.LOGGER.info("DEBUG: Player {} is restricted, aborting reconnection",
+                playerName);
             return;
         }
 
-        long disconnectTime = disconnectInfo.disconnectTime;
+        // CRITICAL SECTION: Synchronize access to disconnectedPlayers and UUID migration
+        // to prevent race condition with handleDisconnectedPlayerDeath() in Timer thread
+        DisconnectInfo disconnectInfo;
+        UUID oldUUID;
+        UUID newUUID = player.getUUID();
+        boolean playerIsDead = false;
 
-        // Calculate time disconnected DURING THE ACTIVE GAME only
-        long currentTime = System.currentTimeMillis();
-        long effectiveDisconnectStart = disconnectTime;
+        synchronized (reconnectionLock) {
+            // Get disconnect info by account name (not UUID, so multiple people can share same account)
+            disconnectInfo = disconnectedPlayers.remove(playerName);
 
-        // If player disconnected before game started, only count time during active game
-        if (gameStartTime > 0 && disconnectTime < gameStartTime) {
-            effectiveDisconnectStart = gameStartTime;
+            if (disconnectInfo == null) {
+                MySubMod.LOGGER.warn("No disconnect info found for reconnecting player {} - disconnectedPlayers size: {}",
+                    playerName, disconnectedPlayers.size());
+                return;
+            }
+
+            // Check if player died server-side while disconnected
+            playerIsDead = disconnectInfo.isDead;
+        } // End synchronized block - release lock BEFORE teleporting
+
+        // Handle dead player OUTSIDE synchronized block to avoid deadlock
+        if (playerIsDead) {
+            MySubMod.LOGGER.info("Player {} died server-side while disconnected - sending to spectator", playerName);
+            teleportToSpectator(player);
+            player.sendSystemMessage(Component.literal(
+                "§c§lVous êtes mort pendant votre déconnexion\n\n" +
+                "§7Vous avez été téléporté en zone spectateur."
+            ));
+            // No need to migrate UUID since they're already in spectatorPlayers
+            return;
         }
 
-        // Calculate time disconnected during active game
-        long timeDisconnectedDuringGame = currentTime - effectiveDisconnectStart;
-        long secondsDisconnected = timeDisconnectedDuringGame / 1000;
-        float healthLoss = (float) (secondsDisconnected / 10.0) * 1.0f;
+        synchronized (reconnectionLock) {
 
-        MySubMod.LOGGER.info("Player {} reconnected - {} seconds disconnected (during game), health loss: {}",
-            player.getName().getString(), secondsDisconnected, healthLoss);
+            MySubMod.LOGGER.info("DEBUG: Found disconnect info for {}, proceeding with reconnection",
+                player.getName().getString());
 
-        // Restore player to game state
+            // Migrate UUID-based data from old UUID to new UUID
+            // This is necessary when multiple people share the same account (e.g., queue system)
+            oldUUID = disconnectInfo.oldUUID;
+
+            MySubMod.LOGGER.info("DEBUG: oldUUID from DisconnectInfo: {}", oldUUID);
+            MySubMod.LOGGER.info("DEBUG: newUUID from player: {}", newUUID);
+            MySubMod.LOGGER.info("DEBUG: Are they equal? {}", oldUUID.equals(newUUID));
+
+            if (!oldUUID.equals(newUUID)) {
+                MySubMod.LOGGER.info("Migrating player data from old UUID {} to new UUID {} for account {}",
+                    oldUUID, newUUID, playerName);
+
+                // Migrate alivePlayers
+                MySubMod.LOGGER.info("DEBUG: alivePlayers before migration: {}", alivePlayers);
+                MySubMod.LOGGER.info("DEBUG: Does alivePlayers contain oldUUID? {}", alivePlayers.contains(oldUUID));
+                if (alivePlayers.remove(oldUUID)) {
+                    alivePlayers.add(newUUID);
+                    MySubMod.LOGGER.info("  - Migrated alivePlayers");
+                } else {
+                    MySubMod.LOGGER.warn("DEBUG: Failed to remove oldUUID from alivePlayers!");
+                }
+                MySubMod.LOGGER.info("DEBUG: alivePlayers after migration: {}", alivePlayers);
+
+                // Migrate spectatorPlayers
+                if (spectatorPlayers.remove(oldUUID)) {
+                    spectatorPlayers.add(newUUID);
+                    MySubMod.LOGGER.info("  - Migrated spectatorPlayers");
+                }
+
+                // Migrate playersInSelectionPhase
+                if (playersInSelectionPhase.remove(oldUUID)) {
+                    playersInSelectionPhase.add(newUUID);
+                    MySubMod.LOGGER.info("  - Migrated playersInSelectionPhase");
+                }
+
+                // Migrate playerIslandSelections
+                if (playerIslandSelections.containsKey(oldUUID)) {
+                    IslandType island = playerIslandSelections.remove(oldUUID);
+                    playerIslandSelections.put(newUUID, island);
+                    MySubMod.LOGGER.info("  - Migrated playerIslandSelections: {}", island);
+                }
+
+                // Migrate playerIslandManualSelection
+                if (playerIslandManualSelection.containsKey(oldUUID)) {
+                    Boolean manual = playerIslandManualSelection.remove(oldUUID);
+                    playerIslandManualSelection.put(newUUID, manual);
+                    MySubMod.LOGGER.info("  - Migrated playerIslandManualSelection");
+                }
+
+                // Migrate playerCandyCount
+                if (playerCandyCount.containsKey(oldUUID)) {
+                    Integer candies = playerCandyCount.remove(oldUUID);
+                    playerCandyCount.put(newUUID, candies);
+                    MySubMod.LOGGER.info("  - Migrated playerCandyCount: {}", candies);
+                }
+
+                // Migrate playerNames (use current player name for new UUID)
+                if (playerNames.containsKey(oldUUID)) {
+                    playerNames.remove(oldUUID);
+                }
+                playerNames.put(newUUID, player.getName().getString());
+                MySubMod.LOGGER.info("  - Migrated/updated playerNames");
+
+                // Migrate playerIslandSelectionLogged
+                if (playerIslandSelectionLogged.remove(oldUUID)) {
+                    playerIslandSelectionLogged.add(newUUID);
+                    MySubMod.LOGGER.info("  - Migrated playerIslandSelectionLogged");
+                }
+
+                MySubMod.LOGGER.info("UUID migration complete for account {}", playerName);
+            } else {
+                MySubMod.LOGGER.info("No UUID migration needed - same UUID reconnecting");
+            }
+        } // End synchronized block
+
+        long disconnectTime = disconnectInfo.disconnectTime;
+
+        // Calculate health loss based on how many health degradation ticks occurred during disconnection
+        // Health ticks occur at fixed intervals: gameStartTime + 10s, +20s, +30s, etc.
+        long currentTime = System.currentTimeMillis();
+
+        // Only calculate if game is active and player disconnected during/after game start
+        int missedHealthTicks = 0;
+        float healthLoss = 0.0f;
+
+        if (gameActive && gameStartTime > 0) {
+            long effectiveDisconnectTime = Math.max(disconnectTime, gameStartTime);
+
+            // Calculate which health tick number we're at for disconnect and reconnect times
+            // Tick 0 happens at gameStartTime, tick 1 at gameStartTime+10s, etc.
+            long msFromGameStartAtDisconnect = effectiveDisconnectTime - gameStartTime;
+            long msFromGameStartAtReconnect = currentTime - gameStartTime;
+
+            // Calculate tick numbers (which 10-second interval)
+            long tickNumberAtDisconnect = msFromGameStartAtDisconnect / 10000;
+            long tickNumberAtReconnect = msFromGameStartAtReconnect / 10000;
+
+            // Missed ticks = ticks that occurred between disconnect and reconnect
+            missedHealthTicks = (int) (tickNumberAtReconnect - tickNumberAtDisconnect);
+
+            if (missedHealthTicks > 0) {
+                healthLoss = (float) missedHealthTicks * 1.0f; // 1 HP per tick
+            }
+        }
+
+        MySubMod.LOGGER.info("Player {} reconnected - missed {} health ticks, health loss: {} HP",
+            player.getName().getString(), missedHealthTicks, healthLoss);
+
+        // Check if protected player is authenticated before allowing reconnection to game
+        com.example.mysubmod.auth.AuthManager authManager = com.example.mysubmod.auth.AuthManager.getInstance();
+        com.example.mysubmod.auth.AuthManager.AccountType accountType = authManager.getAccountType(player.getName().getString());
+        boolean isProtectedPlayer = (accountType == com.example.mysubmod.auth.AuthManager.AccountType.PROTECTED_PLAYER);
+        boolean isAuthenticated = authManager.isAuthenticated(player.getUUID());
+
+        if (isProtectedPlayer && !isAuthenticated) {
+            // Protected player not authenticated - send to spectator
+            MySubMod.LOGGER.warn("Protected player {} attempting to reconnect without authentication - sending to spectator", player.getName().getString());
+            teleportToSpectator(player);
+            player.sendSystemMessage(Component.literal("§c§lVous devez être authentifié pour participer au jeu\n\n§7Veuillez vous authentifier et rejoindre le serveur."));
+            // Remove from alivePlayers if they were in it
+            alivePlayers.remove(playerId);
+            return;
+        }
+
+        // Handle reconnection during file selection phase (BEFORE checking alivePlayers)
+        if (!gameActive && fileSelectionPhase) {
+            // Add player to selection phase participants so they're not treated as spectator
+            playersInSelectionPhase.add(playerId);
+
+            // Restore to disconnect position
+            MinecraftServer server = player.getServer();
+            if (server != null) {
+                ServerLevel overworld = server.getLevel(ServerLevel.OVERWORLD);
+                if (overworld != null) {
+                    safeTeleport(player, overworld, disconnectInfo.x, disconnectInfo.y, disconnectInfo.z);
+                    MySubMod.LOGGER.info("Teleported player {} to disconnect position during file selection phase", player.getName().getString());
+                }
+            }
+            player.sendSystemMessage(Component.literal("§eVous avez été reconnecté. En attente de la sélection de fichier par l'admin..."));
+
+            // Log reconnection (queue for later since dataLogger doesn't exist yet)
+            pendingLogEvents.add(new PendingLogEvent(player, "RECONNECTED (file selection phase)"));
+            return;
+        }
+
+        // Handle reconnection during island selection phase (BEFORE checking alivePlayers)
+        if (!gameActive && selectionPhase) {
+            // Restore to disconnect position
+            MinecraftServer server = player.getServer();
+            if (server != null) {
+                ServerLevel overworld = server.getLevel(ServerLevel.OVERWORLD);
+                if (overworld != null) {
+                    safeTeleport(player, overworld, disconnectInfo.x, disconnectInfo.y, disconnectInfo.z);
+                    MySubMod.LOGGER.info("Teleported player {} to disconnect position during island selection phase", player.getName().getString());
+                }
+            }
+
+            // Check if player hasn't selected an island yet
+            if (!playerIslandSelections.containsKey(playerId)) {
+                // Send island selection screen with remaining time
+                int remainingTime = getRemainingSelectionTime();
+                if (remainingTime > 0) {
+                    // Schedule packet send after 10 ticks (0.5 seconds) to ensure client is ready
+                    final int timeToSend = remainingTime;
+                    java.util.Timer timer = new java.util.Timer();
+                    timer.schedule(new java.util.TimerTask() {
+                        @Override
+                        public void run() {
+                            MinecraftServer server = player.getServer();
+                            if (server != null && player.isAlive()) {
+                                server.execute(() -> {
+                                    NetworkHandler.INSTANCE.send(PacketDistributor.PLAYER.with(() -> player),
+                                        new IslandSelectionPacket(timeToSend));
+                                    MySubMod.LOGGER.info("Sent island selection packet to reconnected player {} with {} seconds remaining",
+                                        player.getName().getString(), timeToSend);
+                                });
+                            }
+                        }
+                    }, 500); // 500ms delay
+                    player.sendSystemMessage(Component.literal("§eVous avez été reconnecté pendant la phase de sélection. Temps restant: " + remainingTime + "s"));
+                } else {
+                    player.sendSystemMessage(Component.literal("§eVous avez été reconnecté. La phase de sélection se termine..."));
+                }
+            } else {
+                player.sendSystemMessage(Component.literal("§eVous avez été reconnecté. Île déjà sélectionnée: " +
+                    playerIslandSelections.get(playerId).getDisplayName()));
+            }
+
+            // Log reconnection (if logger exists, otherwise queue for later)
+            if (dataLogger != null) {
+                dataLogger.logPlayerAction(player, "RECONNECTED (island selection phase)");
+            } else {
+                pendingLogEvents.add(new PendingLogEvent(player, "RECONNECTED (island selection phase)"));
+            }
+            return;
+        }
+
+        // Handle reconnection when game started while player was in selection phase
+        // BUT only if player was NOT in active game (if in alivePlayers, handle below with health penalty)
+        if (gameActive && playersInSelectionPhase.contains(playerId) && !alivePlayers.contains(playerId)) {
+            // Check if player disconnected BEFORE island selection phase started
+            // If they disconnected during file selection phase, they should be spectator
+            if (selectionStartTime > 0 && disconnectTime < selectionStartTime) {
+                MySubMod.LOGGER.info("Player {} disconnected during file selection phase (before island selection started) - sending to spectator", player.getName().getString());
+                spectatorPlayers.add(playerId);
+                teleportToSpectator(player);
+                player.sendSystemMessage(Component.literal("§cVous vous êtes déconnecté avant la phase de sélection des îles.\n§7Vous êtes maintenant spectateur."));
+
+                // Log reconnection as spectator
+                if (dataLogger != null) {
+                    dataLogger.logPlayerAction(player, "RECONNECTED (spectator - missed island selection)");
+                }
+                return;
+            }
+
+            // Player was in island selection phase when they disconnected, but game started while they were offline
+            MySubMod.LOGGER.info("Player {} was in island selection phase but game started while offline - adding to game", player.getName().getString());
+
+            alivePlayers.add(playerId);
+            playerNames.put(playerId, player.getName().getString());
+
+            // Check if they have an island selected
+            IslandType selectedIsland = playerIslandSelections.get(playerId);
+            if (selectedIsland == null) {
+                // Assign random island
+                IslandType[] islands = IslandType.values();
+                Random random = new Random();
+                selectedIsland = islands[random.nextInt(islands.length)];
+                playerIslandSelections.put(playerId, selectedIsland);
+                playerIslandManualSelection.put(playerId, false);
+                MySubMod.LOGGER.info("Assigned random island {} to player {}", selectedIsland.name(), player.getName().getString());
+            }
+
+            // Teleport to disconnect position (should be central square)
+            MinecraftServer server = player.getServer();
+            if (server != null) {
+                ServerLevel overworld = server.getLevel(ServerLevel.OVERWORLD);
+                if (overworld != null) {
+                    safeTeleport(player, overworld, disconnectInfo.x, disconnectInfo.y, disconnectInfo.z);
+                }
+            }
+
+            player.sendSystemMessage(Component.literal(String.format(
+                "§eVous avez été reconnecté. Le jeu a démarré pendant votre absence.\n§7Île assignée: %s",
+                selectedIsland.getDisplayName())));
+
+            // Log reconnection
+            if (dataLogger != null) {
+                dataLogger.logPlayerAction(player, "RECONNECTED (missed game start)");
+            }
+            return;
+        }
+
+        // Restore player to game state (during active game)
+        MySubMod.LOGGER.info("DEBUG: Checking if player {} is in alivePlayers - result: {}", playerId, alivePlayers.contains(playerId));
+        MySubMod.LOGGER.info("DEBUG: alivePlayers content: {}", alivePlayers);
+        MySubMod.LOGGER.info("DEBUG: gameActive: {}, selectionPhase: {}, fileSelectionPhase: {}", gameActive, selectionPhase, fileSelectionPhase);
+
         if (alivePlayers.contains(playerId)) {
+            MySubMod.LOGGER.info("DEBUG: Player {} is in alivePlayers, proceeding with game state restoration", playerId);
             // Player was alive when they disconnected
 
             // Get their island selection
@@ -1787,6 +2208,9 @@ public class SubMode1Manager {
             if (selectedIsland != null && gameActive) {
                 // Determine if player disconnected before game started
                 boolean disconnectedBeforeGameStart = (gameStartTime > 0 && disconnectTime < gameStartTime);
+                MySubMod.LOGGER.info("DEBUG: selectedIsland={}, gameActive={}, disconnectedBeforeGameStart={}",
+                    selectedIsland, gameActive, disconnectedBeforeGameStart);
+                MySubMod.LOGGER.info("DEBUG: gameStartTime={}, disconnectTime={}", gameStartTime, disconnectTime);
 
                 // Teleport logic
                 MinecraftServer server = player.getServer();
@@ -1796,22 +2220,40 @@ public class SubMode1Manager {
                         if (disconnectedBeforeGameStart) {
                             // Player disconnected before game started - teleport to island center (they never got to their island)
                             BlockPos spawnPos = getIslandSpawnPosition(selectedIsland);
+                            MySubMod.LOGGER.info("DEBUG: Teleporting to island center: ({}, {}, {})",
+                                spawnPos.getX() + 0.5, spawnPos.getY() + 1, spawnPos.getZ() + 0.5);
                             safeTeleport(player, overworld, spawnPos.getX() + 0.5, spawnPos.getY() + 1, spawnPos.getZ() + 0.5);
                             MySubMod.LOGGER.info("Teleported player {} to island center (disconnected before game started)",
                                 player.getName().getString());
                         } else {
                             // Player disconnected during active game - teleport to exact position where they disconnected
+                            MySubMod.LOGGER.info("DEBUG: Teleporting to disconnect position: ({}, {}, {})",
+                                disconnectInfo.x, disconnectInfo.y, disconnectInfo.z);
                             safeTeleport(player, overworld, disconnectInfo.x, disconnectInfo.y, disconnectInfo.z);
                             MySubMod.LOGGER.info("Teleported player {} to exact disconnect position ({}, {}, {})",
                                 player.getName().getString(), disconnectInfo.x, disconnectInfo.y, disconnectInfo.z);
                         }
+                    } else {
+                        MySubMod.LOGGER.error("DEBUG: overworld is null!");
                     }
+                } else {
+                    MySubMod.LOGGER.error("DEBUG: server is null!");
                 }
 
-                // Ensure inventory is cleared (should already be done, but double-check for safety)
-                if (!player.getInventory().isEmpty()) {
-                    MySubMod.LOGGER.warn("Player {} reconnected with non-empty inventory - clearing it", player.getName().getString());
-                    clearPlayerInventory(player);
+                // Restore saved inventory from disconnect
+                if (disconnectInfo.savedInventory != null && !disconnectInfo.savedInventory.isEmpty()) {
+                    player.getInventory().clearContent(); // Clear current inventory first
+                    for (int i = 0; i < Math.min(disconnectInfo.savedInventory.size(), player.getInventory().getContainerSize()); i++) {
+                        player.getInventory().setItem(i, disconnectInfo.savedInventory.get(i).copy());
+                    }
+                    int restoredItems = (int) disconnectInfo.savedInventory.stream().filter(s -> !s.isEmpty()).count();
+                    MySubMod.LOGGER.info("Restored {} inventory items for reconnected player {}", restoredItems, player.getName().getString());
+                } else {
+                    // No saved inventory, ensure it's cleared
+                    if (!player.getInventory().isEmpty()) {
+                        MySubMod.LOGGER.warn("Player {} reconnected with no saved inventory but non-empty current inventory - clearing it", player.getName().getString());
+                        clearPlayerInventory(player);
+                    }
                 }
 
                 // Reset health to 100% ONLY if player disconnected BEFORE game started
@@ -1855,88 +2297,60 @@ public class SubMode1Manager {
                 player.setHealth(newHealth);
 
                 player.sendSystemMessage(Component.literal(String.format(
-                    "§eVous avez été reconnecté. Perte de santé: %.1f cœurs (%.0f secondes déconnecté)",
-                    healthLoss / 2.0f, (float)secondsDisconnected)));
+                    "§eVous avez été reconnecté. Perte de santé: %.1f cœurs (%d ticks de dégradation manqués)",
+                    healthLoss / 2.0f, missedHealthTicks)));
 
                 MySubMod.LOGGER.info("Player {} health reduced by {} (from {} to {})",
                     player.getName().getString(), healthLoss, currentHealth, newHealth);
 
                 // Log reconnection (if logger exists, otherwise queue for later)
                 if (dataLogger != null) {
-                    dataLogger.logPlayerAction(player, String.format("RECONNECTED (-%d seconds, -%.1f HP)",
-                        secondsDisconnected, healthLoss));
+                    dataLogger.logPlayerAction(player, String.format("RECONNECTED (-%d ticks, -%.1f HP)",
+                        missedHealthTicks, healthLoss));
                 } else {
                     // Queue event for retroactive logging when dataLogger is created
-                    pendingLogEvents.add(new PendingLogEvent(player, String.format("RECONNECTED (-%d seconds, -%.1f HP)",
-                        secondsDisconnected, healthLoss)));
+                    pendingLogEvents.add(new PendingLogEvent(player, String.format("RECONNECTED (-%d ticks, -%.1f HP)",
+                        missedHealthTicks, healthLoss)));
                 }
 
                 // Check if health penalty killed the player
                 if (newHealth <= 0.5f) {
                     player.sendSystemMessage(Component.literal("§cVous êtes mort pendant votre déconnexion !"));
+
+                    // Record death time for leaderboard
+                    recordPlayerDeath(playerId);
+
                     SubMode1HealthManager.getInstance().stopHealthDegradation();
                     teleportToSpectator(player);
-                }
-            } else if (!gameActive && fileSelectionPhase) {
-                // Reconnect to central square during file selection phase (admin choosing candy file)
-                // Add player to selection phase participants so they're not treated as spectator
-                playersInSelectionPhase.add(playerId);
 
-                MinecraftServer server = player.getServer();
-                if (server != null) {
-                    ServerLevel overworld = server.getLevel(ServerLevel.OVERWORLD);
-                    if (overworld != null) {
-                        safeTeleport(player, overworld,
-                            centralSquare.getX() + 0.5,
-                            centralSquare.getY() + 1,
-                            centralSquare.getZ() + 0.5);
+                    // Broadcast death message
+                    String deathMessage = "§e" + player.getName().getString() + " §cest mort pendant sa déconnexion !";
+                    MinecraftServer gameServer = player.getServer();
+                    if (gameServer != null) {
+                        for (ServerPlayer p : PlayerFilterUtil.getAuthenticatedPlayers(gameServer)) {
+                            p.sendSystemMessage(Component.literal(deathMessage));
+                        }
+
+                        // Check if all players are dead (no alive players left)
+                        if (getAlivePlayers().isEmpty()) {
+                            MySubMod.LOGGER.info("All players are dead after reconnection death - ending game");
+                            gameServer.execute(() -> {
+                                for (ServerPlayer p : PlayerFilterUtil.getAuthenticatedPlayers(gameServer)) {
+                                    p.sendSystemMessage(Component.literal("§c§lTous les joueurs sont morts !"));
+                                }
+                                endGame(gameServer);
+                            });
+                        }
                     }
-                }
-                player.sendSystemMessage(Component.literal("§eVous avez été reconnecté. En attente de la sélection de fichier par l'admin..."));
-
-                // Log reconnection (queue for later since dataLogger doesn't exist yet)
-                pendingLogEvents.add(new PendingLogEvent(player, "RECONNECTED (file selection phase)"));
-
-            } else if (!gameActive && selectionPhase) {
-                // Reconnect to central square during island selection phase
-                MinecraftServer server = player.getServer();
-                if (server != null) {
-                    ServerLevel overworld = server.getLevel(ServerLevel.OVERWORLD);
-                    if (overworld != null) {
-                        safeTeleport(player, overworld,
-                            centralSquare.getX() + 0.5,
-                            centralSquare.getY() + 1,
-                            centralSquare.getZ() + 0.5);
-                    }
-                }
-
-                // Check if player hasn't selected an island yet
-                if (!playerIslandSelections.containsKey(playerId)) {
-                    // Send island selection screen with remaining time
-                    int remainingTime = getRemainingSelectionTime();
-                    if (remainingTime > 0) {
-                        NetworkHandler.INSTANCE.send(PacketDistributor.PLAYER.with(() -> player),
-                            new IslandSelectionPacket(remainingTime));
-                        player.sendSystemMessage(Component.literal("§eVous avez été reconnecté pendant la phase de sélection. Temps restant: " + remainingTime + "s"));
-                    } else {
-                        player.sendSystemMessage(Component.literal("§eVous avez été reconnecté. La phase de sélection se termine..."));
-                    }
-                } else {
-                    player.sendSystemMessage(Component.literal("§eVous avez été reconnecté. Île déjà sélectionnée: " +
-                        playerIslandSelections.get(playerId).getDisplayName()));
-                }
-
-                // Log reconnection (if logger exists, otherwise queue for later)
-                if (dataLogger != null) {
-                    dataLogger.logPlayerAction(player, "RECONNECTED (island selection phase)");
-                } else {
-                    pendingLogEvents.add(new PendingLogEvent(player, "RECONNECTED (island selection phase)"));
                 }
             }
         } else if (spectatorPlayers.contains(playerId)) {
+            MySubMod.LOGGER.info("DEBUG: Player {} is in spectatorPlayers, teleporting to spectator", playerId);
             // Player was spectator when they disconnected
             teleportToSpectator(player);
             player.sendSystemMessage(Component.literal("§eVous avez été reconnecté en mode spectateur"));
+        } else {
+            MySubMod.LOGGER.warn("DEBUG: Player {} is neither in alivePlayers nor spectatorPlayers after migration!", playerId);
         }
     }
 
@@ -1963,16 +2377,28 @@ public class SubMode1Manager {
         // Create leaderboard entries for all players who participated
         List<LeaderboardEntry> entries = new ArrayList<>();
 
-        for (ServerPlayer player : server.getPlayerList().getPlayers()) {
-            UUID playerId = player.getUUID();
+        // Iterate over ALL players who selected an island (participated), not just connected ones
+        for (Map.Entry<UUID, IslandType> entry : playerIslandSelections.entrySet()) {
+            UUID playerId = entry.getKey();
 
-            // Only include players who selected an island (participated in the game)
-            if (!playerIslandSelections.containsKey(playerId)) {
-                MySubMod.LOGGER.debug("Skipping player {} - did not participate (no island selection)", player.getName().getString());
-                continue;
+            // Get player name - try to find online player first, then use stored name
+            String playerName = null;
+            ServerPlayer onlinePlayer = server.getPlayerList().getPlayer(playerId);
+            if (onlinePlayer != null) {
+                playerName = onlinePlayer.getName().getString();
+            } else if (playerNames.containsKey(playerId)) {
+                playerName = playerNames.get(playerId);
+            } else {
+                // Fallback: try to get from GameProfile
+                com.mojang.authlib.GameProfile profile = server.getProfileCache().get(playerId).orElse(null);
+                if (profile != null) {
+                    playerName = profile.getName();
+                } else {
+                    MySubMod.LOGGER.warn("Could not find name for player UUID {} - skipping from leaderboard", playerId);
+                    continue;
+                }
             }
 
-            String playerName = player.getName().getString();
             boolean isAlive = alivePlayers.contains(playerId);
             int candyCount = playerCandyCount.getOrDefault(playerId, 0);
             long survivalTime = 0;
@@ -2005,7 +2431,7 @@ public class SubMode1Manager {
         });
 
         // Display leaderboard to all players
-        for (ServerPlayer player : server.getPlayerList().getPlayers()) {
+        for (ServerPlayer player : PlayerFilterUtil.getAuthenticatedPlayers(server)) {
             player.sendSystemMessage(Component.literal(""));
             player.sendSystemMessage(Component.literal("§6§l========== CLASSEMENT FINAL =========="));
             player.sendSystemMessage(Component.literal(""));
@@ -2100,6 +2526,7 @@ public class SubMode1Manager {
 
     // Getters
     public boolean isGameActive() { return gameActive; }
+    public long getGameStartTime() { return gameStartTime; }
 
     public void addPlayerToSelectionPhase(ServerPlayer player) {
         playersInSelectionPhase.add(player.getUUID());
@@ -2119,8 +2546,65 @@ public class SubMode1Manager {
     public boolean isSelectionPhase() { return selectionPhase; }
     public boolean isPlayerAlive(UUID playerId) { return alivePlayers.contains(playerId); }
     public boolean isPlayerSpectator(UUID playerId) { return spectatorPlayers.contains(playerId); }
+    public boolean isInSelectionPhase(UUID playerId) { return playersInSelectionPhase.contains(playerId); }
     public Set<UUID> getAlivePlayers() { return new HashSet<>(alivePlayers); }
     public SubMode1DataLogger getDataLogger() { return dataLogger; }
+
+    /**
+     * Get disconnected players info for server-side health tracking
+     * Returns a map of player names to their disconnect info
+     */
+    public Map<String, DisconnectInfo> getDisconnectedPlayersInfo() {
+        // Synchronize to prevent reading during UUID migration
+        synchronized (reconnectionLock) {
+            return new HashMap<>(disconnectedPlayers);
+        }
+    }
+
+    /**
+     * Handle death of a disconnected player (server-side tracking)
+     * Called when a disconnected player's health reaches 0 based on time elapsed
+     */
+    public void handleDisconnectedPlayerDeath(String playerName, UUID playerId) {
+        // CRITICAL SECTION: Synchronize with handlePlayerReconnection() to prevent race condition
+        // during UUID migration
+        synchronized (reconnectionLock) {
+            // Double-check: If player reconnected between health check and now, DisconnectInfo will be gone
+            if (!disconnectedPlayers.containsKey(playerName)) {
+                MySubMod.LOGGER.info("Player {} reconnected before death could be processed - skipping death", playerName);
+                return;
+            }
+
+            // Verify the UUID matches what's in DisconnectInfo (in case migration happened)
+            DisconnectInfo info = disconnectedPlayers.get(playerName);
+            if (!info.oldUUID.equals(playerId)) {
+                MySubMod.LOGGER.info("Player {} UUID changed (reconnection) before death - skipping death", playerName);
+                return;
+            }
+
+            if (!alivePlayers.contains(playerId)) {
+                return; // Already dead or spectator
+            }
+
+            MySubMod.LOGGER.info("Disconnected player {} died server-side due to health degradation", playerName);
+
+            // Remove from alive players
+            alivePlayers.remove(playerId);
+
+            // Add to spectators
+            spectatorPlayers.add(playerId);
+
+            // Record death time for leaderboard
+            recordPlayerDeath(playerId);
+
+            // Mark as dead in DisconnectInfo instead of removing it
+            // This way if someone reconnects on this account, they'll be sent to spectator
+            info.isDead = true;
+            // Clear inventory since player is dead
+            info.savedInventory = new ArrayList<>();
+            MySubMod.LOGGER.info("Marked DisconnectInfo as dead for {} - reconnection will send to spectator", playerName);
+        }
+    }
     public BlockPos getSmallIslandCenter() { return smallIslandCenter; }
     public BlockPos getMediumIslandCenter() { return mediumIslandCenter; }
     public BlockPos getLargeIslandCenter() { return largeIslandCenter; }

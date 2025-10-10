@@ -28,18 +28,14 @@ public class SubModeControlScreenRequestPacket {
         ctx.get().enqueueWork(() -> {
             ServerPlayer player = ctx.get().getSender();
             if (player != null) {
-                // Count non-admin players
-                int nonAdminCount = 0;
-                for (ServerPlayer p : player.server.getPlayerList().getPlayers()) {
-                    if (!SubModeManager.getInstance().isAdmin(p)) {
-                        nonAdminCount++;
-                    }
-                }
+                // Use the same count as TAB (filtered by MixinPlayerListCount)
+                // This excludes unauthenticated players and authenticated admins
+                int playerCount = player.server.getPlayerList().getPlayerCount();
 
                 // Send response with player count
                 NetworkHandler.INSTANCE.send(
                     PacketDistributor.PLAYER.with(() -> player),
-                    new SubModeControlScreenPacket(nonAdminCount)
+                    new SubModeControlScreenPacket(playerCount)
                 );
             }
         });

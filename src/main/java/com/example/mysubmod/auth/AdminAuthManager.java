@@ -16,7 +16,7 @@ public class AdminAuthManager {
 
     // Runtime state
     private final Set<UUID> authenticatedAdmins = ConcurrentHashMap.newKeySet();
-    private final Map<UUID, Long> authenticationStartTime = new ConcurrentHashMap<>(); // Track when auth started
+    private final Map<String, Long> authenticationProtectionByAccount = new ConcurrentHashMap<>(); // accountName -> protection end time
 
     private static final int MAX_ATTEMPTS = 3;
     private static final long ACCOUNT_BLACKLIST_DURATION = 3 * 60 * 1000; // 3 minutes in ms (fixed for accounts)
@@ -147,6 +147,11 @@ public class AdminAuthManager {
             clearAttempts(playerName);
             clearIPAttempts(ipAddress);
             authenticatedAdmins.add(playerId);
+            clearAuthenticationProtection(playerName);
+
+            // Handle transition from restricted to normal player
+            handleAuthenticationTransition(player);
+
             MySubMod.LOGGER.info("Admin {} successfully authenticated", playerName);
             return 0;
         } else {
@@ -352,6 +357,14 @@ public class AdminAuthManager {
     }
 
     /**
+     * Verify password without tracking attempts (for queue candidates)
+     * Returns true if password is correct, false otherwise
+     */
+    public boolean verifyPasswordOnly(String playerName, String password) {
+        return verifyPassword(playerName, password);
+    }
+
+    /**
      * Set or update admin password
      */
     public void setAdminPassword(String playerName, String password) {
@@ -427,15 +440,47 @@ public class AdminAuthManager {
      */
     public void handleDisconnect(ServerPlayer player) {
         authenticatedAdmins.remove(player.getUUID());
-        authenticationStartTime.remove(player.getUUID());
+        // Note: We intentionally do NOT clear authenticationProtectionByAccount here
+        // The protection should persist even after disconnect to prevent rapid reconnections
     }
 
     /**
-     * Start authentication protection for an admin
+     * Set authentication protection to current time + 30 seconds
+     * Used when someone connects during monopoly window (with authorized IP)
+     * This gives them 30 seconds to authenticate without others connecting
      */
-    public void startAuthenticationProtection(ServerPlayer player) {
-        authenticationStartTime.put(player.getUUID(), System.currentTimeMillis());
-        MySubMod.LOGGER.info("Started 30-second authentication protection for {}", player.getName().getString());
+    public void updateAuthenticationProtection(String accountName) {
+        long protectionEndTime = System.currentTimeMillis() + AUTH_PROTECTION_DURATION;
+        authenticationProtectionByAccount.put(accountName, protectionEndTime);
+        MySubMod.LOGGER.info("Set 30-second authentication protection for {} (end time: {})", accountName, protectionEndTime);
+    }
+
+    /**
+     * Check if account has active authentication protection
+     * Returns remaining time in milliseconds, or 0 if no protection
+     */
+    public long getRemainingProtectionTime(String accountName) {
+        Long protectionEndTime = authenticationProtectionByAccount.get(accountName);
+        if (protectionEndTime == null) {
+            return 0;
+        }
+
+        long remaining = protectionEndTime - System.currentTimeMillis();
+        if (remaining <= 0) {
+            // Protection expired
+            authenticationProtectionByAccount.remove(accountName);
+            return 0;
+        }
+
+        return remaining;
+    }
+
+    /**
+     * Clear authentication protection for an account
+     */
+    public void clearAuthenticationProtection(String accountName) {
+        authenticationProtectionByAccount.remove(accountName);
+        MySubMod.LOGGER.info("Cleared authentication protection for {}", accountName);
     }
 
 
@@ -472,5 +517,66 @@ public class AdminAuthManager {
         Set<String> accounts = new HashSet<>();
         admins.keySet().forEach(accounts::add);
         return accounts;
+    }
+
+    /**
+     * Handle player transition from unauthenticated (restricted) to authenticated (normal)
+     * Treats the player as if they just connected for the first time
+     */
+    private void handleAuthenticationTransition(ServerPlayer player) {
+        MySubMod.LOGGER.info("Handling authentication transition for admin: {}", player.getName().getString());
+
+        // Admins don't count towards player limit and NEVER kick anyone
+        // So we skip the priority kick check entirely
+
+        // Remove invisibility
+        player.setInvisible(false);
+
+        // Remove from parking lobby
+        com.example.mysubmod.auth.ParkingLobbyManager.getInstance().removePlayer(player.getUUID());
+
+        // Send success message
+        player.sendSystemMessage(net.minecraft.network.chat.Component.literal("§a§lAuthentification admin réussie!"));
+
+        // Check if player was disconnected during SubMode1 - if so, restore their state directly
+        com.example.mysubmod.submodes.SubModeManager subModeManager = com.example.mysubmod.submodes.SubModeManager.getInstance();
+        com.example.mysubmod.submodes.SubMode currentMode = subModeManager.getCurrentMode();
+
+        if (currentMode == com.example.mysubmod.submodes.SubMode.SUB_MODE_1) {
+            com.example.mysubmod.submodes.submode1.SubMode1Manager subMode1Manager =
+                com.example.mysubmod.submodes.submode1.SubMode1Manager.getInstance();
+
+            if (subMode1Manager.wasPlayerDisconnected(player.getName().getString())) {
+                // Player was disconnected during the game - restore their position and state
+                MySubMod.LOGGER.info("Admin {} was disconnected during SubMode1, restoring state", player.getName().getString());
+                subMode1Manager.handlePlayerReconnection(player);
+                return;
+            }
+        }
+
+        // Player is authenticating for the first time this session - treat as new join
+        // Call the appropriate submode event handler
+        if (currentMode == com.example.mysubmod.submodes.SubMode.SUB_MODE_1) {
+            com.example.mysubmod.submodes.submode1.SubMode1EventHandler.onPlayerJoin(
+                new net.minecraftforge.event.entity.player.PlayerEvent.PlayerLoggedInEvent(player)
+            );
+        } else if (currentMode == com.example.mysubmod.submodes.SubMode.WAITING_ROOM) {
+            com.example.mysubmod.submodes.waitingroom.WaitingRoomEventHandler.onPlayerJoin(
+                new net.minecraftforge.event.entity.player.PlayerEvent.PlayerLoggedInEvent(player)
+            );
+        } else {
+            // No active submode - teleport to spawn
+            net.minecraft.server.MinecraftServer server = player.getServer();
+            if (server != null) {
+                net.minecraft.server.level.ServerLevel overworld = server.overworld();
+                if (overworld != null) {
+                    net.minecraft.core.BlockPos spawnPos = overworld.getSharedSpawnPos();
+                    net.minecraft.core.BlockPos safePos = overworld.getHeightmapPos(net.minecraft.world.level.levelgen.Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, spawnPos);
+                    player.teleportTo(overworld, safePos.getX() + 0.5, safePos.getY(), safePos.getZ() + 0.5, 0, 0);
+                }
+            }
+        }
+
+        MySubMod.LOGGER.info("Admin {} successfully transitioned from restricted to normal", player.getName().getString());
     }
 }
