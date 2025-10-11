@@ -533,7 +533,7 @@ public class AdminAuthManager {
         player.setInvisible(false);
 
         // Remove from parking lobby
-        com.example.mysubmod.auth.ParkingLobbyManager.getInstance().removePlayer(player.getUUID());
+        com.example.mysubmod.auth.ParkingLobbyManager.getInstance().removePlayer(player.getUUID(), player.serverLevel());
 
         // Send success message
         player.sendSystemMessage(net.minecraft.network.chat.Component.literal("§a§lAuthentification admin réussie!"));

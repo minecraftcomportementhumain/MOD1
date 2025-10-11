@@ -461,11 +461,10 @@ public class SubMode1EventHandler {
 
             // Only block items on islands and paths
             if (SubMode1Manager.getInstance().isNearIslandOrPath(itemPos)) {
-                // Allow candies from our spawn system (they have glowing tag and are candy items)
+                // Allow only candies from our spawn system
                 boolean isCandy = itemEntity.getItem().is(ModItems.CANDY.get());
-                boolean hasGlowingTag = itemEntity.hasGlowingTag();
 
-                if (!isCandy || !hasGlowingTag) {
+                if (!isCandy) {
                     event.setCanceled(true);
                 }
             }

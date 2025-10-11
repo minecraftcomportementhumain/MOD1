@@ -11,6 +11,9 @@
     "MixinPlayerListCount",
     "MixinPlayerListBroadcastFilter"
   ],
+  "client": [
+    "MixinTutorialDisable"
+  ],
   "injectors": {
     "defaultRequire": 1
   }

@@ -238,7 +238,7 @@ public class ServerEventHandler {
             // Clear authentication state when player disconnects
             com.example.mysubmod.auth.AdminAuthManager.getInstance().handleDisconnect(player);
             com.example.mysubmod.auth.AuthManager.getInstance().handleDisconnect(player);
-            parkingLobby.removePlayer(player.getUUID());
+            parkingLobby.removePlayer(player.getUUID(), player.serverLevel());
 
             // Clean up temporary name mapping if this was a REAL queue candidate
             if (parkingLobby.isTemporaryQueueName(playerName)) {

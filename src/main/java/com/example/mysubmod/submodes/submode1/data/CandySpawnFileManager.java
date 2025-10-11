@@ -90,14 +90,27 @@ public class CandySpawnFileManager {
         }
     }
 
-    public List<CandySpawnEntry> loadSpawnConfig(String filename) {
+    public List<CandySpawnEntry> loadSpawnConfig(String filePathOrName) {
         List<CandySpawnEntry> entries = new ArrayList<>();
-        Path configFile = Paths.get(CANDY_SPAWN_DIRECTORY, filename);
+
+        // Support both filename and full path
+        Path configFile;
+        if (filePathOrName.contains(File.separator) || filePathOrName.contains("/")) {
+            // Full path provided
+            configFile = Paths.get(filePathOrName);
+        } else {
+            // Just filename provided
+            configFile = Paths.get(CANDY_SPAWN_DIRECTORY, filePathOrName);
+        }
 
         if (!Files.exists(configFile)) {
-            MySubMod.LOGGER.error("Candy spawn config file not found: {}", filename);
+            MySubMod.LOGGER.error("Candy spawn config file not found: {}", filePathOrName);
             return entries;
         }
+
+        List<String> allLines = new ArrayList<>();
+        List<String> modifiedLines = new ArrayList<>();
+        boolean hasInvalidLines = false;
 
         try (BufferedReader reader = Files.newBufferedReader(configFile)) {
             String line;
@@ -105,27 +118,45 @@ public class CandySpawnFileManager {
 
             while ((line = reader.readLine()) != null) {
                 lineNumber++;
-                line = line.trim();
+                allLines.add(line);
+                String trimmedLine = line.trim();
 
                 // Skip comments and empty lines
-                if (line.isEmpty() || line.startsWith("#")) {
+                if (trimmedLine.isEmpty() || trimmedLine.startsWith("#")) {
+                    modifiedLines.add(line);
                     continue;
                 }
 
                 try {
-                    CandySpawnEntry entry = parseLine(line);
+                    CandySpawnEntry entry = parseLine(trimmedLine);
                     if (entry != null) {
                         entries.add(entry);
+                        modifiedLines.add(line);
                     }
                 } catch (Exception e) {
-                    MySubMod.LOGGER.warn("Invalid line {} in {}: {} ({})", lineNumber, filename, line, e.getMessage());
+                    MySubMod.LOGGER.warn("Invalid line {} in {}: {} ({})", lineNumber, filePathOrName, trimmedLine, e.getMessage());
+                    // Comment out invalid line with error message
+                    modifiedLines.add("# INVALID: " + line + " # Error: " + e.getMessage());
+                    hasInvalidLines = true;
                 }
             }
 
-            MySubMod.LOGGER.info("Loaded {} candy spawn entries from {}", entries.size(), filename);
+            MySubMod.LOGGER.info("Loaded {} candy spawn entries from {}", entries.size(), filePathOrName);
+
+            // If there were invalid lines, rewrite the file with comments
+            if (hasInvalidLines) {
+                try {
+                    Files.write(configFile, modifiedLines);
+                    MySubMod.LOGGER.info("Commented out {} invalid lines in {}",
+                        (allLines.size() - entries.size() - (int)allLines.stream().filter(l -> l.trim().isEmpty() || l.trim().startsWith("#")).count()),
+                        filePathOrName);
+                } catch (IOException writeEx) {
+                    MySubMod.LOGGER.error("Failed to update file with commented lines: {}", filePathOrName, writeEx);
+                }
+            }
 
         } catch (IOException e) {
-            MySubMod.LOGGER.error("Failed to read candy spawn config file: {}", filename, e);
+            MySubMod.LOGGER.error("Failed to read candy spawn config file: {}", filePathOrName, e);
         }
 
         return entries;

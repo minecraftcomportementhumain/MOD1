@@ -119,9 +119,6 @@ public class SubMode1CandyManager {
                 // Prevent candy from despawning
                 candyEntity.setUnlimitedLifetime();
 
-                // Make candy more visible from far distance
-                candyEntity.setGlowingTag(true); // Add glowing effect
-
                 overworld.addFreshEntity(candyEntity);
                 candySpawnTimes.put(candyEntity, System.currentTimeMillis());
 

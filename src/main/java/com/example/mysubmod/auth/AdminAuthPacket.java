@@ -160,7 +160,7 @@ public class AdminAuthPacket {
                 // IMPORTANT: Must kick before clearing queue, otherwise candidates are removed from Map
                 parkingLobby.kickRemainingQueueCandidates(playerName, player.getServer(), "auth_success");
 
-                parkingLobby.removePlayer(player.getUUID());
+                parkingLobby.removePlayer(player.getUUID(), player.serverLevel());
                 parkingLobby.clearQueueForAccount(playerName);
 
                 player.sendSystemMessage(net.minecraft.network.chat.Component.literal(

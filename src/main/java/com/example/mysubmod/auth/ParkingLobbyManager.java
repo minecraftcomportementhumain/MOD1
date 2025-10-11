@@ -1,8 +1,11 @@
 package com.example.mysubmod.auth;
 
 import com.example.mysubmod.MySubMod;
+import net.minecraft.core.BlockPos;
 import net.minecraft.network.chat.Component;
+import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.world.level.block.Blocks;
 
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
@@ -151,8 +154,65 @@ public class ParkingLobbyManager {
 
         timeoutTimer.schedule(session.timeoutTask, timeout);
 
+        // Create invisible barrier around parking lobby position
+        createParkingLobbyBarriers(player.serverLevel());
+
         MySubMod.LOGGER.info("Player {} added to parking lobby as {} ({}s timeout, fromQueue: {})",
             playerName, accountType, timeoutSeconds, fromQueue);
+    }
+
+    /**
+     * Create invisible barriers (barrier blocks) around the parking lobby position
+     * to prevent any movement
+     * Only creates barriers if they don't already exist (multiple players can be in parking lobby)
+     */
+    private void createParkingLobbyBarriers(ServerLevel world) {
+        BlockPos center = new BlockPos(10000, 200, 10000);
+        int radius = 3; // 3 blocks radius around player
+        int height = 5; // 5 blocks high
+
+        // Create a box of barriers around the player
+        for (int x = -radius; x <= radius; x++) {
+            for (int y = -1; y <= height; y++) {
+                for (int z = -radius; z <= radius; z++) {
+                    // Only place barriers on the edges (hollow box)
+                    boolean isEdge = Math.abs(x) == radius || Math.abs(z) == radius || y == -1 || y == height;
+
+                    if (isEdge) {
+                        BlockPos barrierPos = center.offset(x, y, z);
+                        // Only place if not already a barrier (might be from another player)
+                        if (!world.getBlockState(barrierPos).is(Blocks.BARRIER)) {
+                            world.setBlock(barrierPos, Blocks.BARRIER.defaultBlockState(), 3);
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    /**
+     * Remove barriers around parking lobby position
+     */
+    private void removeParkingLobbyBarriers(ServerLevel world) {
+        BlockPos center = new BlockPos(10000, 200, 10000);
+        int radius = 3;
+        int height = 5;
+
+        for (int x = -radius; x <= radius; x++) {
+            for (int y = -1; y <= height; y++) {
+                for (int z = -radius; z <= radius; z++) {
+                    boolean isEdge = Math.abs(x) == radius || Math.abs(z) == radius || y == -1 || y == height;
+
+                    if (isEdge) {
+                        BlockPos barrierPos = center.offset(x, y, z);
+                        // Only remove if it's a barrier block
+                        if (world.getBlockState(barrierPos).is(Blocks.BARRIER)) {
+                            world.setBlock(barrierPos, Blocks.AIR.defaultBlockState(), 3);
+                        }
+                    }
+                }
+            }
+        }
     }
 
     /**
@@ -162,6 +222,21 @@ public class ParkingLobbyManager {
         AuthSession session = activeSessions.remove(playerId);
         if (session != null && session.timeoutTask != null) {
             session.timeoutTask.cancel();
+        }
+    }
+
+    /**
+     * Remove player from parking lobby and clean up barriers
+     */
+    public void removePlayer(UUID playerId, ServerLevel world) {
+        AuthSession session = activeSessions.remove(playerId);
+        if (session != null && session.timeoutTask != null) {
+            session.timeoutTask.cancel();
+        }
+
+        // Only remove barriers if no other players are in parking lobby
+        if (activeSessions.isEmpty()) {
+            removeParkingLobbyBarriers(world);
         }
     }
 

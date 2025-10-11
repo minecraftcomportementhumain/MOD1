@@ -439,7 +439,7 @@ public class AuthManager {
         player.setInvisible(false);
 
         // Remove from parking lobby
-        com.example.mysubmod.auth.ParkingLobbyManager.getInstance().removePlayer(playerId);
+        com.example.mysubmod.auth.ParkingLobbyManager.getInstance().removePlayer(playerId, player.serverLevel());
 
         // Send player info to all clients NOW that they're authenticated (wasn't sent during initial connection)
         net.minecraft.network.protocol.game.ClientboundPlayerInfoUpdatePacket addPacket =
