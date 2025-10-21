@@ -8,7 +8,7 @@ echo ""
 # Configuration
 GITHUB_USER="minecraftcomportementhumain"
 GITHUB_REPO="MOD1"
-MOD_NAME="mysubmod-1.0-SNAPSHOT.jar"
+MOD_NAME="mysubmod-1.0.0.jar"
 PRISM_INSTANCE_NAME="ÉtudeComportementHumain"
 
 # Détection automatique du système

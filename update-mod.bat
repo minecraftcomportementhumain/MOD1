@@ -7,7 +7,7 @@ echo.
 REM Configuration
 set GITHUB_USER=minecraftcomportementhumain
 set GITHUB_REPO=MOD1
-set MOD_NAME=mysubmod-1.0-SNAPSHOT.jar
+set MOD_NAME=mysubmod-1.0.0.jar
 set PRISM_INSTANCE_NAME=ÉtudeComportementHumain
 
 REM Chemin automatique vers Prism Launcher

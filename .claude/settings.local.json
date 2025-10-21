@@ -10,7 +10,8 @@
       "Bash(javac:*)",
       "mcp__ide__getDiagnostics",
       "Bash(powershell.exe:*)",
-      "Read(//c/Users/Olivier Lafontaine/Desktop/Projet Minecraft/**)"
+      "Read(//c/Users/Olivier Lafontaine/Desktop/Projet Minecraft/**)",
+      "Read(//c/Users/Olivier Lafontaine/Downloads/**)"
     ],
     "deny": [],
     "ask": []

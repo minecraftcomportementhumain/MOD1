@@ -35,7 +35,7 @@ Ce guide explique comment configurer Prism Launcher pour télécharger automatiq
 Collez cette commande dans **Pre-launch command:**
 
 ```bash
-curl -L -o "$INST_MC_DIR/mods/mysubmod-1.0-SNAPSHOT.jar" https://github.com/minecraftcomportementhumain/MOD1/releases/download/latest/mysubmod-1.0-SNAPSHOT.jar
+curl -L -o "$INST_MC_DIR/mods/mysubmod-1.0.0.jar" https://github.com/minecraftcomportementhumain/MOD1/releases/download/latest/mysubmod-1.0.0.jar
 ```
 
 ✅ **Avantages:**
@@ -51,12 +51,12 @@ Si vous préférez des commandes spécifiques:
 
 **Windows:**
 ```batch
-cmd /c "curl -L -o "$INST_MC_DIR\mods\mysubmod-1.0-SNAPSHOT.jar" https://github.com/minecraftcomportementhumain/MOD1/releases/download/latest/mysubmod-1.0-SNAPSHOT.jar"
+cmd /c "curl -L -o "$INST_MC_DIR\mods\mysubmod-1.0.0.jar" https://github.com/minecraftcomportementhumain/MOD1/releases/download/latest/mysubmod-1.0.0.jar"
 ```
 
 **Linux/Mac:**
 ```bash
-curl -L -o "$INST_MC_DIR/mods/mysubmod-1.0-SNAPSHOT.jar" https://github.com/minecraftcomportementhumain/MOD1/releases/download/latest/mysubmod-1.0-SNAPSHOT.jar
+curl -L -o "$INST_MC_DIR/mods/mysubmod-1.0.0.jar" https://github.com/minecraftcomportementhumain/MOD1/releases/download/latest/mysubmod-1.0.0.jar
 ```
 
 ### Étape 4: Sauvegarder
@@ -80,17 +80,17 @@ Pour vérifier que le mod se télécharge bien:
 
 **Windows:**
 ```
-%APPDATA%\PrismLauncher\instances\ÉtudeComportementHumain\.minecraft\mods\mysubmod-1.0-SNAPSHOT.jar
+%APPDATA%\PrismLauncher\instances\ÉtudeComportementHumain\.minecraft\mods\mysubmod-1.0.0.jar
 ```
 
 **Linux:**
 ```
-~/.local/share/PrismLauncher/instances/ÉtudeComportementHumain/.minecraft/mods/mysubmod-1.0-SNAPSHOT.jar
+~/.local/share/PrismLauncher/instances/ÉtudeComportementHumain/.minecraft/mods/mysubmod-1.0.0.jar
 ```
 
 **Mac:**
 ```
-~/Library/Application Support/PrismLauncher/instances/ÉtudeComportementHumain/.minecraft/mods/mysubmod-1.0-SNAPSHOT.jar
+~/Library/Application Support/PrismLauncher/instances/ÉtudeComportementHumain/.minecraft/mods/mysubmod-1.0.0.jar
 ```
 
 Vérifiez la date de modification du fichier - elle devrait correspondre à maintenant!
@@ -123,12 +123,12 @@ Si vous voulez voir le progrès du téléchargement, modifiez la commande:
 
 **Windows:**
 ```batch
-cmd /c "echo Mise a jour du mod... & curl -L --progress-bar -o "$INST_MC_DIR\mods\mysubmod-1.0-SNAPSHOT.jar" https://github.com/minecraftcomportementhumain/MOD1/releases/download/latest/mysubmod-1.0-SNAPSHOT.jar & echo Mod mis a jour!"
+cmd /c "echo Mise a jour du mod... & curl -L --progress-bar -o "$INST_MC_DIR\mods\mysubmod-1.0.0.jar" https://github.com/minecraftcomportementhumain/MOD1/releases/download/latest/mysubmod-1.0.0.jar & echo Mod mis a jour!"
 ```
 
 **Linux/Mac:**
 ```bash
-echo "Mise à jour du mod..." && curl -L --progress-bar -o "$INST_MC_DIR/mods/mysubmod-1.0-SNAPSHOT.jar" https://github.com/minecraftcomportementhumain/MOD1/releases/download/latest/mysubmod-1.0-SNAPSHOT.jar && echo "Mod mis à jour!"
+echo "Mise à jour du mod..." && curl -L --progress-bar -o "$INST_MC_DIR/mods/mysubmod-1.0.0.jar" https://github.com/minecraftcomportementhumain/MOD1/releases/download/latest/mysubmod-1.0.0.jar && echo "Mod mis à jour!"
 ```
 
 ### Vérifier si une Mise à Jour est Nécessaire (Économiser Bande Passante)
@@ -137,12 +137,12 @@ Pour ne télécharger que si le fichier a changé:
 
 **Windows:**
 ```batch
-cmd /c "curl -L -z "$INST_MC_DIR\mods\mysubmod-1.0-SNAPSHOT.jar" -o "$INST_MC_DIR\mods\mysubmod-1.0-SNAPSHOT.jar" https://github.com/minecraftcomportementhumain/MOD1/releases/download/latest/mysubmod-1.0-SNAPSHOT.jar"
+cmd /c "curl -L -z "$INST_MC_DIR\mods\mysubmod-1.0.0.jar" -o "$INST_MC_DIR\mods\mysubmod-1.0.0.jar" https://github.com/minecraftcomportementhumain/MOD1/releases/download/latest/mysubmod-1.0.0.jar"
 ```
 
 **Linux/Mac:**
 ```bash
-curl -L -z "$INST_MC_DIR/mods/mysubmod-1.0-SNAPSHOT.jar" -o "$INST_MC_DIR/mods/mysubmod-1.0-SNAPSHOT.jar" https://github.com/minecraftcomportementhumain/MOD1/releases/download/latest/mysubmod-1.0-SNAPSHOT.jar
+curl -L -z "$INST_MC_DIR/mods/mysubmod-1.0.0.jar" -o "$INST_MC_DIR/mods/mysubmod-1.0.0.jar" https://github.com/minecraftcomportementhumain/MOD1/releases/download/latest/mysubmod-1.0.0.jar
 ```
 
 L'option `-z` télécharge seulement si le fichier serveur est plus récent.
@@ -183,7 +183,7 @@ sudo yum install curl  # CentOS/RHEL
 
 Si vous avez plusieurs fichiers `.jar`:
 1. Supprimez tous les anciens fichiers `.jar` du mod
-2. Gardez seulement `mysubmod-1.0-SNAPSHOT.jar`
+2. Gardez seulement `mysubmod-1.0.0.jar`
 
 ---
 

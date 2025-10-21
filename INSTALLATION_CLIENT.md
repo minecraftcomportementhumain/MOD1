@@ -24,7 +24,7 @@ Ce guide explique comment installer et mettre à jour automatiquement le mod pou
 4. Dans **Pre-launch command**, collez cette commande universelle:
 
 ```bash
-curl -L -o "$INST_MC_DIR/mods/mysubmod-1.0-SNAPSHOT.jar" https://github.com/minecraftcomportementhumain/MOD1/releases/download/latest/mysubmod-1.0-SNAPSHOT.jar
+curl -L -o "$INST_MC_DIR/mods/mysubmod-1.0.0.jar" https://github.com/minecraftcomportementhumain/MOD1/releases/download/latest/mysubmod-1.0.0.jar
 ```
 
 **Note:** Cette commande fonctionne sur Windows, Linux ET Mac!
@@ -117,12 +117,12 @@ Pour automatiser encore plus, vous pouvez configurer Prism pour télécharger le
 2. **Settings** → **Custom commands**
 3. **Pre-launch command:**
 ```batch
-curl -L -o "$INST_MC_DIR/mods/mysubmod-1.0-SNAPSHOT.jar" https://github.com/VOTRE_USER/VOTRE_REPO/releases/download/latest/mysubmod-1.0-SNAPSHOT.jar
+curl -L -o "$INST_MC_DIR/mods/mysubmod-1.0.0.jar" https://github.com/VOTRE_USER/VOTRE_REPO/releases/download/latest/mysubmod-1.0.0.jar
 ```
 
 ### Linux/Mac:
 ```bash
-curl -L -o "$INST_MC_DIR/mods/mysubmod-1.0-SNAPSHOT.jar" https://github.com/VOTRE_USER/VOTRE_REPO/releases/download/latest/mysubmod-1.0-SNAPSHOT.jar
+curl -L -o "$INST_MC_DIR/mods/mysubmod-1.0.0.jar" https://github.com/VOTRE_USER/VOTRE_REPO/releases/download/latest/mysubmod-1.0.0.jar
 ```
 
 ⚠️ **Remplacez** `VOTRE_USER` et `VOTRE_REPO` par les vraies valeurs!
