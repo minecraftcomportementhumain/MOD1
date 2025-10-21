@@ -37,7 +37,7 @@ public class ParkingLobbyManager {
     private static final long WHITELIST_EXPIRY_MS = 45 * 1000; // 45 seconds to reconnect (monopoly window)
     private static final long QUEUE_ENTRY_EXPIRY_MS = 5 * 60 * 1000; // 5 minutes max in queue
     private static final int MAX_QUEUE_SIZE = 1; // Max 1 person waiting in queue per account
-    private static final int MAX_CANDIDATES_PER_ACCOUNT_PER_IP = 5; // Max 5 parallel attempts per account from same IP (DoS protection)
+    private static final int MAX_CANDIDATES_PER_ACCOUNT_PER_IP = 4; // Max 4 parallel attempts per account from same IP (DoS protection)
     private static final int MAX_CANDIDATES_PER_IP_GLOBAL = 10; // Max 10 _Q_ accounts from same IP across all accounts (DoS protection)
     private static final long CANDIDATE_MIN_AGE_FOR_EVICTION_MS = 20 * 1000; // 20 seconds - min age before a candidate can be evicted
 
@@ -239,6 +239,26 @@ public class ParkingLobbyManager {
             session.timeoutTask.cancel();
         }
 
+        // Clean up candidate tracking if this player was a queue candidate
+        boolean wasCandidate = false;
+        String accountName = null;
+
+        // Find which account this candidate belongs to
+        for (Map.Entry<String, Set<UUID>> entry : queueCandidates.entrySet()) {
+            if (entry.getValue().contains(playerId)) {
+                accountName = entry.getKey();
+                wasCandidate = true;
+                break;
+            }
+        }
+
+        // If player was a queue candidate, clean up all tracking
+        if (wasCandidate && accountName != null) {
+            removeQueueCandidate(accountName, playerId);
+            MySubMod.LOGGER.info("Cleaned up queue candidate tracking for player {} from account {} on disconnect",
+                playerId, accountName);
+        }
+
         // Only remove barriers if no other players are in parking lobby
         if (activeSessions.isEmpty()) {
             removeParkingLobbyBarriers(world);
@@ -346,18 +366,20 @@ public class ParkingLobbyManager {
                     }
                 }
             }
+        }
 
-            if (countFromThisIP >= MAX_CANDIDATES_PER_ACCOUNT_PER_IP) {
-                // Try to evict oldest candidate if available
-                if (oldestEvictableForAccount != null) {
-                    evictCandidate(oldestEvictableForAccount, accountName, server, "evicted_for_new_candidate_account");
-                    MySubMod.LOGGER.info("DoS Protection: Evicted old candidate {} from account {} to make room for new candidate (age: {}s)",
-                        oldestEvictableForAccount, accountName, (now - oldestTimeForAccount) / 1000);
-                } else {
-                    MySubMod.LOGGER.warn("DoS Protection: IP {} exceeded max candidates per account for {} ({}/{}) - no evictable candidates",
-                        ipOnly, accountName, countFromThisIP, MAX_CANDIDATES_PER_ACCOUNT_PER_IP);
-                    return false;
-                }
+        // Enforce limit: if adding this candidate would exceed the limit, we must evict before adding
+        if (countFromThisIP >= MAX_CANDIDATES_PER_ACCOUNT_PER_IP) {
+            // Try to evict oldest candidate if available
+            if (oldestEvictableForAccount != null) {
+                evictCandidate(oldestEvictableForAccount, accountName, server, "evicted_for_new_candidate_account");
+                MySubMod.LOGGER.info("DoS Protection: Evicted old candidate {} from account {} to make room for new candidate (age: {}s)",
+                    oldestEvictableForAccount, accountName, (now - oldestTimeForAccount) / 1000);
+                countFromThisIP--; // Decrement count after eviction
+            } else {
+                MySubMod.LOGGER.warn("DoS Protection: IP {} exceeded max candidates per account for {} ({}/{}) - no evictable candidates",
+                    ipOnly, accountName, countFromThisIP, MAX_CANDIDATES_PER_ACCOUNT_PER_IP);
+                return false;
             }
         }
 
@@ -387,12 +409,14 @@ public class ParkingLobbyManager {
             }
         }
 
+        // Enforce limit: if we're at the limit, we must evict before adding
         if (totalCandidatesFromIP >= MAX_CANDIDATES_PER_IP_GLOBAL) {
             // Try to evict oldest candidate globally if available
             if (oldestEvictableGlobal != null) {
                 evictCandidate(oldestEvictableGlobal, oldestEvictableAccount, server, "evicted_for_new_candidate_global");
                 MySubMod.LOGGER.info("DoS Protection: Evicted old candidate {} (account: {}) globally to make room for new candidate (age: {}s)",
                     oldestEvictableGlobal, oldestEvictableAccount, (now - oldestTimeGlobal) / 1000);
+                totalCandidatesFromIP--; // Decrement count after eviction
             } else {
                 MySubMod.LOGGER.warn("DoS Protection: IP {} exceeded global max candidates ({}/{}) - no evictable candidates",
                     ipOnly, totalCandidatesFromIP, MAX_CANDIDATES_PER_IP_GLOBAL);
@@ -404,6 +428,8 @@ public class ParkingLobbyManager {
         queueCandidates.computeIfAbsent(accountName, k -> ConcurrentHashMap.newKeySet()).add(playerId);
         candidateIPs.put(playerId, ipAddress);
         candidateJoinTime.put(playerId, now);
+
+        // Log with accurate counts (after eviction and addition)
         MySubMod.LOGGER.info("Player {} marked as queue candidate for {} (IP: {}, account candidates from IP: {}, global candidates from IP: {})",
             playerId, accountName, ipOnly, countFromThisIP + 1, totalCandidatesFromIP + 1);
         return true;
