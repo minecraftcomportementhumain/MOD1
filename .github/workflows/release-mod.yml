@@ -68,21 +68,7 @@ jobs:
         with:
           tag_name: latest
           name: "Latest Build - ${{ steps.date.outputs.date }}"
-          body: |
-            🤖 **Build automatique du mod**
-
-            📅 **Date:** ${{ steps.date.outputs.date }}
-            🔗 **Commit:** ${{ github.sha }}
-
-            ## 📥 Installation
-
-            1. Téléchargez le fichier `.jar` ci-dessous
-            2. Placez-le dans le dossier `mods/` de votre instance Minecraft
-            3. Lancez le jeu!
-
-            ## 🔄 Mise à jour automatique
-
-            Utilisez le script `update-mod.bat` (Windows) ou `update-mod.sh` (Linux/Mac) pour mettre à jour automatiquement.
+          body_path: RELEASE_NOTES.md
           files: |
             build/libs/*.jar
           draft: false

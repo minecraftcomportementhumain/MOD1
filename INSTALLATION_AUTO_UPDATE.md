@@ -6,10 +6,11 @@ Ce guide explique comment configurer Prism Launcher pour télécharger automatiq
 
 ## 🎯 Avantages
 
-- ✅ Pas besoin de lancer manuellement `update-mod.bat`
+- ✅ Mise à jour automatique à chaque lancement
 - ✅ Toujours la dernière version du mod
 - ✅ Mise à jour transparente pour les joueurs
 - ✅ Fonctionne sur Windows, Linux et Mac
+- ✅ Aucun script manuel nécessaire
 
 ---
 

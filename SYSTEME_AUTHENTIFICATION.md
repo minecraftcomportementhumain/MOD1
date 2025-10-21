@@ -1,7 +1,7 @@
 # 🔐 SYSTÈME D'AUTHENTIFICATION
 
-**Version:** 1.0.0
-**Date:** 2025-10-09
+**Version:** 1.1.0
+**Date:** 2025-10-21
 **Mod:** MySubMod pour Minecraft Forge 1.20.1
 
 ---
@@ -91,6 +91,7 @@ Permet à **plusieurs personnes** d'utiliser le **même compte protégé** avec 
 - **Token unique**: Code à 6 caractères alphanumériques
 - **Autorisation IP**: Seule l'IP autorisée peut se connecter
 - **Protection 30s**: Temps garanti pour s'authentifier
+- **Protection DoS**: Limites strictes pour éviter surcharge serveur
 
 ### Workflow
 
@@ -141,6 +142,42 @@ Limite: 16 caractères (limite Minecraft)
 - **Maximum**: 1 candidat en attente par compte
 - **Expiration**: 5 minutes
 - **Kick automatique**: Si auth réussie ou timeout
+
+### Protection DoS (Denial of Service)
+
+Pour éviter la surcharge du serveur par trop de candidats simultanés:
+
+#### Limites par IP
+- **4 candidats max** par compte depuis la même IP
+- **10 candidats max** au total depuis la même IP (tous comptes confondus)
+
+#### Éviction intelligente
+Quand la limite est atteinte:
+1. Le système cherche les candidats **≥20 secondes** d'ancienneté
+2. Le plus vieux est automatiquement déconnecté (éviction)
+3. Le nouveau candidat prend sa place
+4. Si tous les candidats sont < 20s, le nouveau est **refusé**
+
+**Messages:**
+```
+Connexion refusée:
+"Limite de tentatives dépassée
+Trop de tentatives de connexion depuis votre IP.
+Limite par compte: 4 tentatives parallèles
+Limite globale: 10 comptes différents
+
+Tous les candidats actuels sont récents (<20s).
+Veuillez réessayer plus tard."
+```
+
+#### Nettoyage automatique
+Le système nettoie les candidats dans **tous les cas**:
+- ✅ Timeout (60s sans action)
+- ✅ Bon mot de passe (authentification réussie)
+- ✅ Mauvais mot de passe (échec authentification)
+- ✅ Déconnexion manuelle ou crash
+
+**Comptage précis:** Le nombre de candidats en queue est toujours exact grâce au nettoyage systématique des Maps de tracking (`candidateIPs`, `candidateJoinTime`).
 
 ---
 
@@ -266,13 +303,23 @@ Exemple: 2001:0DB8:0000:0000:0000:0000:1428:57ab
 - Timeouts (60s / 30s)
 - Autorisation IP
 - Noms temporaires
+- **Protection DoS** avec limites IP et éviction
+
+**Constantes DoS:**
+```java
+MAX_CANDIDATES_PER_ACCOUNT_PER_IP = 4     // 4 max par compte/IP
+MAX_CANDIDATES_PER_IP_GLOBAL = 10          // 10 max total/IP
+CANDIDATE_MIN_AGE_FOR_EVICTION_MS = 20000  // 20s avant éviction
+```
 
 **Méthodes clés:**
 ```java
 - addPlayer(ServerPlayer, String accountType)
-- addQueueCandidate(String accountName, UUID)
+- addQueueCandidate(String, UUID, String, Server) // Avec protection DoS
 - isAuthorized(String accountName, String IP)
 - kickRemainingQueueCandidates(...)
+- removePlayer(UUID, ServerLevel)  // Nettoyage complet candidats
+- evictCandidate(UUID, String, Server, String)  // Éviction automatique
 ```
 
 #### `CredentialsStore.java`
@@ -470,6 +517,23 @@ Voir `BUGS_CORRIGES.md` pour détails complets.
 
 ---
 
-**Dernière mise à jour:** 2025-10-09
+**Dernière mise à jour:** 2025-10-21
 **Auteur:** Claude Code
 **Contact:** Voir GitHub pour issues/PR
+
+---
+
+## 📈 CHANGELOG
+
+### v1.1.0 (2025-10-21)
+- ✨ **Protection DoS**: Limites de 4 candidats/compte/IP et 10 candidats/IP global
+- ✨ **Éviction intelligente**: Candidats ≥20s automatiquement remplacés
+- 🐛 **Fix nettoyage**: Tracking précis des candidats dans tous les scénarios de déconnexion
+- 📊 **Comptage fiable**: Maps candidateIPs et candidateJoinTime nettoyées systématiquement
+
+### v1.0.0 (2025-10-09)
+- 🎉 Version initiale du système d'authentification
+- 🔐 Authentification par mot de passe (SHA-256 + salt)
+- 🎫 Système de queue avec monopoles de 45s
+- 🛡️ Protection 30s durant fenêtre de monopole
+- ⛔ Blacklist compte (3 min) et IP progressive (admins)

@@ -176,13 +176,19 @@ Ce mod ajoute un système de sous-modes qui fonctionne côté client et serveur 
 
 ## Nouveautés de la Dernière Version
 
+### Protection DoS et Optimisation Queue (21 octobre 2025)
+- **Limites strictes** : 4 candidats max par compte/IP, 10 candidats max total/IP
+- **Éviction intelligente** : Candidats ≥20s automatiquement remplacés quand limite atteinte
+- **Nettoyage complet** : Tracking précis dans tous les scénarios (timeout, auth, déconnexion)
+- **Comptage fiable** : Nombre exact de candidats en queue en temps réel
+- **Messages clairs** : Indication précise des limites et temps d'attente
+
 ### Système de File d'Attente avec Fenêtres Garanties (6 octobre 2025)
 - **File d'attente intelligente** : Système de queue par compte avec fenêtres de monopole garanties
 - **Fenêtres horaires exactes** : Affichage HH:MM:SS de la période d'accès exclusif (ex: 15:51:00 → 15:51:30)
 - **Promesse absolue** : Fenêtre affichée reste valide quoi qu'il arrive (déconnexions, timeouts)
 - **Timeouts différenciés** : 60s connexion directe, 30s depuis file d'attente
 - **Bonus temps cumulé** : Temps non utilisé transféré au suivant (déconnexion = prolongation)
-- **Protection anti-abus** : Max 3 positions par IP, une seule fois par compte
 - **Autorisation automatique** : Prochain en file obtient monopole lors timeout/déconnexion
 - **Messages clairs** : Position en file + fenêtre horaire garantie affichées
 

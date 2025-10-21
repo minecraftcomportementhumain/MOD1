@@ -1,5 +1,106 @@
 # Changelog - MySubMod
 
+## 🛡️ Session du 21 octobre 2025 - Protection DoS et Optimisation Queue
+
+### Protection contre Déni de Service (DoS)
+
+**Problème identifié:**
+- Un attaquant pouvait créer un nombre illimité de connexions candidates (_Q_) pour surcharger le serveur
+- Aucune limite sur le nombre de tentatives parallèles par IP
+- Risque de saturation des ressources serveur
+
+**Solution implémentée:**
+
+**1. Limites strictes par IP**
+- **4 candidats maximum** par compte depuis la même IP
+- **10 candidats maximum** au total depuis la même IP (tous comptes confondus)
+- Constantes dans `ParkingLobbyManager.java`:
+  ```java
+  MAX_CANDIDATES_PER_ACCOUNT_PER_IP = 4
+  MAX_CANDIDATES_PER_IP_GLOBAL = 10
+  CANDIDATE_MIN_AGE_FOR_EVICTION_MS = 20000  // 20 secondes
+  ```
+
+**2. Éviction intelligente basée sur l'âge**
+- Quand la limite est atteinte, le système cherche les candidats **≥20 secondes** d'ancienneté
+- Le candidat le plus vieux est automatiquement déconnecté (éviction)
+- Le nouveau candidat prend sa place
+- Si tous les candidats sont récents (< 20s), le nouveau est **refusé**
+- Message clair à l'utilisateur avec détails des limites
+
+**3. Nettoyage systématique des candidats**
+
+**Bug corrigé:** Les candidats qui se déconnectaient (timeout ou crash) n'étaient pas retirés des Maps de tracking, causant un comptage inexact.
+
+**Correction:** Nettoyage complet dans **tous les scénarios**:
+- ✅ **Timeout** (60s sans action) → `removePlayer()` détecte et nettoie le candidat
+- ✅ **Bon mot de passe** (authentification réussie) → `clearQueueForAccount()` nettoie tout
+- ✅ **Mauvais mot de passe** (échec) → `removeQueueCandidate()` nettoie immédiatement
+- ✅ **Déconnexion manuelle/crash** → `removePlayer()` via `onPlayerLogout()` nettoie
+
+**Modifications dans `ParkingLobbyManager.java`:**
+```java
+public void removePlayer(UUID playerId, ServerLevel world) {
+    // ... (existing code)
+
+    // Clean up candidate tracking if this player was a queue candidate
+    boolean wasCandidate = false;
+    String accountName = null;
+
+    // Find which account this candidate belongs to
+    for (Map.Entry<String, Set<UUID>> entry : queueCandidates.entrySet()) {
+        if (entry.getValue().contains(playerId)) {
+            accountName = entry.getKey();
+            wasCandidate = true;
+            break;
+        }
+    }
+
+    // If player was a queue candidate, clean up all tracking
+    if (wasCandidate && accountName != null) {
+        removeQueueCandidate(accountName, playerId);
+    }
+}
+```
+
+**4. Comptage précis et fiable**
+- Maps `candidateIPs` et `candidateJoinTime` nettoyées dans tous les cas
+- Le nombre de candidats en queue est maintenant **toujours exact**
+- Logs détaillés avec compteurs précis: `account candidates from IP: X, global candidates from IP: Y`
+
+**5. Méthode d'éviction dédiée**
+```java
+private void evictCandidate(UUID candidateId, String accountName,
+                            net.minecraft.server.MinecraftServer server, String reason) {
+    removeQueueCandidate(accountName, candidateId);
+
+    net.minecraft.server.level.ServerPlayer player = server.getPlayerList().getPlayer(candidateId);
+    if (player != null) {
+        String message = // Message personnalisé selon raison
+        player.connection.disconnect(Component.literal(message));
+    }
+}
+```
+
+### Fichiers modifiés
+- `ParkingLobbyManager.java`:
+  - Ajout constantes DoS (MAX_CANDIDATES_*)
+  - Modification `addQueueCandidate()` avec paramètre `server` pour éviction
+  - Nouvelle méthode `evictCandidate()`
+  - Fix `removePlayer()` pour nettoyage complet candidats
+  - Décrémentation compteurs après éviction pour logs précis
+- `ServerEventHandler.java`:
+  - Passage paramètre `server` à `addQueueCandidate()`
+  - Message d'erreur détaillé si limite dépassée
+
+### Impact
+- 🔒 **Sécurité renforcée** : Impossible de surcharger le serveur avec des candidats
+- 📊 **Monitoring fiable** : Comptage exact des candidats en temps réel
+- ♻️ **Gestion optimale** : Candidats anciens automatiquement remplacés
+- 💬 **UX améliorée** : Messages clairs sur les limites et raisons de refus
+
+---
+
 ## 🔧 Session du 6 octobre 2025 - Partie 3 (Corrections IP et Queue)
 
 ### Corrections critiques
