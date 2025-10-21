@@ -7,8 +7,47 @@ Ce guide explique comment installer et mettre à jour automatiquement le mod pou
 ## 🎮 Prérequis
 
 - **Prism Launcher** installé
-- **Instance Minecraft Forge 1.20.1** créée
+- **Instance Minecraft Forge 1.20.1** créée avec le nom: `ÉtudeComportementHumain`
 - Connexion internet
+
+---
+
+## ⚡ MÉTHODE RECOMMANDÉE: Mise à Jour Automatique au Lancement
+
+**La meilleure solution:** Le mod se met à jour automatiquement à chaque fois que vous lancez Minecraft!
+
+### Configuration (Une seule fois):
+
+1. **Ouvrez Prism Launcher**
+2. **Clic droit** sur votre instance → **Edit**
+3. **Settings** → **Custom Commands**
+4. Dans **Pre-launch command**, collez:
+
+**Windows:**
+```batch
+cmd /c "curl -L -o "$INST_MC_DIR\mods\mysubmod-1.0-SNAPSHOT.jar" https://github.com/minecraftcomportementhumain/MOD1/releases/download/latest/mysubmod-1.0-SNAPSHOT.jar"
+```
+
+**Linux/Mac:**
+```bash
+curl -L -o "$INST_MC_DIR/mods/mysubmod-1.0-SNAPSHOT.jar" https://github.com/minecraftcomportementhumain/MOD1/releases/download/latest/mysubmod-1.0-SNAPSHOT.jar
+```
+
+5. **Cliquez OK**
+6. **C'est tout!** 🎉
+
+### Résultat:
+- ✅ À chaque lancement, le mod se met à jour automatiquement
+- ✅ Vous avez toujours la dernière version
+- ✅ Aucune action manuelle nécessaire
+
+📖 **Pour plus de détails, consultez:** `INSTALLATION_AUTO_UPDATE.md`
+
+---
+
+## 🔄 MÉTHODE ALTERNATIVE: Script Manuel
+
+Si vous préférez contrôler manuellement les mises à jour:
 
 ---
 
