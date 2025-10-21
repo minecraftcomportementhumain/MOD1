@@ -28,6 +28,8 @@ public class ParkingLobbyManager {
     private final Map<String, Boolean> authorizedIPsFromQueue = new ConcurrentHashMap<>(); // Track IPs authorized from queue (accountName -> true)
     private final Map<String, String> temporaryNameToAccount = new ConcurrentHashMap<>(); // temporaryName -> original accountName
     private final Map<String, String> activeTokens = new ConcurrentHashMap<>(); // accountName -> active token for current monopoly window
+    private final Map<UUID, String> candidateIPs = new ConcurrentHashMap<>(); // UUID -> IP address (for DoS protection tracking)
+    private final Map<UUID, Long> candidateJoinTime = new ConcurrentHashMap<>(); // UUID -> join timestamp (for age-based eviction)
     private final Timer timeoutTimer = new Timer("ParkingLobby-Timeout", true);
 
     private static final long AUTH_TIMEOUT_MS = 60 * 1000; // 60 seconds (default)
@@ -35,6 +37,9 @@ public class ParkingLobbyManager {
     private static final long WHITELIST_EXPIRY_MS = 45 * 1000; // 45 seconds to reconnect (monopoly window)
     private static final long QUEUE_ENTRY_EXPIRY_MS = 5 * 60 * 1000; // 5 minutes max in queue
     private static final int MAX_QUEUE_SIZE = 1; // Max 1 person waiting in queue per account
+    private static final int MAX_CANDIDATES_PER_ACCOUNT_PER_IP = 5; // Max 5 parallel attempts per account from same IP (DoS protection)
+    private static final int MAX_CANDIDATES_PER_IP_GLOBAL = 10; // Max 10 _Q_ accounts from same IP across all accounts (DoS protection)
+    private static final long CANDIDATE_MIN_AGE_FOR_EVICTION_MS = 20 * 1000; // 20 seconds - min age before a candidate can be evicted
 
     private ParkingLobbyManager() {
         // Start cleanup task for expired queue entries and whitelists
@@ -254,6 +259,11 @@ public class ParkingLobbyManager {
         Set<UUID> candidates = queueCandidates.remove(accountName);
         if (candidates != null && !candidates.isEmpty()) {
             MySubMod.LOGGER.info("Cleared {} queue candidate(s) for {} after successful auth", candidates.size(), accountName);
+            // Clean up IP tracking and join time for these candidates
+            for (UUID candidateId : candidates) {
+                candidateIPs.remove(candidateId);
+                candidateJoinTime.remove(candidateId);
+            }
         }
 
         // Also remove any temporary whitelist
@@ -302,10 +312,132 @@ public class ParkingLobbyManager {
     /**
      * Mark a player as queue candidate (awaiting password verification)
      * Multiple candidates can exist for the same account
+     * DoS Protection: Enforces limits per IP with age-based eviction
+     * @param accountName The account name
+     * @param playerId The player UUID
+     * @param ipAddress The player IP address
+     * @param server The server instance (for kicking old candidates if needed)
+     * @return true if added successfully, false if limits exceeded and no evictable candidates found
      */
-    public void addQueueCandidate(String accountName, UUID playerId) {
+    public boolean addQueueCandidate(String accountName, UUID playerId, String ipAddress, net.minecraft.server.MinecraftServer server) {
+        String ipOnly = extractIPWithoutPort(ipAddress);
+        long now = System.currentTimeMillis();
+
+        // Check limit 1: Max candidates per account from same IP
+        int countFromThisIP = 0;
+        UUID oldestEvictableForAccount = null;
+        long oldestTimeForAccount = Long.MAX_VALUE;
+
+        Set<UUID> candidates = queueCandidates.get(accountName);
+        if (candidates != null) {
+            for (UUID candidateId : candidates) {
+                String candidateIP = candidateIPs.get(candidateId);
+                if (candidateIP != null && extractIPWithoutPort(candidateIP).equals(ipOnly)) {
+                    countFromThisIP++;
+
+                    // Track oldest evictable candidate (≥20s old)
+                    Long joinTime = candidateJoinTime.get(candidateId);
+                    if (joinTime != null) {
+                        long age = now - joinTime;
+                        if (age >= CANDIDATE_MIN_AGE_FOR_EVICTION_MS && joinTime < oldestTimeForAccount) {
+                            oldestTimeForAccount = joinTime;
+                            oldestEvictableForAccount = candidateId;
+                        }
+                    }
+                }
+            }
+
+            if (countFromThisIP >= MAX_CANDIDATES_PER_ACCOUNT_PER_IP) {
+                // Try to evict oldest candidate if available
+                if (oldestEvictableForAccount != null) {
+                    evictCandidate(oldestEvictableForAccount, accountName, server, "evicted_for_new_candidate_account");
+                    MySubMod.LOGGER.info("DoS Protection: Evicted old candidate {} from account {} to make room for new candidate (age: {}s)",
+                        oldestEvictableForAccount, accountName, (now - oldestTimeForAccount) / 1000);
+                } else {
+                    MySubMod.LOGGER.warn("DoS Protection: IP {} exceeded max candidates per account for {} ({}/{}) - no evictable candidates",
+                        ipOnly, accountName, countFromThisIP, MAX_CANDIDATES_PER_ACCOUNT_PER_IP);
+                    return false;
+                }
+            }
+        }
+
+        // Check limit 2: Max total _Q_ candidates from this IP across all accounts
+        int totalCandidatesFromIP = 0;
+        UUID oldestEvictableGlobal = null;
+        long oldestTimeGlobal = Long.MAX_VALUE;
+        String oldestEvictableAccount = null;
+
+        for (Map.Entry<String, Set<UUID>> entry : queueCandidates.entrySet()) {
+            for (UUID candidateId : entry.getValue()) {
+                String candidateIP = candidateIPs.get(candidateId);
+                if (candidateIP != null && extractIPWithoutPort(candidateIP).equals(ipOnly)) {
+                    totalCandidatesFromIP++;
+
+                    // Track oldest evictable candidate globally
+                    Long joinTime = candidateJoinTime.get(candidateId);
+                    if (joinTime != null) {
+                        long age = now - joinTime;
+                        if (age >= CANDIDATE_MIN_AGE_FOR_EVICTION_MS && joinTime < oldestTimeGlobal) {
+                            oldestTimeGlobal = joinTime;
+                            oldestEvictableGlobal = candidateId;
+                            oldestEvictableAccount = entry.getKey();
+                        }
+                    }
+                }
+            }
+        }
+
+        if (totalCandidatesFromIP >= MAX_CANDIDATES_PER_IP_GLOBAL) {
+            // Try to evict oldest candidate globally if available
+            if (oldestEvictableGlobal != null) {
+                evictCandidate(oldestEvictableGlobal, oldestEvictableAccount, server, "evicted_for_new_candidate_global");
+                MySubMod.LOGGER.info("DoS Protection: Evicted old candidate {} (account: {}) globally to make room for new candidate (age: {}s)",
+                    oldestEvictableGlobal, oldestEvictableAccount, (now - oldestTimeGlobal) / 1000);
+            } else {
+                MySubMod.LOGGER.warn("DoS Protection: IP {} exceeded global max candidates ({}/{}) - no evictable candidates",
+                    ipOnly, totalCandidatesFromIP, MAX_CANDIDATES_PER_IP_GLOBAL);
+                return false;
+            }
+        }
+
+        // Add candidate
         queueCandidates.computeIfAbsent(accountName, k -> ConcurrentHashMap.newKeySet()).add(playerId);
-        MySubMod.LOGGER.info("Player {} marked as queue candidate for {}", playerId, accountName);
+        candidateIPs.put(playerId, ipAddress);
+        candidateJoinTime.put(playerId, now);
+        MySubMod.LOGGER.info("Player {} marked as queue candidate for {} (IP: {}, account candidates from IP: {}, global candidates from IP: {})",
+            playerId, accountName, ipOnly, countFromThisIP + 1, totalCandidatesFromIP + 1);
+        return true;
+    }
+
+    /**
+     * Evict a candidate (kick them to make room for a new candidate)
+     */
+    private void evictCandidate(UUID candidateId, String accountName, net.minecraft.server.MinecraftServer server, String reason) {
+        // Remove from tracking
+        removeQueueCandidate(accountName, candidateId);
+
+        // Kick the player
+        net.minecraft.server.level.ServerPlayer player = server.getPlayerList().getPlayer(candidateId);
+        if (player != null) {
+            String message;
+            if ("evicted_for_new_candidate_account".equals(reason)) {
+                message = "§c§lConnexion remplacée\n\n" +
+                          "§eUn nouveau candidat a pris votre place.\n" +
+                          "§7Vous étiez en attente depuis trop longtemps (>20s).\n\n" +
+                          "§7Veuillez réessayer.";
+            } else if ("evicted_for_new_candidate_global".equals(reason)) {
+                message = "§c§lConnexion remplacée\n\n" +
+                          "§eTrop de tentatives depuis votre IP.\n" +
+                          "§7Un nouveau candidat a pris votre place.\n\n" +
+                          "§7Veuillez réessayer.";
+            } else {
+                message = "§c§lConnexion remplacée\n\n" +
+                          "§7" + reason;
+            }
+
+            player.connection.disconnect(Component.literal(message));
+            MySubMod.LOGGER.info("Evicted candidate {} from account {} - reason: {}", candidateId, accountName, reason);
+        }
     }
 
     /**
@@ -335,6 +467,10 @@ public class ParkingLobbyManager {
                 }
             }
         }
+
+        // Clean up IP tracking and join time
+        candidateIPs.remove(playerId);
+        candidateJoinTime.remove(playerId);
     }
 
     /**
@@ -486,6 +622,10 @@ public class ParkingLobbyManager {
 
                 player.connection.disconnect(Component.literal(message));
             }
+
+            // Clean up IP tracking and join time
+            candidateIPs.remove(candidateUUID);
+            candidateJoinTime.remove(candidateUUID);
         }
     }
 
@@ -988,5 +1128,7 @@ public class ParkingLobbyManager {
         temporaryWhitelist.clear();
         whitelistExpiry.clear();
         authorizedIPsFromQueue.clear();
+        candidateIPs.clear();
+        candidateJoinTime.clear();
     }
 }

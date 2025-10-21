@@ -182,7 +182,22 @@ public class ServerEventHandler {
 
                 if (isQueueCandidate) {
                     // This is a queue candidate - mark them as such using the ACTUAL account name
-                    parkingLobby.addQueueCandidate(actualAccountName, player.getUUID());
+                    // DoS Protection: Check limits before adding (may evict old candidates)
+                    boolean added = parkingLobby.addQueueCandidate(actualAccountName, player.getUUID(), player.getIpAddress(), player.server);
+                    if (!added) {
+                        // Limits exceeded and no evictable candidates - kick the player
+                        MySubMod.LOGGER.warn("Player {} (IP: {}) rejected - DoS protection limits exceeded for {} (no evictable candidates)",
+                            player.getUUID(), player.getIpAddress(), actualAccountName);
+                        player.connection.disconnect(Component.literal(
+                            "§c§lLimite de tentatives dépassée\n\n" +
+                            "§eTrop de tentatives de connexion depuis votre IP.\n" +
+                            "§7Limite par compte: §e5 tentatives parallèles§7\n" +
+                            "§7Limite globale: §e10 comptes différents§7\n\n" +
+                            "§7Tous les candidats actuels sont récents (<20s).\n" +
+                            "§7Veuillez réessayer plus tard."
+                        ));
+                        return;
+                    }
                     MySubMod.LOGGER.info("Player {} (temporary name: {}) marked as QUEUE CANDIDATE for {}",
                         player.getUUID(), playerName, actualAccountName);
                 }
