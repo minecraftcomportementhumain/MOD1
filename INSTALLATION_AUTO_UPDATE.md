@@ -28,18 +28,33 @@ Ce guide explique comment configurer Prism Launcher pour télécharger automatiq
 
 ### Étape 3: Configurer la Pre-Launch Command
 
-#### Pour Windows:
+#### ⭐ Commande Universelle (Tous Systèmes)
+
+**Cette commande unique fonctionne sur Windows, Linux ET Mac:**
 
 Collez cette commande dans **Pre-launch command:**
 
+```bash
+curl -L -o "$INST_MC_DIR/mods/mysubmod-1.0-SNAPSHOT.jar" https://github.com/minecraftcomportementhumain/MOD1/releases/download/latest/mysubmod-1.0-SNAPSHOT.jar
+```
+
+✅ **Avantages:**
+- Fonctionne partout (Windows 10+, Linux, Mac)
+- Une seule commande à copier
+- Facile à partager avec tous les participants
+
+---
+
+#### Commandes Spécifiques par OS (Alternative)
+
+Si vous préférez des commandes spécifiques:
+
+**Windows:**
 ```batch
 cmd /c "curl -L -o "$INST_MC_DIR\mods\mysubmod-1.0-SNAPSHOT.jar" https://github.com/minecraftcomportementhumain/MOD1/releases/download/latest/mysubmod-1.0-SNAPSHOT.jar"
 ```
 
-#### Pour Linux/Mac:
-
-Collez cette commande dans **Pre-launch command:**
-
+**Linux/Mac:**
 ```bash
 curl -L -o "$INST_MC_DIR/mods/mysubmod-1.0-SNAPSHOT.jar" https://github.com/minecraftcomportementhumain/MOD1/releases/download/latest/mysubmod-1.0-SNAPSHOT.jar
 ```

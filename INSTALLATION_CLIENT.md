@@ -21,17 +21,13 @@ Ce guide explique comment installer et mettre à jour automatiquement le mod pou
 1. **Ouvrez Prism Launcher**
 2. **Clic droit** sur votre instance → **Edit**
 3. **Settings** → **Custom Commands**
-4. Dans **Pre-launch command**, collez:
+4. Dans **Pre-launch command**, collez cette commande universelle:
 
-**Windows:**
-```batch
-cmd /c "curl -L -o "$INST_MC_DIR\mods\mysubmod-1.0-SNAPSHOT.jar" https://github.com/minecraftcomportementhumain/MOD1/releases/download/latest/mysubmod-1.0-SNAPSHOT.jar"
-```
-
-**Linux/Mac:**
 ```bash
 curl -L -o "$INST_MC_DIR/mods/mysubmod-1.0-SNAPSHOT.jar" https://github.com/minecraftcomportementhumain/MOD1/releases/download/latest/mysubmod-1.0-SNAPSHOT.jar
 ```
+
+**Note:** Cette commande fonctionne sur Windows, Linux ET Mac!
 
 5. **Cliquez OK**
 6. **C'est tout!** 🎉
