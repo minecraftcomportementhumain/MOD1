@@ -30,7 +30,7 @@ public class CandyFileSelectionScreen extends Screen {
         super.init();
 
         int centerX = this.width / 2;
-        int listWidth = Math.min(400, this.width - 40);
+        int listWidth = this.width;
         int listHeight = this.height - 160;
         int listX = centerX - listWidth / 2;
         int listY = 60;
