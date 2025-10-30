@@ -1,5 +1,237 @@
 # Changelog - MySubMod
 
+## 🎮 Session du 30 octobre 2025 - Création du SubMode2 et Corrections
+
+### 🆕 Création complète du SubMode2
+
+**Concept** : Système de spécialisation avec deux types de ressources (bonbons bleus et rouges) et pénalités pour consommation croisée.
+
+#### Nouveaux items (2)
+
+**CandyBlueItem.java** :
+- Bonbon bleu pour ressource TYPE_A
+- Soigne 1 cœur (pleine efficacité pour TYPE_A)
+- Soigne 0.5 cœur avec pénalité de 30s pour TYPE_B
+- Texture personnalisée : `candy_blue.png` et `candy_blue_texture.png`
+
+**CandyRedItem.java** :
+- Bonbon rouge pour ressource TYPE_B
+- Soigne 1 cœur (pleine efficacité pour TYPE_B)
+- Soigne 0.5 cœur avec pénalité de 30s pour TYPE_A
+- Texture personnalisée : `candy_red.png` et `candy_red_texture.png`
+
+**Enregistrement** : `ModItems.java` avec `CANDY_BLUE` et `CANDY_RED`
+
+#### Système de spécialisation
+
+**SubMode2HealthManager.java** :
+- Gère les spécialisations des joueurs (TYPE_A ou TYPE_B)
+- Assignation automatique aléatoire lors de la sélection d'île
+- Pénalités de 30 secondes pour consommation du mauvais type
+- Méthode `handleCandyConsumption()` avec logique de spécialisation
+- Synchronisation des pénalités via `PenaltySyncPacket`
+
+**ResourceType.java** (enum) :
+- `TYPE_A` : Associé aux bonbons bleus
+- `TYPE_B` : Associé aux bonbons rouges
+- `getDisplayName()` : "Type A" et "Type B"
+
+#### Système de gestion des bonbons
+
+**SubMode2CandyManager.java** :
+- Spawn coordonné des bonbons bleus et rouges
+- Distribution aléatoire 50/50 entre les deux types
+- Parsing des fichiers de spawn identique à SubMode1
+- Méthode `spawnCandy()` avec alternance des types
+- Nettoyage automatique à la fin de partie
+
+#### Interface utilisateur client
+
+**HUD Timer de jeu** :
+- `SubMode2HUD.java` : Affichage du timer de partie (15 minutes)
+- Position : Coin supérieur gauche
+- Format : "MM:SS" avec couleurs (vert → jaune → rouge)
+- Désactivation automatique en mode spectateur
+
+**HUD Compteur de bonbons** :
+- `CandyCountHUD.java` : Affichage du nombre de bonbons par île
+- Position : Coin supérieur droit
+- Couleurs par île : Blanc (petite), Vert (moyenne), Bleu (grande), Orange (très grande)
+- Mise à jour en temps réel via `CandyCountUpdatePacket`
+
+**HUD Timer de pénalité** :
+- `PenaltyTimerHUD.java` : Affichage du timer de pénalité (30s)
+- Position : Centre-haut de l'écran
+- Message : "⚠ PÉNALITÉ: XXs" en rouge
+- Activé/désactivé via `PenaltySyncPacket`
+
+**Renderer unique** :
+- `CandyCountHUDRenderer.java` : Gère l'affichage des 3 HUDs
+- Vérification mode spectateur pour cacher les HUDs
+- Event `RenderGuiEvent.Post`
+
+#### Gestion des fichiers et logs
+
+**Sélection de fichiers** :
+- `CandyFileSelectionScreen.java` : Interface de sélection de fichiers
+- Liste déroulante des fichiers disponibles
+- Upload de nouveaux fichiers
+- Suppression de fichiers (sauf default.txt)
+
+**Logging des données** :
+- `SubMode2DataLogger.java` : Enregistrement de toutes les actions
+- Format CSV avec timestamps précis
+- Logs : spawn bonbons, ramassage, consommation, changements santé, mort, sélection île, pénalités
+- Structure : `mysubmod_data/submode2_game_[timestamp]/`
+
+#### Système réseau (9 packets)
+
+**Packets de synchronisation** :
+- `GameTimerPacket` : Synchronise le timer de jeu
+- `CandyCountUpdatePacket` : Met à jour le compteur de bonbons
+- `PenaltySyncPacket` : Synchronise l'état de pénalité
+
+**Packets de fichiers** :
+- `CandyFileListRequestPacket` : Demande la liste des fichiers
+- `CandyFileListPacket` : Envoie la liste au client
+- `CandyFileSelectionPacket` : Sélectionne un fichier
+- `CandyFileUploadPacket` : Upload un nouveau fichier
+- `CandyFileDeletePacket` : Supprime un fichier
+
+**Packets de jeu** :
+- `IslandChoicePacket` : Affiche les choix d'îles
+- `IslandSelectionPacket` : Enregistre le choix du joueur
+- `GameEndPacket` : Notifie la fin de partie
+
+**Handler client** :
+- `ClientPacketHandler.java` : Gère tous les packets côté client
+
+#### Manager principal
+
+**SubMode2Manager.java** (1900+ lignes) :
+- Gestion complète du cycle de vie du mode
+- Génération de 4 îles + carré central + chemins
+- Phase de sélection de fichier (fileSelectionPhase)
+- Phase de sélection d'île (selectionPhase)
+- Phase de jeu active (gameActive)
+- Timer de 15 minutes avec fin automatique
+- Téléportation sécurisée avec chargement de chunks
+- Nettoyage complet à la désactivation
+- Gestion des déconnexions/reconnexions
+- Système de spectateurs pour joueurs morts
+
+#### Event Handler
+
+**SubMode2EventHandler.java** :
+- Blocage des interactions avec blocs (sauf bonbons)
+- Blocage de la casse de blocs
+- Blocage du drop d'items (sauf bonbons)
+- Prévention du spawn d'entités hostiles
+- Cycle jour/nuit bloqué à midi
+- Gestion du ramassage de bonbons
+- Désactivation du sprint
+- Gestion de la santé et de la mort
+
+#### Intégration au système
+
+**SubMode enum** :
+- Ajout de `SUB_MODE_2` dans l'énumération
+
+**SubModeManager** :
+- Intégration de SubMode2Manager
+- Switch case pour activation/désactivation
+- Gestion du changement de mode
+
+**SubModeControlScreen** :
+- Bouton "Sous-mode 2" dans le menu M
+- Interface cohérente avec SubMode1
+
+**NetworkHandler** :
+- Enregistrement des 9 nouveaux packets SubMode2
+
+### Corrections critiques de SubMode2
+
+**1. Fix server crash lors de la désactivation**
+- **Problème** : ServerHangWatchdog timeout (60+ secondes) lors du nettoyage de SubMode2
+- **Cause** : Flag `3` dans `level.setBlock()` déclenchait des mises à jour massives de chunks et redstone
+- **Solution** : Changement de tous les flags de `3` à `2` dans les méthodes de nettoyage
+  - `clearPath()` : ligne 1005-1007
+  - `clearIslandBarriers()` : lignes 1072, 1078, 1087, 1093
+  - `clearPathBarriers()` : lignes 1143, 1150
+  - Suppression des pissenlits : ligne 1566
+- **Impact** : Flag `2` supprime les mises à jour de blocs, évitant les recalculs coûteux de chunks
+- **Fichier** : `SubMode2Manager.java`
+
+**2. Fix HUDs SubMode2 persistant dans parking lobby**
+- **Problème** : Timer et HUD bonbons de SubMode2 visibles dans parking lobby après déconnexion/reconnexion
+- **Cause** : Paquets de désactivation manquants pour SubMode2 (présents uniquement pour SubMode1)
+- **Solution** : Ajout de 3 paquets de désactivation dans `ServerEventHandler.java:115-121`
+  - `GameTimerPacket(-1)` : Désactive le timer
+  - `CandyCountUpdatePacket(empty map)` : Vide le HUD des bonbons
+  - `PenaltyTimerPacket(false, UUID)` : Désactive le timer de pénalité
+- **Résultat** : HUDs proprement nettoyés lors de l'entrée au parking lobby
+
+**3. Fix messages d'interdiction lors de consommation bonbons rouges/bleus**
+- **Problème** : Message "Vous ne pouvez pas interagir avec les blocs en sous-mode 2" apparaissait lors de la consommation des bonbons
+- **Cause** : Retour `InteractionResultHolder.pass()` au lieu de `consume()` dans les items
+- **Différence clé** :
+  - `pass()` : Laisse l'événement continuer → `onPlayerInteractBlock` s'exécute → message affiché
+  - `consume()` : Consomme l'item immédiatement côté client → bloque autres gestionnaires d'événements
+- **Solution** : Changé `pass()` en `consume()` dans `CandyBlueItem.java` et `CandyRedItem.java` (ligne 75)
+- **Résultat** : Comportement identique à `CandyItem` du SubMode1
+
+**4. Fix vérification des bonbons dans SubMode2EventHandler**
+- **Problème initial** : Vérification incluait `ModItems.CANDY.get()` (bonbon SubMode1 avec NBT)
+- **Solution** : Retrait de `CANDY.get()` de la vérification dans `onPlayerInteractBlock`
+- **Code final** : Vérification séparée pour `CANDY_BLUE` et `CANDY_RED` uniquement
+
+### Architecture technique
+
+**Flags de setBlock** :
+- Flag `2` : Envoie changement au client, PAS de mises à jour de blocs
+- Flag `3` : Envoie changement + mises à jour blocs + recalculs redstone → TRÈS COÛTEUX
+- **Règle** : Utiliser flag `2` pour nettoyage en masse, flag `3` uniquement pour placement individuel
+
+**InteractionResultHolder** :
+- `success()` : Action réussie, consomme item
+- `fail()` : Action échouée, ne consomme pas
+- `pass()` : Ne gère pas, laisse continuer (DANGEREUX si événements suivent)
+- `consume()` : Consomme immédiatement côté client, bloque propagation
+
+**Packets de désactivation HUD** :
+- Envoyés lors de l'entrée au parking lobby
+- Valeurs spéciales : `-1` pour timers, map vide pour compteurs, `false` pour flags
+- Gérés côté client par les handlers de packets respectifs
+
+### Fichiers modifiés (4)
+
+- `SubMode2Manager.java` :
+  - 8 occurrences de flags changés de `3` à `2`
+  - Commentaires ajoutés sur l'utilisation des flags
+
+- `ServerEventHandler.java` :
+  - Ajout de 3 paquets de désactivation pour SubMode2 (lignes 115-121)
+  - Parallèle aux paquets SubMode1 existants
+
+- `CandyBlueItem.java` :
+  - `pass()` → `consume()` ligne 75
+
+- `CandyRedItem.java` :
+  - `pass()` → `consume()` ligne 75
+
+- `SubMode2EventHandler.java` :
+  - Retrait de `ModItems.CANDY.get()` de la vérification
+  - Séparation des vérifications `CANDY_BLUE` et `CANDY_RED`
+
+### Impact
+
+- 🔧 **Performance** : Désactivation SubMode2 instantanée (plus de timeout 60s)
+- 🎨 **UX** : HUDs proprement nettoyés, pas de messages parasites
+- 🐛 **Stabilité** : Résolution des 3 bugs critiques de SubMode2
+- ✅ **Cohérence** : Comportement identique entre SubMode1 et SubMode2
+
+---
+
 ## 🛡️ Session du 21 octobre 2025 - Protection DoS et Optimisation Queue
 
 ### Protection contre Déni de Service (DoS)

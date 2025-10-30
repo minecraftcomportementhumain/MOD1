@@ -4,6 +4,10 @@ import com.example.mysubmod.MySubMod;
 import com.example.mysubmod.submodes.SubMode;
 import com.example.mysubmod.submodes.SubModeManager;
 import com.example.mysubmod.submodes.submode1.SubMode1Manager;
+import com.example.mysubmod.submodes.submode2.SubMode2Manager;
+import com.example.mysubmod.submodes.submode2.SubMode2CandyManager;
+import com.example.mysubmod.submodes.submode2.SubMode2HealthManager;
+import com.example.mysubmod.submodes.submode2.ResourceType;
 import net.minecraft.network.chat.Component;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.sounds.SoundEvents;
@@ -36,13 +40,11 @@ public class CandyItem extends Item {
         ItemStack itemStack = player.getItemInHand(hand);
 
         if (!level.isClientSide && player instanceof ServerPlayer serverPlayer) {
-            // Only allow use in SubMode1
-            if (SubModeManager.getInstance().getCurrentMode() == SubMode.SUB_MODE_1 &&
-                SubMode1Manager.getInstance().isGameActive()) {
+            SubMode currentMode = SubModeManager.getInstance().getCurrentMode();
 
-                // Only allow alive players to use candy
+            // SubMode1 logic
+            if (currentMode == SubMode.SUB_MODE_1 && SubMode1Manager.getInstance().isGameActive()) {
                 if (SubMode1Manager.getInstance().isPlayerAlive(serverPlayer.getUUID())) {
-                    // Check if healing would exceed max health
                     float currentHealth = serverPlayer.getHealth();
                     float maxHealth = serverPlayer.getMaxHealth();
 
@@ -54,7 +56,6 @@ public class CandyItem extends Item {
                     healPlayer(serverPlayer);
                     itemStack.shrink(1);
 
-                    // Log candy consumption
                     if (SubMode1Manager.getInstance().getDataLogger() != null) {
                         SubMode1Manager.getInstance().getDataLogger().logCandyConsumption(serverPlayer);
                     }
@@ -64,8 +65,47 @@ public class CandyItem extends Item {
                     serverPlayer.sendSystemMessage(Component.literal("§cVous ne pouvez pas utiliser de bonbons en tant que spectateur"));
                     return InteractionResultHolder.fail(itemStack);
                 }
-            } else {
-                serverPlayer.sendSystemMessage(Component.literal("§cLes bonbons ne peuvent être utilisés qu'en sous-mode 1"));
+            }
+            // SubMode2 logic with specialization system
+            else if (currentMode == SubMode.SUB_MODE_2 && SubMode2Manager.getInstance().isGameActive()) {
+                if (SubMode2Manager.getInstance().isPlayerAlive(serverPlayer.getUUID())) {
+                    // Extract resource type from NBT
+                    ResourceType resourceType = SubMode2CandyManager.getResourceTypeFromCandy(itemStack);
+
+                    if (resourceType == null) {
+                        serverPlayer.sendSystemMessage(Component.literal("§cCe bonbon n'a pas de type valide"));
+                        return InteractionResultHolder.fail(itemStack);
+                    }
+
+                    float currentHealth = serverPlayer.getHealth();
+                    float maxHealth = serverPlayer.getMaxHealth();
+
+                    if (currentHealth + HEALING_AMOUNT > maxHealth) {
+                        serverPlayer.sendSystemMessage(Component.literal("§cVous ne pouvez pas utiliser ce bonbon car il vous donnerait plus de vie que votre maximum"));
+                        return InteractionResultHolder.fail(itemStack);
+                    }
+
+                    // Use SubMode2HealthManager which handles specialization and penalties
+                    SubMode2HealthManager.getInstance().handleCandyConsumption(serverPlayer, resourceType);
+                    itemStack.shrink(1);
+
+                    // Play eating sound
+                    player.level().playSound(null, player.getX(), player.getY(), player.getZ(),
+                        SoundEvents.PLAYER_BURP, SoundSource.PLAYERS, 0.5f, 1.0f);
+
+                    // Log candy consumption with resource type
+                    if (SubMode2Manager.getInstance().getDataLogger() != null) {
+                        SubMode2Manager.getInstance().getDataLogger().logCandyConsumption(serverPlayer, resourceType);
+                    }
+
+                    return InteractionResultHolder.success(itemStack);
+                } else {
+                    serverPlayer.sendSystemMessage(Component.literal("§cVous ne pouvez pas utiliser de bonbons en tant que spectateur"));
+                    return InteractionResultHolder.fail(itemStack);
+                }
+            }
+            else {
+                serverPlayer.sendSystemMessage(Component.literal("§cLes bonbons ne peuvent être utilisés qu'en sous-mode 1 ou 2"));
                 return InteractionResultHolder.fail(itemStack);
             }
         }
@@ -90,8 +130,19 @@ public class CandyItem extends Item {
 
     @Override
     public void appendHoverText(ItemStack stack, Level level, List<Component> tooltip, TooltipFlag flag) {
-        tooltip.add(Component.literal("§7Restaure §c1 cœur §7de santé"));
-        tooltip.add(Component.literal("§eUtilisable uniquement en sous-mode 1"));
+        // Check if this is a SubMode2 candy (has resource type)
+        ResourceType resourceType = SubMode2CandyManager.getResourceTypeFromCandy(stack);
+
+        if (resourceType != null) {
+            // SubMode2 candy
+            tooltip.add(Component.literal("§7Type: §f" + resourceType.getDisplayName()));
+            tooltip.add(Component.literal("§7Restaure §c1 cœur §7(50% si pénalité)"));
+            tooltip.add(Component.literal("§eUtilisable en sous-mode 2"));
+        } else {
+            // SubMode1 candy
+            tooltip.add(Component.literal("§7Restaure §c1 cœur §7de santé"));
+            tooltip.add(Component.literal("§eUtilisable en sous-mode 1"));
+        }
     }
 
     @Override

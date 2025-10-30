@@ -1,0 +1,18 @@
+{
+  "parent": "minecraft:item/handheld",
+  "loader": "forge:separate_transforms",
+  "base": {
+    "parent": "mysubmod:item/candy_red_3d"
+  },
+  "perspectives": {
+    "gui": {
+      "parent": "mysubmod:item/candy_red_2d"
+    },
+    "ground": {
+      "parent": "mysubmod:item/candy_red_3d"
+    },
+    "fixed": {
+      "parent": "mysubmod:item/candy_red_2d"
+    }
+  }
+}

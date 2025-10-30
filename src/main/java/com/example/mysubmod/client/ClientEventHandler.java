@@ -28,16 +28,24 @@ public class ClientEventHandler {
             }
         }
 
-        // N key - Open candy file selection screen (ONLY in SubMode1)
+        // N key - Open candy file selection screen (SubMode1 and SubMode2)
         if (event.getKey() == GLFW.GLFW_KEY_N && event.getAction() == GLFW.GLFW_PRESS) {
             if (mc.screen == null && mc.player != null) {
-                // Only allow in SubMode1 (use ClientSubModeManager for client-side mode check)
-                if (ClientSubModeManager.getCurrentMode() == SubMode.SUB_MODE_1) {
+                SubMode currentMode = ClientSubModeManager.getCurrentMode();
+
+                if (currentMode == SubMode.SUB_MODE_1) {
                     // Check if game has ended
                     if (com.example.mysubmod.submodes.submode1.client.ClientGameTimer.hasGameEnded()) {
                         mc.player.sendSystemMessage(net.minecraft.network.chat.Component.literal("§cLe menu de sélection de fichier est désactivé après la fin de la partie"));
                     } else {
                         ClientPacketHandler.openCandyFileSelectionScreen();
+                    }
+                } else if (currentMode == SubMode.SUB_MODE_2) {
+                    // Check if game has ended
+                    if (com.example.mysubmod.submodes.submode2.client.ClientGameTimer.hasGameEnded()) {
+                        mc.player.sendSystemMessage(net.minecraft.network.chat.Component.literal("§cLe menu de sélection de fichier est désactivé après la fin de la partie"));
+                    } else {
+                        com.example.mysubmod.submodes.submode2.network.ClientPacketHandler.openCandyFileSelectionScreen();
                     }
                 }
             }
