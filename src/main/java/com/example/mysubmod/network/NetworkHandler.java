@@ -215,6 +215,110 @@ public class NetworkHandler {
             com.example.mysubmod.submodes.submode1.network.GameEndPacket::handle
         );
 
+        // SubMode2 packets
+        INSTANCE.registerMessage(
+            packetId++,
+            com.example.mysubmod.submodes.submode2.network.IslandSelectionPacket.class,
+            com.example.mysubmod.submodes.submode2.network.IslandSelectionPacket::encode,
+            com.example.mysubmod.submodes.submode2.network.IslandSelectionPacket::decode,
+            com.example.mysubmod.submodes.submode2.network.IslandSelectionPacket::handle
+        );
+
+        INSTANCE.registerMessage(
+            packetId++,
+            com.example.mysubmod.submodes.submode2.network.IslandChoicePacket.class,
+            com.example.mysubmod.submodes.submode2.network.IslandChoicePacket::encode,
+            com.example.mysubmod.submodes.submode2.network.IslandChoicePacket::decode,
+            com.example.mysubmod.submodes.submode2.network.IslandChoicePacket::handle,
+            java.util.Optional.of(NetworkDirection.PLAY_TO_SERVER)
+        );
+
+        INSTANCE.registerMessage(
+            packetId++,
+            com.example.mysubmod.submodes.submode2.network.GameTimerPacket.class,
+            com.example.mysubmod.submodes.submode2.network.GameTimerPacket::encode,
+            com.example.mysubmod.submodes.submode2.network.GameTimerPacket::decode,
+            com.example.mysubmod.submodes.submode2.network.GameTimerPacket::handle
+        );
+
+        INSTANCE.registerMessage(
+            packetId++,
+            com.example.mysubmod.submodes.submode2.network.CandyFileListPacket.class,
+            com.example.mysubmod.submodes.submode2.network.CandyFileListPacket::encode,
+            com.example.mysubmod.submodes.submode2.network.CandyFileListPacket::decode,
+            com.example.mysubmod.submodes.submode2.network.CandyFileListPacket::handle
+        );
+
+        INSTANCE.registerMessage(
+            packetId++,
+            com.example.mysubmod.submodes.submode2.network.CandyFileSelectionPacket.class,
+            com.example.mysubmod.submodes.submode2.network.CandyFileSelectionPacket::encode,
+            com.example.mysubmod.submodes.submode2.network.CandyFileSelectionPacket::decode,
+            com.example.mysubmod.submodes.submode2.network.CandyFileSelectionPacket::handle,
+            java.util.Optional.of(NetworkDirection.PLAY_TO_SERVER)
+        );
+
+        INSTANCE.registerMessage(
+            packetId++,
+            com.example.mysubmod.submodes.submode2.network.CandyFileUploadPacket.class,
+            com.example.mysubmod.submodes.submode2.network.CandyFileUploadPacket::encode,
+            com.example.mysubmod.submodes.submode2.network.CandyFileUploadPacket::decode,
+            com.example.mysubmod.submodes.submode2.network.CandyFileUploadPacket::handle,
+            java.util.Optional.of(NetworkDirection.PLAY_TO_SERVER)
+        );
+
+        INSTANCE.registerMessage(
+            packetId++,
+            com.example.mysubmod.submodes.submode2.network.CandyFileDeletePacket.class,
+            com.example.mysubmod.submodes.submode2.network.CandyFileDeletePacket::encode,
+            com.example.mysubmod.submodes.submode2.network.CandyFileDeletePacket::decode,
+            com.example.mysubmod.submodes.submode2.network.CandyFileDeletePacket::handle,
+            java.util.Optional.of(NetworkDirection.PLAY_TO_SERVER)
+        );
+
+        INSTANCE.registerMessage(
+            packetId++,
+            com.example.mysubmod.submodes.submode2.network.CandyCountUpdatePacket.class,
+            com.example.mysubmod.submodes.submode2.network.CandyCountUpdatePacket::encode,
+            com.example.mysubmod.submodes.submode2.network.CandyCountUpdatePacket::new,
+            com.example.mysubmod.submodes.submode2.network.CandyCountUpdatePacket::handle
+        );
+
+        INSTANCE.registerMessage(
+            packetId++,
+            com.example.mysubmod.submodes.submode2.network.CandyFileListRequestPacket.class,
+            com.example.mysubmod.submodes.submode2.network.CandyFileListRequestPacket::toBytes,
+            com.example.mysubmod.submodes.submode2.network.CandyFileListRequestPacket::new,
+            com.example.mysubmod.submodes.submode2.network.CandyFileListRequestPacket::handle,
+            java.util.Optional.of(NetworkDirection.PLAY_TO_SERVER)
+        );
+
+        INSTANCE.registerMessage(
+            packetId++,
+            com.example.mysubmod.submodes.submode2.network.GameEndPacket.class,
+            com.example.mysubmod.submodes.submode2.network.GameEndPacket::encode,
+            com.example.mysubmod.submodes.submode2.network.GameEndPacket::decode,
+            com.example.mysubmod.submodes.submode2.network.GameEndPacket::handle
+        );
+
+        INSTANCE.registerMessage(
+            packetId++,
+            com.example.mysubmod.submodes.submode2.network.PenaltySyncPacket.class,
+            com.example.mysubmod.submodes.submode2.network.PenaltySyncPacket::encode,
+            com.example.mysubmod.submodes.submode2.network.PenaltySyncPacket::decode,
+            com.example.mysubmod.submodes.submode2.network.PenaltySyncPacket::handle
+        );
+
+        // SubMode2 log management packet
+        INSTANCE.registerMessage(
+            packetId++,
+            SubMode2LogListRequestPacket.class,
+            SubMode2LogListRequestPacket::toBytes,
+            SubMode2LogListRequestPacket::new,
+            SubMode2LogListRequestPacket::handle,
+            java.util.Optional.of(NetworkDirection.PLAY_TO_SERVER)
+        );
+
         // Queue token packets
         INSTANCE.registerMessage(
             packetId++,

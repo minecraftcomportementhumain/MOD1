@@ -22,7 +22,11 @@ public class LogManager {
     private static final String LOG_BASE_DIR = "mysubmod_data";
 
     public static void sendLogList(ServerPlayer player) {
-        List<String> logFolders = getLogFolders();
+        sendLogList(player, 1); // Default to SubMode1 for backward compatibility
+    }
+
+    public static void sendLogList(ServerPlayer player, int subModeNumber) {
+        List<String> logFolders = getLogFolders(subModeNumber);
         NetworkHandler.INSTANCE.send(
             PacketDistributor.PLAYER.with(() -> player),
             new LogListPacket(logFolders)
@@ -30,6 +34,10 @@ public class LogManager {
     }
 
     public static List<String> getLogFolders() {
+        return getLogFolders(1); // Default to SubMode1 for backward compatibility
+    }
+
+    public static List<String> getLogFolders(int subModeNumber) {
         List<String> folders = new ArrayList<>();
         File baseDir = new File(LOG_BASE_DIR);
 
@@ -42,8 +50,9 @@ public class LogManager {
             return folders;
         }
 
+        String prefix = "submode" + subModeNumber + "_game_";
         for (File file : files) {
-            if (file.isDirectory() && file.getName().startsWith("submode1_game_")) {
+            if (file.isDirectory() && file.getName().startsWith(prefix)) {
                 folders.add(file.getName());
             }
         }

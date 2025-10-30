@@ -112,6 +112,14 @@ public class ServerEventHandler {
                 NetworkHandler.INSTANCE.send(PacketDistributor.PLAYER.with(() -> player),
                     new com.example.mysubmod.submodes.submode1.network.CandyCountUpdatePacket(new java.util.HashMap<>())); // Empty map = clear
 
+                // Clear any SubMode2 UI elements (timer, candy counts, penalty timer) from client
+                NetworkHandler.INSTANCE.send(PacketDistributor.PLAYER.with(() -> player),
+                    new com.example.mysubmod.submodes.submode2.network.GameTimerPacket(-1)); // -1 = deactivate
+                NetworkHandler.INSTANCE.send(PacketDistributor.PLAYER.with(() -> player),
+                    new com.example.mysubmod.submodes.submode2.network.CandyCountUpdatePacket(new java.util.HashMap<>())); // Empty map = clear
+                NetworkHandler.INSTANCE.send(PacketDistributor.PLAYER.with(() -> player),
+                    new com.example.mysubmod.submodes.submode2.network.PenaltySyncPacket(false, player.getUUID())); // false = deactivate
+
                 String type = isQueueCandidate ? "Queue candidate" : "Unauthenticated protected/admin";
                 MySubMod.LOGGER.info("{} {} made invisible, teleported to isolated authentication platform, and added to parking lobby", type, playerName);
             }

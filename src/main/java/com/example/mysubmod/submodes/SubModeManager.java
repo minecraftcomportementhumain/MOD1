@@ -5,6 +5,7 @@ import com.example.mysubmod.network.NetworkHandler;
 import com.example.mysubmod.network.SubModeChangePacket;
 import com.example.mysubmod.submodes.waitingroom.WaitingRoomManager;
 import com.example.mysubmod.submodes.submode1.SubMode1Manager;
+import com.example.mysubmod.submodes.submode2.SubMode2Manager;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraftforge.network.PacketDistributor;
@@ -37,7 +38,7 @@ public class SubModeManager {
             // Note: SubMode1Manager.deactivate() now includes clearMap() with improved detection
             WaitingRoomManager.getInstance().deactivate(server);
             SubMode1Manager.getInstance().deactivate(server);
-            // TODO: Add SubMode2Manager.getInstance().deactivate(server) when implemented
+            SubMode2Manager.getInstance().deactivate(server);
 
             // Reset to a clean state
             currentMode = SubMode.WAITING_ROOM; // Will be properly activated next
@@ -104,7 +105,7 @@ public class SubModeManager {
                         SubMode1Manager.getInstance().deactivate(server);
                         break;
                     case SUB_MODE_2:
-                        // TODO: Implement SubMode2Manager when ready
+                        SubMode2Manager.getInstance().deactivate(server);
                         break;
                 }
             }
@@ -121,7 +122,7 @@ public class SubModeManager {
                         SubMode1Manager.getInstance().activate(server, requestingPlayer);
                         break;
                     case SUB_MODE_2:
-                        // TODO: Implement SubMode2Manager when ready
+                        SubMode2Manager.getInstance().activate(server, requestingPlayer);
                         break;
                 }
             }
