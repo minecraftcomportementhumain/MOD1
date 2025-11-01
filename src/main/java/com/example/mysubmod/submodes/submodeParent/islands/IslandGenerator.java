@@ -1,4 +1,4 @@
-package com.example.mysubmod.submodes.submode1.islands;
+package com.example.mysubmod.submodes.submodeParent.islands;
 
 import com.example.mysubmod.MySubMod;
 import net.minecraft.core.BlockPos;

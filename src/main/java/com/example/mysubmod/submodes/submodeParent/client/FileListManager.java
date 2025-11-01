@@ -1,4 +1,4 @@
-package com.example.mysubmod.submodes.submode2.client;
+package com.example.mysubmod.submodes.submodeParent.client;
 
 import net.minecraftforge.api.distmarker.Dist;
 import net.minecraftforge.api.distmarker.OnlyIn;
@@ -7,16 +7,16 @@ import java.util.ArrayList;
 import java.util.List;
 
 @OnlyIn(Dist.CLIENT)
-public class CandyFileListManager {
-    private static CandyFileListManager instance;
+public class FileListManager {
+    private static FileListManager instance;
     private List<String> availableFiles = new ArrayList<>();
     private boolean hasFileList = false;
 
-    private CandyFileListManager() {}
+    private FileListManager() {}
 
-    public static CandyFileListManager getInstance() {
+    public static FileListManager getInstance() {
         if (instance == null) {
-            instance = new CandyFileListManager();
+            instance = new FileListManager();
         }
         return instance;
     }

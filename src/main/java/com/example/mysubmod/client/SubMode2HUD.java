@@ -1,7 +1,7 @@
 package com.example.mysubmod.client;
 
 import com.example.mysubmod.MySubMod;
-import com.example.mysubmod.submodes.submode2.client.ClientGameTimer;
+import com.example.mysubmod.submodes.submodeParent.client.ClientGameTimer;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.network.chat.Component;

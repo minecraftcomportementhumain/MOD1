@@ -1,6 +1,7 @@
 package com.example.mysubmod.submodes.submode1;
 
 import com.example.mysubmod.MySubMod;
+import com.example.mysubmod.submodes.submodeParent.SubModeParentManager;
 import com.example.mysubmod.util.PlayerFilterUtil;
 import net.minecraft.network.chat.Component;
 import net.minecraft.server.MinecraftServer;
@@ -87,7 +88,7 @@ public class SubMode1HealthManager {
      * This ensures the game ends even if disconnected players die while offline
      */
     private void checkDisconnectedPlayersHealth(MinecraftServer server) {
-        SubMode1Manager manager = SubMode1Manager.getInstance();
+        SubModeParentManager manager = SubMode1Manager.getInstance();
 
         // Get snapshot of disconnected players
         java.util.Map<String, ?> disconnectedPlayers = manager.getDisconnectedPlayersInfo();

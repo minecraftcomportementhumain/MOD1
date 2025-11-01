@@ -1,7 +1,7 @@
 package com.example.mysubmod.submodes.submode1.client;
 
 import com.example.mysubmod.network.NetworkHandler;
-import com.example.mysubmod.submodes.submode1.islands.IslandType;
+import com.example.mysubmod.submodes.submodeParent.islands.IslandType;
 import com.example.mysubmod.submodes.submode1.network.IslandChoicePacket;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.components.Button;

@@ -1,9 +1,11 @@
 package com.example.mysubmod.client;
 
 import com.example.mysubmod.MySubMod;
-import com.example.mysubmod.client.gui.SubModeControlScreen;
+import com.example.mysubmod.network.NetworkHandler;
+import com.example.mysubmod.network.SubModeControlScreenRequestPacket;
 import com.example.mysubmod.submodes.SubMode;
 import com.example.mysubmod.submodes.submode1.network.ClientPacketHandler;
+import com.example.mysubmod.submodes.submodeParent.client.ClientGameTimer;
 import net.minecraft.client.Minecraft;
 import net.minecraftforge.api.distmarker.Dist;
 import net.minecraftforge.client.event.InputEvent;
@@ -22,8 +24,8 @@ public class ClientEventHandler {
         if (event.getKey() == GLFW.GLFW_KEY_M && event.getAction() == GLFW.GLFW_PRESS) {
             if (mc.screen == null && mc.player != null) {
                 // Request screen from server with player count
-                com.example.mysubmod.network.NetworkHandler.INSTANCE.sendToServer(
-                    new com.example.mysubmod.network.SubModeControlScreenRequestPacket()
+                NetworkHandler.INSTANCE.sendToServer(
+                    new SubModeControlScreenRequestPacket()
                 );
             }
         }
@@ -42,7 +44,7 @@ public class ClientEventHandler {
                     }
                 } else if (currentMode == SubMode.SUB_MODE_2) {
                     // Check if game has ended
-                    if (com.example.mysubmod.submodes.submode2.client.ClientGameTimer.hasGameEnded()) {
+                    if (ClientGameTimer.hasGameEnded()) {
                         mc.player.sendSystemMessage(net.minecraft.network.chat.Component.literal("§cLe menu de sélection de fichier est désactivé après la fin de la partie"));
                     } else {
                         com.example.mysubmod.submodes.submode2.network.ClientPacketHandler.openCandyFileSelectionScreen();

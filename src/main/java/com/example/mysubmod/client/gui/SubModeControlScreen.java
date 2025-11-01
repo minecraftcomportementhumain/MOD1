@@ -5,9 +5,10 @@ import com.example.mysubmod.network.NetworkHandler;
 import com.example.mysubmod.network.SubModeRequestPacket;
 import com.example.mysubmod.network.LogListRequestPacket;
 import com.example.mysubmod.submodes.SubMode;
-import com.example.mysubmod.submodes.submode1.client.CandyFileUploadScreen;
+import com.example.mysubmod.submodes.submodeParent.client.FileUploadScreen;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.components.Button;
+import net.minecraft.client.gui.components.Tooltip;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.network.chat.Component;
 
@@ -46,17 +47,17 @@ public class SubModeControlScreen extends Screen {
             // Log management button
             addRenderableWidget(Button.builder(
                 Component.literal("📊"),
-                button -> openLogManagementScreen()
+                button -> openLogManagementScreen(SubMode.SUB_MODE_1)
             ).bounds(centerX + BUTTON_WIDTH / 2 - 55, startY + BUTTON_SPACING, 25, BUTTON_HEIGHT)
-            .tooltip(net.minecraft.client.gui.components.Tooltip.create(Component.literal("Gestion des logs")))
+            .tooltip(Tooltip.create(Component.literal("Gestion des logs")))
             .build());
 
             // File upload button
             addRenderableWidget(Button.builder(
                 Component.literal("📁"),
-                button -> openCandyFileUploadScreen()
+                button -> openCandyFileUploadScreen(SubMode.SUB_MODE_1)
             ).bounds(centerX + BUTTON_WIDTH / 2 - 25, startY + BUTTON_SPACING, 25, BUTTON_HEIGHT)
-            .tooltip(net.minecraft.client.gui.components.Tooltip.create(Component.literal("Charger un fichier de spawn de bonbons depuis le disque")))
+            .tooltip(Tooltip.create(Component.literal("Charger un fichier de spawn de bonbons depuis le disque")))
             .build());
         }
 
@@ -71,17 +72,17 @@ public class SubModeControlScreen extends Screen {
             // Log management button for SubMode2
             addRenderableWidget(Button.builder(
                 Component.literal("📊"),
-                button -> openSubMode2LogManagementScreen()
+                button -> openLogManagementScreen(SubMode.SUB_MODE_2)
             ).bounds(centerX + BUTTON_WIDTH / 2 - 55, startY + BUTTON_SPACING * 2, 25, BUTTON_HEIGHT)
-            .tooltip(net.minecraft.client.gui.components.Tooltip.create(Component.literal("Gestion des logs SubMode2")))
+            .tooltip(Tooltip.create(Component.literal("Gestion des logs SubMode2")))
             .build());
 
             // File upload button for SubMode2
             addRenderableWidget(Button.builder(
                 Component.literal("📁"),
-                button -> openSubMode2CandyFileUploadScreen()
+                button -> openCandyFileUploadScreen(SubMode.SUB_MODE_2)
             ).bounds(centerX + BUTTON_WIDTH / 2 - 25, startY + BUTTON_SPACING * 2, 25, BUTTON_HEIGHT)
-            .tooltip(net.minecraft.client.gui.components.Tooltip.create(Component.literal("Charger un fichier de spawn de bonbons SubMode2")))
+            .tooltip(Tooltip.create(Component.literal("Charger un fichier de spawn de bonbons SubMode2")))
             .build());
         }
 
@@ -98,24 +99,14 @@ public class SubModeControlScreen extends Screen {
         }
     }
 
-    private void openCandyFileUploadScreen() {
-        this.minecraft.setScreen(new CandyFileUploadScreen());
+    private void openCandyFileUploadScreen(SubMode submode) {
+        this.minecraft.setScreen(new FileUploadScreen(submode));
     }
 
-    private void openSubMode2CandyFileUploadScreen() {
-        this.minecraft.setScreen(new com.example.mysubmod.submodes.submode2.client.CandyFileUploadScreen());
-    }
-
-    private void openLogManagementScreen() {
+    private void openLogManagementScreen(SubMode submode) {
         // Request log list from server (SubMode1)
         NetworkHandler.INSTANCE.sendToServer(new LogListRequestPacket());
     }
-
-    private void openSubMode2LogManagementScreen() {
-        // Request log list from server (SubMode2)
-        NetworkHandler.INSTANCE.sendToServer(new com.example.mysubmod.network.SubMode2LogListRequestPacket());
-    }
-
 
     @Override
     public void render(GuiGraphics guiGraphics, int mouseX, int mouseY, float partialTick) {

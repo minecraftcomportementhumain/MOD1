@@ -1,9 +1,8 @@
 package com.example.mysubmod.submodes.submode1.network;
 
-import com.example.mysubmod.submodes.submode1.client.CandyFileListManager;
-import com.example.mysubmod.submodes.submode1.client.CandyFileSelectionScreen;
 import com.example.mysubmod.submodes.submode1.client.ClientGameTimer;
 import com.example.mysubmod.submodes.submode1.client.IslandSelectionScreen;
+import com.example.mysubmod.submodes.submodeParent.client.FileListManager;
 import net.minecraft.client.Minecraft;
 import net.minecraftforge.api.distmarker.Dist;
 import net.minecraftforge.api.distmarker.OnlyIn;
@@ -24,7 +23,7 @@ public class ClientPacketHandler {
 
     public static void handleCandyFileList(List<String> availableFiles, boolean openScreen) {
         // Store the file list
-        CandyFileListManager.getInstance().setFileList(availableFiles);
+        FileListManager.getInstance().setFileList(availableFiles);
 
         // Open the screen only if requested and we have files
         if (openScreen && !availableFiles.isEmpty()) {

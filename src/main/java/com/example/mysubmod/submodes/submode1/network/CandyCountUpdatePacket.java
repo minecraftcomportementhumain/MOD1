@@ -1,7 +1,7 @@
 package com.example.mysubmod.submodes.submode1.network;
 
-import com.example.mysubmod.submodes.submode1.client.CandyCountHUD;
-import com.example.mysubmod.submodes.submode1.islands.IslandType;
+import com.example.mysubmod.submodes.submode1.client.SubMode1HUD;
+import com.example.mysubmod.submodes.submodeParent.islands.IslandType;
 import net.minecraft.network.FriendlyByteBuf;
 import net.minecraftforge.network.NetworkEvent;
 
@@ -37,7 +37,7 @@ public class CandyCountUpdatePacket {
     public void handle(Supplier<NetworkEvent.Context> ctx) {
         ctx.get().enqueueWork(() -> {
             // Update client-side HUD data
-            CandyCountHUD.updateCandyCounts(candyCounts);
+            SubMode1HUD.updateCandyCounts(candyCounts);
         });
         ctx.get().setPacketHandled(true);
     }

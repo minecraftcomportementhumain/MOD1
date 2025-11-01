@@ -1,4 +1,4 @@
-package com.example.mysubmod.submodes.submode2.client;
+package com.example.mysubmod.submodes.submodeParent.client;
 
 import net.minecraftforge.api.distmarker.Dist;
 import net.minecraftforge.api.distmarker.OnlyIn;

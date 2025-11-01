@@ -1,7 +1,7 @@
 package com.example.mysubmod.submodes.submode1.data;
 
 import com.example.mysubmod.MySubMod;
-import com.example.mysubmod.submodes.submode1.islands.IslandType;
+import com.example.mysubmod.submodes.submodeParent.islands.IslandType;
 import net.minecraft.core.BlockPos;
 import net.minecraft.server.level.ServerPlayer;
 

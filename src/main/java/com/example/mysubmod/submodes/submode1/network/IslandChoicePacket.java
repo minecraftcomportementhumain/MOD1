@@ -1,7 +1,7 @@
 package com.example.mysubmod.submodes.submode1.network;
 
 import com.example.mysubmod.submodes.submode1.SubMode1Manager;
-import com.example.mysubmod.submodes.submode1.islands.IslandType;
+import com.example.mysubmod.submodes.submodeParent.islands.IslandType;
 import net.minecraft.network.FriendlyByteBuf;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraftforge.network.NetworkEvent;

@@ -3,13 +3,14 @@ package com.example.mysubmod.submodes.submode1;
 import com.example.mysubmod.MySubMod;
 import com.example.mysubmod.items.ModItems;
 import com.example.mysubmod.submodes.submode1.data.CandySpawnEntry;
-import com.example.mysubmod.submodes.submode1.islands.IslandType;
+import com.example.mysubmod.submodes.submodeParent.SubModeParentManager;
+import com.example.mysubmod.submodes.submodeParent.islands.IslandType;
 import net.minecraft.core.BlockPos;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.entity.item.ItemEntity;
 import net.minecraft.world.item.ItemStack;
-import net.minecraft.world.level.block.Blocks;
+import net.minecraft.world.phys.Vec3;
 
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
@@ -189,7 +190,7 @@ public class SubMode1CandyManager {
         int removedCount = 0;
 
         // Force load island chunks to ensure we catch all candies
-        SubMode1Manager manager = SubMode1Manager.getInstance();
+        SubModeParentManager manager = SubMode1Manager.getInstance();
         if (manager.getSmallIslandCenter() != null) {
             forceLoadChunk(overworld, manager.getSmallIslandCenter());
             forceLoadChunk(overworld, manager.getMediumIslandCenter());
@@ -231,7 +232,7 @@ public class SubMode1CandyManager {
         ServerLevel overworld = server.getLevel(ServerLevel.OVERWORLD);
         if (overworld == null) return counts;
 
-        SubMode1Manager manager = SubMode1Manager.getInstance();
+        SubModeParentManager manager = SubMode1Manager.getInstance();
         int totalCounted = 0;
         int notOnIsland = 0;
 
@@ -270,7 +271,7 @@ public class SubMode1CandyManager {
         ServerLevel overworld = server.getLevel(ServerLevel.OVERWORLD);
         if (overworld == null) return;
 
-        SubMode1Manager manager = SubMode1Manager.getInstance();
+        SubModeParentManager manager = SubMode1Manager.getInstance();
 
         // Force load chunks for each island (load 3x3 chunks around center to cover entire island)
         forceLoadIslandArea(overworld, manager.getSmallIslandCenter(), 2); // Small: 60x60 = ~4 chunks
@@ -334,7 +335,7 @@ public class SubMode1CandyManager {
     /**
      * Determine which island a position belongs to by checking if it's within island bounds
      */
-    private IslandType determineIslandFromPosition(net.minecraft.world.phys.Vec3 pos, SubMode1Manager manager) {
+    private IslandType determineIslandFromPosition(Vec3 pos, SubModeParentManager manager) {
         BlockPos smallCenter = manager.getSmallIslandCenter();
         BlockPos mediumCenter = manager.getMediumIslandCenter();
         BlockPos largeCenter = manager.getLargeIslandCenter();

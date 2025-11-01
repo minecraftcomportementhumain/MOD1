@@ -4,6 +4,8 @@ import com.example.mysubmod.MySubMod;
 import com.example.mysubmod.items.ModItems;
 import com.example.mysubmod.submodes.SubMode;
 import com.example.mysubmod.submodes.SubModeManager;
+import com.example.mysubmod.submodes.submodeParent.SubModeParentManager;
+import com.example.mysubmod.submodes.submodeParent.islands.IslandType;
 import com.example.mysubmod.util.PlayerFilterUtil;
 import net.minecraft.core.BlockPos;
 import net.minecraft.network.chat.Component;
@@ -18,7 +20,6 @@ import net.minecraftforge.event.entity.player.PlayerEvent;
 import net.minecraftforge.event.entity.player.EntityItemPickupEvent;
 import net.minecraftforge.event.entity.player.PlayerInteractEvent;
 import net.minecraftforge.event.level.BlockEvent;
-import net.minecraftforge.event.server.ServerStoppingEvent;
 import net.minecraftforge.event.TickEvent;
 import net.minecraftforge.eventbus.api.SubscribeEvent;
 import net.minecraftforge.fml.common.Mod;
@@ -236,7 +237,7 @@ public class SubMode1EventHandler {
             MySubMod.LOGGER.info("DEBUG: Player {} is NOT restricted, proceeding with SubMode1 processing", player.getName().getString());
 
             if (SubModeManager.getInstance().getCurrentMode() == SubMode.SUB_MODE_1) {
-                SubMode1Manager manager = SubMode1Manager.getInstance();
+                SubModeParentManager manager = SubMode1Manager.getInstance();
 
                 // Check if player was disconnected during the game
                 if (manager.wasPlayerDisconnected(player.getName().getString())) {
@@ -285,7 +286,7 @@ public class SubMode1EventHandler {
 
             // Skip temporary queue candidate accounts (but don't return - they're already filtered in handlePlayerDisconnection)
             if (SubModeManager.getInstance().getCurrentMode() == SubMode.SUB_MODE_1) {
-                SubMode1Manager manager = SubMode1Manager.getInstance();
+                SubModeParentManager manager = SubMode1Manager.getInstance();
 
                 boolean isAlive = manager.isPlayerAlive(player.getUUID());
                 boolean inSelectionPhase = manager.isInSelectionPhase(player.getUUID());
@@ -379,7 +380,7 @@ public class SubMode1EventHandler {
             candyCountUpdateTicks = 0;
 
             // Get candy counts from manager
-            java.util.Map<com.example.mysubmod.submodes.submode1.islands.IslandType, Integer> candyCounts =
+            java.util.Map<IslandType, Integer> candyCounts =
                 SubMode1CandyManager.getInstance().getAvailableCandiesPerIsland(event.getServer());
 
             // Send to authenticated players only
@@ -483,7 +484,7 @@ public class SubMode1EventHandler {
 
 
     private static boolean isNearIsland(BlockPos pos) {
-        SubMode1Manager manager = SubMode1Manager.getInstance();
+        SubModeParentManager manager = SubMode1Manager.getInstance();
 
         // Check if within small island (60x60, half = 30, +5 buffer = 35)
         if (isWithinSquare(pos, manager.getSmallIslandCenter(), 35)) {

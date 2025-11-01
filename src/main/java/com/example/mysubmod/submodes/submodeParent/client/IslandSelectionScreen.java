@@ -1,4 +1,4 @@
-package com.example.mysubmod.submodes.submode2.client;
+package com.example.mysubmod.submodes.submodeParent.client;
 
 import com.example.mysubmod.network.NetworkHandler;
 import com.example.mysubmod.submodes.submode2.islands.IslandType;

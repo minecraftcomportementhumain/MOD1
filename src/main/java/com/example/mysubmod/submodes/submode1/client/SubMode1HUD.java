@@ -1,6 +1,6 @@
 package com.example.mysubmod.submodes.submode1.client;
 
-import com.example.mysubmod.submodes.submode1.islands.IslandType;
+import com.example.mysubmod.submodes.submodeParent.islands.IslandType;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphics;
@@ -11,7 +11,7 @@ import java.util.HashMap;
 import java.util.Map;
 
 @OnlyIn(Dist.CLIENT)
-public class CandyCountHUD {
+public class SubMode1HUD {
     private static final Map<IslandType, Integer> candyCounts = new HashMap<>();
     private static boolean active = false;
 
@@ -70,26 +70,9 @@ public class CandyCountHUD {
     }
 
     private static void renderIslandCount(GuiGraphics guiGraphics, Font font, int x, int y, IslandType island, int count) {
-        String text = getIslandShortName(island) + ": " + count;
-        int color = getIslandColor(island);
+        String text = island.getIslandShortName() + ": " + count;
+        int color = island.getIslandColor();
         guiGraphics.drawString(font, text, x + 5, y, color);
     }
 
-    private static String getIslandShortName(IslandType island) {
-        return switch (island) {
-            case SMALL -> "§fPetite";
-            case MEDIUM -> "§fMoyenne";
-            case LARGE -> "§fGrande";
-            case EXTRA_LARGE -> "§fTrès Grande";
-        };
-    }
-
-    private static int getIslandColor(IslandType island) {
-        return switch (island) {
-            case SMALL -> 0xFFFFFF;      // White
-            case MEDIUM -> 0x55FF55;     // Green
-            case LARGE -> 0x5555FF;      // Blue
-            case EXTRA_LARGE -> 0xFFAA00; // Orange
-        };
-    }
 }

@@ -1,4 +1,4 @@
-package com.example.mysubmod.submodes.submode2.client;
+package com.example.mysubmod.submodes.submodeParent.client;
 
 import com.example.mysubmod.network.NetworkHandler;
 import com.example.mysubmod.submodes.submode2.network.CandyFileSelectionPacket;
@@ -13,14 +13,14 @@ import net.minecraft.network.chat.Component;
 import java.util.ArrayList;
 import java.util.List;
 
-public class CandyFileSelectionScreen extends Screen {
+public class FileSelectionScreen extends Screen {
     private final List<String> availableFiles;
     private CandyFileList fileList;
     private Button confirmButton;
     private Button deleteSelectedButton;
     private Button refreshButton;
 
-    public CandyFileSelectionScreen(List<String> availableFiles) {
+    public FileSelectionScreen(List<String> availableFiles) {
         super(Component.literal("Sélection du fichier de spawn des bonbons"));
         this.availableFiles = new ArrayList<>(availableFiles);
     }

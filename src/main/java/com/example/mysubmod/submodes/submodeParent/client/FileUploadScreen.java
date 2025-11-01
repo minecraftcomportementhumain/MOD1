@@ -1,7 +1,8 @@
-package com.example.mysubmod.submodes.submode2.client;
+package com.example.mysubmod.submodes.submodeParent.client;
 
 import com.example.mysubmod.network.NetworkHandler;
-import com.example.mysubmod.submodes.submode2.network.CandyFileUploadPacket;
+import com.example.mysubmod.submodes.SubMode;
+import com.example.mysubmod.submodes.submode1.network.CandyFileUploadPacket;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.components.Button;
 import net.minecraft.client.gui.components.EditBox;
@@ -16,15 +17,17 @@ import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.List;
 
-public class CandyFileUploadScreen extends Screen {
+public class FileUploadScreen extends Screen {
     private EditBox pathBox;
     private Button uploadButton;
     private Button cancelButton;
     private String loadedContent = "";
     private String loadedFilename = "";
+    private SubMode subMode;
 
-    public CandyFileUploadScreen() {
+    public FileUploadScreen(SubMode subMode) {
         super(Component.literal("Télécharger un fichier de spawn des bonbons"));
+        this.subMode = subMode;
     }
 
     @Override
@@ -43,21 +46,21 @@ public class CandyFileUploadScreen extends Screen {
 
         // Upload button
         uploadButton = Button.builder(
-            Component.literal("Charger et envoyer au serveur"),
-            button -> uploadFile()
-        )
-        .bounds(centerX - 150, startY + 50, 140, 20)
-        .build();
+                        Component.literal("Charger et envoyer au serveur"),
+                        button -> uploadFile()
+                )
+                .bounds(centerX - 150, startY + 50, 140, 20)
+                .build();
         uploadButton.active = false;
         this.addRenderableWidget(uploadButton);
 
         // Cancel button
         cancelButton = Button.builder(
-            Component.literal("Annuler"),
-            button -> onClose()
-        )
-        .bounds(centerX + 10, startY + 50, 140, 20)
-        .build();
+                        Component.literal("Annuler"),
+                        button -> onClose()
+                )
+                .bounds(centerX + 10, startY + 50, 140, 20)
+                .build();
         this.addRenderableWidget(cancelButton);
     }
 
@@ -169,7 +172,9 @@ public class CandyFileUploadScreen extends Screen {
 
     private void validateLine(String line) throws Exception {
         String[] parts = line.split(",");
-        if (parts.length != 6) {
+        if (parts.length != 5 && subMode!= SubMode.SUB_MODE_1) {
+            throw new IllegalArgumentException("Expected format: time,count,x,y,z");
+        }else if(parts.length != 6 && subMode!= SubMode.SUB_MODE_2){
             throw new IllegalArgumentException("Expected format: time,count,x,y,z,type");
         }
 
@@ -178,7 +183,6 @@ public class CandyFileUploadScreen extends Screen {
         int x = Integer.parseInt(parts[2].trim());
         int y = Integer.parseInt(parts[3].trim());
         int z = Integer.parseInt(parts[4].trim());
-        String type = parts[5].trim().toUpperCase();
 
         // Validate time range (0-900 seconds = 15 minutes)
         if (timeSeconds < 0 || timeSeconds > 900) {
@@ -200,19 +204,23 @@ public class CandyFileUploadScreen extends Screen {
             throw new IllegalArgumentException(String.format("Position (%d,%d,%d) is not on any island", x, y, z));
         }
 
-        // Validate resource type (A or B)
-        if (!type.equals("A") && !type.equals("B")) {
-            throw new IllegalArgumentException("Type must be A or B");
+        String type;
+        if(subMode == SubMode.SUB_MODE_2){
+            type = parts[5].trim().toUpperCase();
+            // Validate resource type (A or B)
+            if (!type.equals("A") && !type.equals("B")) {
+                throw new IllegalArgumentException("Type must be A or B");
+            }
         }
     }
 
     private boolean isPositionOnIsland(int x, int z) {
         // Island centers and radii
         int[][] islandData = {
-            {0, -360, 30},      // SMALL: center (0,-360), radius 30
-            {360, 0, 45},       // MEDIUM: center (360,0), radius 45
-            {0, 360, 60},       // LARGE: center (0,360), radius 60
-            {-360, 0, 75}       // EXTRA_LARGE: center (-360,0), radius 75
+                {0, -360, 30},      // SMALL: center (0,-360), radius 30
+                {360, 0, 45},       // MEDIUM: center (360,0), radius 45
+                {0, 360, 60},       // LARGE: center (0,360), radius 60
+                {-360, 0, 75}       // EXTRA_LARGE: center (-360,0), radius 75
         };
 
         for (int[] island : islandData) {
@@ -280,7 +288,12 @@ public class CandyFileUploadScreen extends Screen {
         }
 
         // Format help at bottom
-        String format = "Format requis: temps_en_secondes,nombre_bonbons,x,y,z,type (A ou B)";
+        String format = "Format inconnue";
+        if(subMode == SubMode.SUB_MODE_1){
+            format = "Format requis: temps_en_secondes,nombre_bonbons,x,y,z";
+        }else if(subMode == SubMode.SUB_MODE_2){
+            format = "Format requis: temps_en_secondes,nombre_bonbons,x,y,z,type (A ou B)";
+        }
         guiGraphics.drawCenteredString(this.font, format, centerX, startY + 100, 0x888888);
 
         super.render(guiGraphics, mouseX, mouseY, partialTick);

@@ -1,6 +1,8 @@
 package com.example.mysubmod.auth;
 
 import com.example.mysubmod.MySubMod;
+import com.example.mysubmod.submodes.submode1.SubMode1Manager;
+import com.example.mysubmod.submodes.submodeParent.SubModeParentManager;
 import com.google.gson.JsonObject;
 import net.minecraft.server.level.ServerPlayer;
 
@@ -543,8 +545,8 @@ public class AdminAuthManager {
         com.example.mysubmod.submodes.SubMode currentMode = subModeManager.getCurrentMode();
 
         if (currentMode == com.example.mysubmod.submodes.SubMode.SUB_MODE_1) {
-            com.example.mysubmod.submodes.submode1.SubMode1Manager subMode1Manager =
-                com.example.mysubmod.submodes.submode1.SubMode1Manager.getInstance();
+            SubModeParentManager subMode1Manager =
+                SubMode1Manager.getInstance();
 
             if (subMode1Manager.wasPlayerDisconnected(player.getName().getString())) {
                 // Player was disconnected during the game - restore their position and state
