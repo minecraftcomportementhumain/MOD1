@@ -1,7 +1,7 @@
 package com.example.mysubmod.submodes.submode1.data;
 
 import com.example.mysubmod.MySubMod;
-import net.minecraft.core.BlockPos;
+import com.example.mysubmod.submodes.submodeParent.data.CandySpawnEntry;
 
 import java.io.*;
 import java.nio.file.Files;
@@ -10,15 +10,15 @@ import java.nio.file.Paths;
 import java.util.*;
 import java.util.stream.Collectors;
 
-public class CandySpawnFileManager {
-    private static final String CANDY_SPAWN_DIRECTORY = "candy_spawn_configs";
-    private static CandySpawnFileManager instance;
+public class SubMode1SpawnFileManager {
+    private final String CANDY_SPAWN_DIRECTORY = "candy_spawn_configs";
+    private static SubMode1SpawnFileManager instance;
 
-    private CandySpawnFileManager() {}
+    public SubMode1SpawnFileManager() {}
 
-    public static CandySpawnFileManager getInstance() {
+    public static SubMode1SpawnFileManager getInstance() {
         if (instance == null) {
-            instance = new CandySpawnFileManager();
+            instance = new SubMode1SpawnFileManager();
         }
         return instance;
     }

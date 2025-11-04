@@ -9,14 +9,14 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.function.Supplier;
 
-public class CandyCountUpdatePacket {
+public class SubMode1CandyCountUpdatePacket {
     private final Map<IslandType, Integer> candyCounts;
 
-    public CandyCountUpdatePacket(Map<IslandType, Integer> candyCounts) {
+    public SubMode1CandyCountUpdatePacket(Map<IslandType, Integer> candyCounts) {
         this.candyCounts = candyCounts;
     }
 
-    public CandyCountUpdatePacket(FriendlyByteBuf buf) {
+    public SubMode1CandyCountUpdatePacket(FriendlyByteBuf buf) {
         this.candyCounts = new HashMap<>();
         int size = buf.readInt();
         for (int i = 0; i < size; i++) {

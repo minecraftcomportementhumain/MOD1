@@ -3,6 +3,7 @@ package com.example.mysubmod.submodes.submodeParent.client;
 import com.example.mysubmod.MySubMod;
 import com.example.mysubmod.submodes.SubMode;
 import com.example.mysubmod.submodes.SubModeManager;
+import com.example.mysubmod.submodes.submode1.client.SubMode1HUD;
 import com.example.mysubmod.submodes.submode2.client.SubMode2HUD;
 import com.example.mysubmod.submodes.submode2.client.PenaltyTimerHUD;
 import net.minecraft.client.Minecraft;
@@ -25,8 +26,8 @@ public class HUDRenderer {
 
         // SUB_MODE_1
         if (SubModeManager.getInstance().getCurrentMode() == SubMode.SUB_MODE_1) {
-            if (SubMode2HUD.isActive()) {
-                SubMode2HUD.render(event.getGuiGraphics(),
+            if (SubMode1HUD.isActive()) {
+                SubMode1HUD.render(event.getGuiGraphics(),
                         event.getGuiGraphics().guiWidth(),
                         event.getGuiGraphics().guiHeight());
             }

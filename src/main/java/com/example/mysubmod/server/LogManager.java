@@ -20,13 +20,22 @@ import java.util.zip.ZipOutputStream;
 
 public class LogManager {
     private static final String LOG_BASE_DIR = "mysubmod_data";
+    private static int numberMode = 1;
 
-    public static void sendLogList(ServerPlayer player) {
-        sendLogList(player, 1); // Default to SubMode1 for backward compatibility
+    public static void sendLogList(ServerPlayer player,int numberMode) {
+        sendLogList(player,1); // Default to SubMode1 for backward compatibility
     }
 
-    public static void sendLogList(ServerPlayer player, int subModeNumber) {
-        List<String> logFolders = getLogFolders(subModeNumber);
+    public static void setSubMode(int subModeNumber){
+        numberMode = subModeNumber;
+    }
+
+    public static int getSubMode(){
+        return numberMode;
+    }
+
+    public static void sendLogList(ServerPlayer player) {
+        List<String> logFolders = getLogFolders(getSubMode());
         NetworkHandler.INSTANCE.send(
             PacketDistributor.PLAYER.with(() -> player),
             new LogListPacket(logFolders)

@@ -1,45 +1,34 @@
 package com.example.mysubmod.submodes.submode1.network;
 
 import com.example.mysubmod.submodes.SubModeManager;
-import com.example.mysubmod.submodes.submode1.data.CandySpawnFileManager;
-import net.minecraft.network.FriendlyByteBuf;
+import com.example.mysubmod.submodes.submode1.data.SubMode1SpawnFileManager;
+import com.example.mysubmod.submodes.submodeParent.network.FileUploadPacket;
 import net.minecraft.network.chat.Component;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraftforge.network.NetworkEvent;
 
 import java.util.function.Supplier;
 
-public class CandyFileUploadPacket {
-    private final String filename;
-    private final String content;
+public class CandyFileUploadPacket extends FileUploadPacket {
 
     public CandyFileUploadPacket(String filename, String content) {
-        this.filename = filename;
-        this.content = content;
+        super(filename, content);
     }
 
-    public static void encode(CandyFileUploadPacket packet, FriendlyByteBuf buf) {
-        buf.writeUtf(packet.filename);
-        buf.writeUtf(packet.content);
-    }
-
-    public static CandyFileUploadPacket decode(FriendlyByteBuf buf) {
-        return new CandyFileUploadPacket(buf.readUtf(), buf.readUtf());
-    }
-
-    public static void handle(CandyFileUploadPacket packet, Supplier<NetworkEvent.Context> ctx) {
+    //MUST CHANGE SPAWNFILEMANAGER
+    public static void handle(FileUploadPacket packet, Supplier<NetworkEvent.Context> ctx) {
         ctx.get().enqueueWork(() -> {
             ServerPlayer player = ctx.get().getSender();
             if (player != null) {
                 // Verify admin permissions on server side
                 if (SubModeManager.getInstance().isAdmin(player)) {
-                    boolean success = CandySpawnFileManager.getInstance().saveUploadedFile(
-                        packet.filename, packet.content);
+                    boolean success = SubMode1SpawnFileManager.getInstance().saveUploadedFile(
+                            packet.getFilename(), packet.getContent());
 
                     if (success) {
-                        player.sendSystemMessage(Component.literal("§aFichier de spawn de bonbons téléchargé avec succès: " + packet.filename));
+                        player.sendSystemMessage(Component.literal("§aFichier de spawn de bonbons SubMode2 téléchargé avec succès: " + packet.getFilename()));
                     } else {
-                        player.sendSystemMessage(Component.literal("§cErreur lors du téléchargement du fichier. Vérifiez le format."));
+                        player.sendSystemMessage(Component.literal("§cErreur lors du téléchargement du fichier. Vérifiez le format (doit inclure le type A ou B)."));
                     }
                 } else {
                     player.sendSystemMessage(Component.literal("§cVous n'avez pas les permissions pour télécharger des fichiers."));
@@ -47,13 +36,5 @@ public class CandyFileUploadPacket {
             }
         });
         ctx.get().setPacketHandled(true);
-    }
-
-    public String getFilename() {
-        return filename;
-    }
-
-    public String getContent() {
-        return content;
     }
 }

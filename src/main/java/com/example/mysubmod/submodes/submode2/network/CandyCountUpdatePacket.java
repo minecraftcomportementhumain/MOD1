@@ -2,7 +2,7 @@ package com.example.mysubmod.submodes.submode2.network;
 
 import com.example.mysubmod.submodes.submode2.ResourceType;
 import com.example.mysubmod.submodes.submode2.client.SubMode2HUD;
-import com.example.mysubmod.submodes.submode2.islands.IslandType;
+import com.example.mysubmod.submodes.submodeParent.islands.IslandType;
 import net.minecraft.network.FriendlyByteBuf;
 import net.minecraftforge.network.NetworkEvent;
 

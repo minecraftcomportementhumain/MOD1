@@ -1,7 +1,7 @@
 package com.example.mysubmod.client;
 
 import com.example.mysubmod.MySubMod;
-import com.example.mysubmod.submodes.submode1.client.ClientGameTimer;
+import com.example.mysubmod.submodes.submodeParent.client.ClientGameTimer;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.network.chat.Component;
@@ -13,7 +13,7 @@ import net.minecraftforge.fml.common.Mod;
 
 @Mod.EventBusSubscriber(modid = MySubMod.MOD_ID, bus = Mod.EventBusSubscriber.Bus.FORGE, value = Dist.CLIENT)
 @OnlyIn(Dist.CLIENT)
-public class SubMode1HUD {
+public class TimerHUD {
 
     @SubscribeEvent
     public static void onRenderGui(RenderGuiEvent.Post event) {

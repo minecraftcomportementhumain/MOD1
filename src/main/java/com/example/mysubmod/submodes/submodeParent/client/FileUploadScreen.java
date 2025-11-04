@@ -2,7 +2,7 @@ package com.example.mysubmod.submodes.submodeParent.client;
 
 import com.example.mysubmod.network.NetworkHandler;
 import com.example.mysubmod.submodes.SubMode;
-import com.example.mysubmod.submodes.submode1.network.CandyFileUploadPacket;
+import com.example.mysubmod.submodes.submodeParent.network.FileUploadPacket;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.components.Button;
 import net.minecraft.client.gui.components.EditBox;
@@ -254,7 +254,7 @@ public class FileUploadScreen extends Screen {
             return;
         }
 
-        NetworkHandler.INSTANCE.sendToServer(new CandyFileUploadPacket(loadedFilename, loadedContent));
+        NetworkHandler.INSTANCE.sendToServer(new FileUploadPacket(loadedFilename, loadedContent));
         onClose();
     }
 

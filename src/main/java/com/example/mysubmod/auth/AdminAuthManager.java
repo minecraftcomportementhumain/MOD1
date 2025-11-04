@@ -1,10 +1,13 @@
 package com.example.mysubmod.auth;
 
 import com.example.mysubmod.MySubMod;
+import com.example.mysubmod.submodes.SubMode;
 import com.example.mysubmod.submodes.submode1.SubMode1Manager;
+import com.example.mysubmod.submodes.submode2.SubMode2Manager;
 import com.example.mysubmod.submodes.submodeParent.SubModeParentManager;
 import com.google.gson.JsonObject;
 import net.minecraft.server.level.ServerPlayer;
+import net.minecraftforge.event.entity.player.PlayerEvent;
 
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
@@ -554,9 +557,9 @@ public class AdminAuthManager {
                 subMode1Manager.handlePlayerReconnection(player);
                 return;
             }
-        } else if (currentMode == com.example.mysubmod.submodes.SubMode.SUB_MODE_2) {
-            com.example.mysubmod.submodes.submode2.SubMode2Manager subMode2Manager =
-                com.example.mysubmod.submodes.submode2.SubMode2Manager.getInstance();
+        } else if (currentMode == SubMode.SUB_MODE_2) {
+            SubModeParentManager subMode2Manager =
+                SubMode2Manager.getInstance();
 
             if (subMode2Manager.wasPlayerDisconnected(player.getName().getString())) {
                 // Player was disconnected during the game - restore their position and state
@@ -570,15 +573,15 @@ public class AdminAuthManager {
         // Call the appropriate submode event handler
         if (currentMode == com.example.mysubmod.submodes.SubMode.SUB_MODE_1) {
             com.example.mysubmod.submodes.submode1.SubMode1EventHandler.onPlayerJoin(
-                new net.minecraftforge.event.entity.player.PlayerEvent.PlayerLoggedInEvent(player)
+                new PlayerEvent.PlayerLoggedInEvent(player)
             );
         } else if (currentMode == com.example.mysubmod.submodes.SubMode.SUB_MODE_2) {
             com.example.mysubmod.submodes.submode2.SubMode2EventHandler.onPlayerJoin(
-                new net.minecraftforge.event.entity.player.PlayerEvent.PlayerLoggedInEvent(player)
+                new PlayerEvent.PlayerLoggedInEvent(player)
             );
         } else if (currentMode == com.example.mysubmod.submodes.SubMode.WAITING_ROOM) {
             com.example.mysubmod.submodes.waitingroom.WaitingRoomEventHandler.onPlayerJoin(
-                new net.minecraftforge.event.entity.player.PlayerEvent.PlayerLoggedInEvent(player)
+                new PlayerEvent.PlayerLoggedInEvent(player)
             );
         } else {
             // No active submode - teleport to spawn

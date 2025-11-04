@@ -1,44 +1,44 @@
-package com.example.mysubmod.submodes.submode1.network;
+package com.example.mysubmod.submodes.submodeParent.network;
 
 import com.example.mysubmod.submodes.SubModeManager;
-import com.example.mysubmod.submodes.submode1.SubMode1Manager;
+import com.example.mysubmod.submodes.submodeParent.SubModeParentManager;
 import net.minecraft.network.FriendlyByteBuf;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraftforge.network.NetworkEvent;
 
 import java.util.function.Supplier;
 
-public class CandyFileSelectionPacket {
+public class FileSelectionPacket {
     private final String selectedFile;
 
-    public CandyFileSelectionPacket(String selectedFile) {
+    public FileSelectionPacket(String selectedFile) {
         this.selectedFile = selectedFile;
     }
 
-    public static void encode(CandyFileSelectionPacket packet, FriendlyByteBuf buf) {
+    public static void encode(FileSelectionPacket packet, FriendlyByteBuf buf) {
         buf.writeUtf(packet.selectedFile);
     }
 
-    public static CandyFileSelectionPacket decode(FriendlyByteBuf buf) {
-        return new CandyFileSelectionPacket(buf.readUtf());
+    public static FileSelectionPacket decode(FriendlyByteBuf buf) {
+        return new FileSelectionPacket(buf.readUtf());
     }
 
-    public static void handle(CandyFileSelectionPacket packet, Supplier<NetworkEvent.Context> ctx) {
+    public static void handle(FileSelectionPacket packet, Supplier<NetworkEvent.Context> ctx) {
         ctx.get().enqueueWork(() -> {
             ServerPlayer player = ctx.get().getSender();
             if (player != null) {
                 // Verify admin permissions on server side
                 if (SubModeManager.getInstance().isAdmin(player)) {
                     // Check if a game is already active or selection phase is active
-                    if (SubMode1Manager.getInstance().isGameActive() || SubMode1Manager.getInstance().isSelectionPhase()) {
+                    if (SubModeParentManager.getInstance().isGameActive() || SubModeParentManager.getInstance().isSelectionPhase()) {
                         player.sendSystemMessage(net.minecraft.network.chat.Component.literal(
                             "§cImpossible de sélectionner un fichier - Une partie est déjà en cours!"));
                         return;
                     }
 
-                    SubMode1Manager.getInstance().setCandySpawnFile(packet.selectedFile);
+                    SubModeParentManager.getInstance().setCandySpawnFile(packet.selectedFile);
                     // Start island selection after file is set
-                    SubMode1Manager.getInstance().startIslandSelection(player.getServer());
+                    SubModeParentManager.getInstance().startIslandSelection(player.getServer());
                 }
             }
         });

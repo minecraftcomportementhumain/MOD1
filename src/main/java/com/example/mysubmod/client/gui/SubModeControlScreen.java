@@ -4,6 +4,7 @@ import com.example.mysubmod.client.ClientSubModeManager;
 import com.example.mysubmod.network.NetworkHandler;
 import com.example.mysubmod.network.SubModeRequestPacket;
 import com.example.mysubmod.network.LogListRequestPacket;
+import com.example.mysubmod.server.LogManager;
 import com.example.mysubmod.submodes.SubMode;
 import com.example.mysubmod.submodes.submodeParent.client.FileUploadScreen;
 import net.minecraft.client.gui.GuiGraphics;
@@ -105,7 +106,9 @@ public class SubModeControlScreen extends Screen {
 
     private void openLogManagementScreen(SubMode submode) {
         // Request log list from server (SubMode1)
-        NetworkHandler.INSTANCE.sendToServer(new LogListRequestPacket());
+        LogManager.setSubMode(submode.getNumberMode());
+        LogListRequestPacket paquet = new LogListRequestPacket();
+        NetworkHandler.INSTANCE.sendToServer(paquet);
     }
 
     @Override

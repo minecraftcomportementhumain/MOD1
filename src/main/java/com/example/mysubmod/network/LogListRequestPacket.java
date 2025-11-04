@@ -1,6 +1,10 @@
 package com.example.mysubmod.network;
 
+import com.example.mysubmod.server.LogManager;
+import com.example.mysubmod.submodes.SubMode;
+import com.example.mysubmod.submodes.SubModeManager;
 import net.minecraft.network.FriendlyByteBuf;
+import net.minecraft.server.level.ServerPlayer;
 import net.minecraftforge.network.NetworkEvent;
 
 import java.util.function.Supplier;
@@ -20,9 +24,9 @@ public class LogListRequestPacket {
     public boolean handle(Supplier<NetworkEvent.Context> supplier) {
         NetworkEvent.Context context = supplier.get();
         context.enqueueWork(() -> {
-            net.minecraft.server.level.ServerPlayer player = context.getSender();
-            if (player != null && com.example.mysubmod.submodes.SubModeManager.getInstance().isAdmin(player)) {
-                com.example.mysubmod.server.LogManager.sendLogList(player);
+            ServerPlayer player = context.getSender();
+            if (player != null && SubModeManager.getInstance().isAdmin(player)) {
+                LogManager.sendLogList(player);
             }
         });
         return true;

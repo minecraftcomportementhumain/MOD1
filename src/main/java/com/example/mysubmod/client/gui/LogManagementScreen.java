@@ -4,11 +4,16 @@ import com.example.mysubmod.network.NetworkHandler;
 import com.example.mysubmod.network.LogDownloadPacket;
 import com.example.mysubmod.network.LogDeletePacket;
 import com.example.mysubmod.network.LogListRequestPacket;
+import com.example.mysubmod.server.LogManager;
+import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.components.Button;
 import net.minecraft.client.gui.components.ObjectSelectionList;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.network.chat.Component;
+import net.minecraft.server.level.ServerPlayer;
+import net.minecraftforge.network.NetworkEvent;
+import org.jline.utils.Log;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -131,6 +136,7 @@ public class LogManagementScreen extends Screen {
     }
 
     private void refreshLogList() {
+        LogManager.setSubMode(LogManager.getSubMode());
         NetworkHandler.INSTANCE.sendToServer(new LogListRequestPacket());
     }
 
@@ -169,7 +175,7 @@ public class LogManagementScreen extends Screen {
     public static class LogFolderList extends ObjectSelectionList<LogFolderList.LogFolderEntry> {
         private final int leftPos;
 
-        public LogFolderList(net.minecraft.client.Minecraft minecraft, int width, int height, int top, int bottom, int itemHeight, List<String> folders, int leftPos) {
+        public LogFolderList(Minecraft minecraft, int width, int height, int top, int bottom, int itemHeight, List<String> folders, int leftPos) {
             super(minecraft, width, height, top, bottom, itemHeight);
             this.leftPos = leftPos;
             for (String folder : folders) {

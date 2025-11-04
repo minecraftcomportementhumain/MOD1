@@ -1,5 +1,6 @@
-package com.example.mysubmod.submodes.submode1.network;
+package com.example.mysubmod.submodes.submodeParent.network;
 
+import com.example.mysubmod.submodes.submodeParent.client.ClientGameTimer;
 import net.minecraft.network.FriendlyByteBuf;
 import net.minecraftforge.api.distmarker.Dist;
 import net.minecraftforge.fml.DistExecutor;
@@ -34,9 +35,9 @@ public class GameEndPacket {
     // Client-only handler class
     public static class ClientPacketHandler {
         public static void handleGameEnd() {
-            com.example.mysubmod.submodes.submode1.client.ClientGameTimer.markGameAsEnded();
+            ClientGameTimer.markGameAsEnded();
             // Also deactivate the timer to stop displaying it
-            com.example.mysubmod.submodes.submode1.client.ClientGameTimer.deactivate();
+            ClientGameTimer.deactivate();
         }
     }
 }

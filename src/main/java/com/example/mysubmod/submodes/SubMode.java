@@ -14,4 +14,8 @@ public enum SubMode {
     public String getDisplayName() {
         return displayName;
     }
+
+    public int getNumberMode(){
+        return Integer.parseInt(getDisplayName().substring(10,getDisplayName().length()));
+    }
 }

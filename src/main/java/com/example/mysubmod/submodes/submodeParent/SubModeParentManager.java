@@ -1,19 +1,20 @@
 package com.example.mysubmod.submodes.submodeParent;
 
 import com.example.mysubmod.MySubMod;
+import com.example.mysubmod.auth.AuthManager;
 import com.example.mysubmod.network.NetworkHandler;
 import com.example.mysubmod.submodes.SubMode;
 import com.example.mysubmod.submodes.SubModeManager;
-import com.example.mysubmod.submodes.submode1.SubMode1CandyManager;
-import com.example.mysubmod.submodes.submode1.SubMode1HealthManager;
-import com.example.mysubmod.submodes.submode1.data.CandySpawnEntry;
-import com.example.mysubmod.submodes.submode1.data.CandySpawnFileManager;
+import com.example.mysubmod.submodes.submode1.network.SubMode1CandyCountUpdatePacket;
+import com.example.mysubmod.submodes.submodeParent.data.CandySpawnEntry;
 import com.example.mysubmod.submodes.submode1.data.SubMode1DataLogger;
-import com.example.mysubmod.submodes.submode1.network.CandyFileListPacket;
-import com.example.mysubmod.submodes.submode1.network.GameEndPacket;
-import com.example.mysubmod.submodes.submode1.network.GameTimerPacket;
-import com.example.mysubmod.submodes.submode1.network.IslandSelectionPacket;
-import com.example.mysubmod.submodes.submode1.timer.GameTimer;
+import com.example.mysubmod.submodes.submodeParent.data.DataLogger;
+import com.example.mysubmod.submodes.submodeParent.data.SpawnFileManager;
+import com.example.mysubmod.submodes.submodeParent.network.FileListPacket;
+import com.example.mysubmod.submodes.submodeParent.network.GameEndPacket;
+import com.example.mysubmod.submodes.submodeParent.network.GameTimerPacket;
+import com.example.mysubmod.submodes.submodeParent.network.IslandSelectionPacket;
+import com.example.mysubmod.submodes.submodeParent.timer.GameTimer;
 import com.example.mysubmod.submodes.submodeParent.islands.IslandGenerator;
 import com.example.mysubmod.submodes.submodeParent.islands.IslandType;
 import com.example.mysubmod.util.PlayerFilterUtil;
@@ -22,6 +23,9 @@ import net.minecraft.network.chat.Component;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.world.entity.Entity;
+import net.minecraft.world.entity.EntityType;
+import net.minecraft.world.entity.decoration.ArmorStand;
 import net.minecraft.world.item.ItemStack;
 import net.minecraftforge.network.PacketDistributor;
 
@@ -45,9 +49,20 @@ public class SubModeParentManager {
     protected final List<PendingLogEvent> pendingLogEvents = new ArrayList<>(); // Events before dataLogger exists
     protected long gameStartTime; // Track game start time
     protected long selectionStartTime; // Track selection phase start time
+    protected SpawnFileManager spawnFileManager = new SpawnFileManager();
+    protected HealthManager healthManager = new HealthManager();
+    protected CandyManager candyManager = new CandyManager();
 
     // Lock to prevent race conditions between UUID migration (handlePlayerReconnection) and server-side death (handleDisconnectedPlayerDeath)
     protected final Object reconnectionLock = new Object();
+
+    public static SubModeParentManager getInstance() {
+        if (instance == null) {
+            instance = new SubModeParentManager();
+        }
+
+        return instance;
+    }
 
     // Inner class to store disconnection info
     protected static class DisconnectInfo {
@@ -77,9 +92,9 @@ public class SubModeParentManager {
     protected boolean islandsGenerated = false;
     protected Timer selectionTimer;
     protected GameTimer gameTimer;
-    protected SubMode1DataLogger dataLogger;
+    protected DataLogger dataLogger;
     protected String selectedCandySpawnFile;
-    protected List<CandySpawnEntry> candySpawnConfig;
+    protected List<? extends CandySpawnEntry> candySpawnConfig;
     protected ServerPlayer gameInitiator; // The admin who started the game
 
     // Island positions
@@ -93,14 +108,9 @@ public class SubModeParentManager {
     protected static final int SELECTION_TIME_SECONDS = 30;
     protected static final int GAME_TIME_MINUTES = 15;
 
-    protected SubModeParentManager() {}
-
-    public static SubModeParentManager getInstance() {
-        if (instance == null) {
-            instance = new SubModeParentManager();
-        }
-        return instance;
+    public SubModeParentManager() {
     }
+
 
     /**
      * Check if a player should be excluded from SubMode1 (queue candidates OR unauthenticated protected/admin)
@@ -144,19 +154,20 @@ public class SubModeParentManager {
 
         // Send loading message to all players
         PlayerFilterUtil.getAuthenticatedPlayers(server).forEach(player -> {
-            player.sendSystemMessage(Component.literal("§e§lChargement du sous-mode 1..."));
+            player.sendSystemMessage(Component.literal("§e§lChargement du sous-mode "+SubModeManager.getInstance().getCurrentMode().getNumberMode()+"..."));
         });
 
         // Clean up any leftover candies from previous games first
         try {
-            SubMode1CandyManager.getInstance().removeAllCandiesFromWorld(server);
+            candyManager.removeAllCandiesFromWorld(server);
             MySubMod.LOGGER.info("Cleaned up leftover candies from previous games");
         } catch (Exception e) {
             MySubMod.LOGGER.error("Error cleaning up leftover candies", e);
         }
 
         // Ensure candy spawn directory exists
-        CandySpawnFileManager.getInstance().ensureDirectoryExists();
+
+        spawnFileManager.ensureDirectoryExists();
 
         // Initialize positions
         initializePositions();
@@ -177,7 +188,7 @@ public class SubModeParentManager {
 
         // Clean up any candies again after island generation (just to be sure)
         try {
-            SubMode1CandyManager.getInstance().removeAllCandiesFromWorld(server);
+            candyManager.removeAllCandiesFromWorld(server);
             MySubMod.LOGGER.info("Final cleanup of candies before player teleportation");
         } catch (Exception e) {
             MySubMod.LOGGER.error("Error in final candy cleanup", e);
@@ -199,12 +210,12 @@ public class SubModeParentManager {
         teleportAllPlayersToSmallIsland(server);
 
         // Show candy file selection to the initiating admin
-        if (initiator != null && com.example.mysubmod.submodes.SubModeManager.getInstance().isAdmin(initiator)) {
+        if (initiator != null && SubModeManager.getInstance().isAdmin(initiator)) {
             fileSelectionPhase = true; // Mark that we're in file selection phase
             showCandyFileSelection(initiator);
         } else {
             // Auto-select default file if no admin initiated or fallback
-            String defaultFile = CandySpawnFileManager.getInstance().getDefaultFile();
+            String defaultFile = spawnFileManager.getDefaultFile();
             setCandySpawnFile(defaultFile);
             startIslandSelection(server);
         }
@@ -232,6 +243,7 @@ public class SubModeParentManager {
             }
 
             try {
+                System.out.println(gameTimer);
                 if (gameTimer != null) {
                     gameTimer.stop();
                     gameTimer = null;
@@ -242,11 +254,11 @@ public class SubModeParentManager {
 
                 // Send empty candy counts to deactivate HUD
                 NetworkHandler.INSTANCE.send(PacketDistributor.ALL.noArg(),
-                    new com.example.mysubmod.submodes.submode1.network.CandyCountUpdatePacket(new HashMap<>()));
+                    new SubMode1CandyCountUpdatePacket(new HashMap<>()));
 
                 // Send empty file list to clear client-side storage (without opening screen)
                 NetworkHandler.INSTANCE.send(PacketDistributor.ALL.noArg(),
-                    new CandyFileListPacket(new ArrayList<>(), false));
+                    new FileListPacket(new ArrayList<>(), false));
             } catch (Exception e) {
                 MySubMod.LOGGER.error("Error stopping game timer", e);
             }
@@ -262,15 +274,15 @@ public class SubModeParentManager {
 
             // Stop health degradation
             try {
-                SubMode1HealthManager.getInstance().stopHealthDegradation();
+                healthManager.stopHealthDegradation();
             } catch (Exception e) {
                 MySubMod.LOGGER.error("Error stopping health degradation", e);
             }
 
             // Stop candy spawning and remove all existing candies
             try {
-                SubMode1CandyManager.getInstance().stopCandySpawning();
-                SubMode1CandyManager.getInstance().removeAllCandiesFromWorld(server);
+                candyManager.stopCandySpawning();
+                candyManager.removeAllCandiesFromWorld(server);
             } catch (Exception e) {
                 MySubMod.LOGGER.error("Error stopping candy spawning", e);
             }
@@ -329,7 +341,7 @@ public class SubModeParentManager {
 
         for (net.minecraft.world.entity.Entity entity : level.getAllEntities()) {
             // Remove hologram armor stands (invisible, no base plate, custom name visible)
-            if (entity instanceof net.minecraft.world.entity.decoration.ArmorStand armorStand) {
+            if (entity instanceof ArmorStand armorStand) {
                 if (armorStand.isInvisible() && armorStand.isNoBasePlate() && armorStand.isCustomNameVisible()) {
                     armorStand.discard();
                     hologramsRemoved++;
@@ -435,8 +447,8 @@ public class SubModeParentManager {
 
     protected void createHologram(ServerLevel level, BlockPos pos, String line1, String line2) {
         // Create armor stand for line 1
-        net.minecraft.world.entity.decoration.ArmorStand hologram1 = new net.minecraft.world.entity.decoration.ArmorStand(
-            net.minecraft.world.entity.EntityType.ARMOR_STAND,
+        ArmorStand hologram1 = new ArmorStand(
+            EntityType.ARMOR_STAND,
             level
         );
         hologram1.setPos(pos.getX() + 0.5, pos.getY() + 0.5, pos.getZ() + 0.5);
@@ -448,13 +460,13 @@ public class SubModeParentManager {
         hologram1.setSilent(true);
         hologram1.setNoBasePlate(true);
         // Add custom tag to identify SubMode1 holograms
-        hologram1.addTag("SubModeHologram");
+        hologram1.addTag("SubMode1Hologram");
         level.addFreshEntity(hologram1);
         holograms.add(hologram1); // Track this hologram
 
         // Create armor stand for line 2 (slightly below)
-        net.minecraft.world.entity.decoration.ArmorStand hologram2 = new net.minecraft.world.entity.decoration.ArmorStand(
-            net.minecraft.world.entity.EntityType.ARMOR_STAND,
+        ArmorStand hologram2 = new ArmorStand(
+            EntityType.ARMOR_STAND,
             level
         );
         hologram2.setPos(pos.getX() + 0.5, pos.getY() + 0.25, pos.getZ() + 0.5);
@@ -466,7 +478,7 @@ public class SubModeParentManager {
         hologram2.setSilent(true);
         hologram2.setNoBasePlate(true);
         // Add custom tag to identify SubMode1 holograms
-        hologram2.addTag("SubMode1Hologram");
+        hologram2.addTag("SubMode2Hologram");
         level.addFreshEntity(hologram2);
         holograms.add(hologram2); // Track this hologram
     }
@@ -872,7 +884,7 @@ public class SubModeParentManager {
 
         // Also clean up any leftover candies
         try {
-            SubMode1CandyManager.getInstance().removeAllCandiesFromWorld(level.getServer());
+            candyManager.removeAllCandiesFromWorld(level.getServer());
         } catch (Exception e) {
             MySubMod.LOGGER.error("Error cleaning up leftover candies during map clearing", e);
         }
@@ -915,7 +927,7 @@ public class SubModeParentManager {
             for (int z = -halfSize - 5; z <= halfSize + 5; z++) {
                 for (int y = -5; y <= 10; y++) {
                     level.setBlock(centralSquare.offset(x, y, z),
-                        net.minecraft.world.level.block.Blocks.AIR.defaultBlockState(), 3);
+                        net.minecraft.world.level.block.Blocks.AIR.defaultBlockState(), 2);
                 }
             }
         }
@@ -1223,14 +1235,14 @@ public class SubModeParentManager {
 
         // Add any newly connected non-admin players (don't clear - keep players from file selection phase)
         for (ServerPlayer player : PlayerFilterUtil.getAuthenticatedPlayers(server)) {
-            if (!com.example.mysubmod.submodes.SubModeManager.getInstance().isAdmin(player)) {
+            if (!SubModeManager.getInstance().isAdmin(player)) {
                 playersInSelectionPhase.add(player.getUUID());
             }
         }
 
         // Send island selection GUI to all non-admin players
         for (ServerPlayer player : PlayerFilterUtil.getAuthenticatedPlayers(server)) {
-            if (!com.example.mysubmod.submodes.SubModeManager.getInstance().isAdmin(player)) {
+            if (!SubModeManager.getInstance().isAdmin(player)) {
                 storePlayerInventory(player);
                 clearPlayerInventory(player);
                 NetworkHandler.INSTANCE.send(PacketDistributor.PLAYER.with(() -> player),
@@ -1320,12 +1332,12 @@ public class SubModeParentManager {
         removeDandelionItems(overworld);
 
         for (ServerPlayer player : PlayerFilterUtil.getAuthenticatedPlayers(server)) {
-            if (com.example.mysubmod.submodes.SubModeManager.getInstance().isAdmin(player)) continue;
+            if (SubModeManager.getInstance().isAdmin(player)) continue;
 
             // Check if protected player is authenticated
-            com.example.mysubmod.auth.AuthManager authManager = com.example.mysubmod.auth.AuthManager.getInstance();
-            com.example.mysubmod.auth.AuthManager.AccountType accountType = authManager.getAccountType(player.getName().getString());
-            boolean isProtectedPlayer = (accountType == com.example.mysubmod.auth.AuthManager.AccountType.PROTECTED_PLAYER);
+            AuthManager authManager = AuthManager.getInstance();
+            AuthManager.AccountType accountType = authManager.getAccountType(player.getName().getString());
+            boolean isProtectedPlayer = (accountType == AuthManager.AccountType.PROTECTED_PLAYER);
             boolean isAuthenticated = authManager.isAuthenticated(player.getUUID());
 
             if (isProtectedPlayer && !isAuthenticated) {
@@ -1362,7 +1374,7 @@ public class SubModeParentManager {
 
         // Final cleanup: Remove all candies one last time before starting
         try {
-            SubMode1CandyManager.getInstance().removeAllCandiesFromWorld(server);
+            candyManager.removeAllCandiesFromWorld(server);
             MySubMod.LOGGER.info("Final cleanup of all candies before game start");
         } catch (Exception e) {
             MySubMod.LOGGER.error("Error in final candy cleanup before game start", e);
@@ -1376,10 +1388,10 @@ public class SubModeParentManager {
         gameTimer.start();
 
         // Start health degradation
-        SubMode1HealthManager.getInstance().startHealthDegradation(server);
+        healthManager.startHealthDegradation(server);
 
         // Start candy spawning
-        SubMode1CandyManager.getInstance().startCandySpawning(server);
+        candyManager.startCandySpawning(server);
 
         broadcastMessage(server, "§aLa partie commence ! Survivez " + GAME_TIME_MINUTES + " minutes !");
     }
@@ -1524,9 +1536,9 @@ public class SubModeParentManager {
         // Second, scan for any orphaned holograms with our tag (backup cleanup)
         // This catches any holograms that weren't in the tracking list
         int orphanedRemoved = 0;
-        for (net.minecraft.world.entity.Entity entity : level.getAllEntities()) {
-            if (entity instanceof net.minecraft.world.entity.decoration.ArmorStand armorStand) {
-                if (armorStand.getTags().contains("SubModeHologram") && armorStand.isAlive()) {
+        for (Entity entity : level.getAllEntities()) {
+            if (entity instanceof ArmorStand armorStand) {
+                if (armorStand.getTags().contains("SubMode2Hologram") && armorStand.isAlive()) {
                     armorStand.discard();
                     orphanedRemoved++;
                 }
@@ -1580,9 +1592,9 @@ public class SubModeParentManager {
 
         // Stop systems immediately to prevent further operations
         try {
-            SubMode1HealthManager.getInstance().stopHealthDegradation();
-            SubMode1CandyManager.getInstance().stopCandySpawning();
-            SubMode1CandyManager.getInstance().removeAllCandiesFromWorld(server);
+            healthManager.stopHealthDegradation();
+            candyManager.stopCandySpawning();
+            candyManager.removeAllCandiesFromWorld(server);
 
             // Stop game timer to prevent duplicate calls
             if (gameTimer != null) {
@@ -1607,7 +1619,7 @@ public class SubModeParentManager {
                     server.execute(() -> {
                         try {
                             // Change to waiting room first (this will call deactivate automatically)
-                            com.example.mysubmod.submodes.SubModeManager.getInstance().changeSubMode(com.example.mysubmod.submodes.SubMode.WAITING_ROOM, null, server);
+                            SubModeManager.getInstance().changeSubMode(SubMode.WAITING_ROOM, null, server);
                         } catch (Exception e) {
                             MySubMod.LOGGER.error("Error changing to waiting room during game end", e);
                         } finally {
@@ -1720,7 +1732,7 @@ public class SubModeParentManager {
 
     // Candy spawn file management
     protected void showCandyFileSelection(ServerPlayer player) {
-        List<String> availableFiles = CandySpawnFileManager.getInstance().getAvailableFiles();
+        List<String> availableFiles = spawnFileManager.getAvailableFiles();
 
         if (availableFiles.isEmpty()) {
             player.sendSystemMessage(Component.literal("§cAucun fichier de spawn de bonbons trouvé. Utilisation de la configuration par défaut."));
@@ -1731,7 +1743,7 @@ public class SubModeParentManager {
 
         // Send file list without opening screen automatically (openScreen = false)
         NetworkHandler.INSTANCE.send(PacketDistributor.PLAYER.with(() -> player),
-            new CandyFileListPacket(availableFiles, false));
+            new FileListPacket(availableFiles, false));
 
         player.sendSystemMessage(Component.literal("§eAppuyez sur N pour ouvrir le menu de sélection de fichier"));
     }
@@ -1740,7 +1752,7 @@ public class SubModeParentManager {
         this.selectedCandySpawnFile = filename;
 
         if (filename != null) {
-            this.candySpawnConfig = CandySpawnFileManager.getInstance().loadSpawnConfig(filename);
+            this.candySpawnConfig = spawnFileManager.loadSpawnConfig(filename);
             MySubMod.LOGGER.info("Selected candy spawn file: {} with {} entries", filename, candySpawnConfig.size());
 
             // Notify game initiator (but DON'T start island selection - caller will do that)
@@ -1753,7 +1765,7 @@ public class SubModeParentManager {
         }
     }
 
-    public List<CandySpawnEntry> getCandySpawnConfig() {
+    public List<?> getCandySpawnConfig() {
         return candySpawnConfig != null ? new ArrayList<>(candySpawnConfig) : new ArrayList<>();
     }
 
@@ -1762,9 +1774,9 @@ public class SubModeParentManager {
     }
 
     public void sendCandyFileListToPlayer(ServerPlayer player) {
-        List<String> availableFiles = CandySpawnFileManager.getInstance().getAvailableFiles();
+        List<String> availableFiles = spawnFileManager.getAvailableFiles();
         NetworkHandler.INSTANCE.send(PacketDistributor.PLAYER.with(() -> player),
-            new CandyFileListPacket(availableFiles));
+            new FileListPacket(availableFiles));
     }
 
     /**
@@ -1818,7 +1830,7 @@ public class SubModeParentManager {
             savedInventory
         );
         disconnectedPlayers.put(playerName, info);
-        MySubMod.LOGGER.info("Player {} (UUID: {}) disconnected during SubMode1 at ({}, {}, {}) with {} HP - saved {} inventory items - tracking disconnect (disconnectedPlayers size now: {})",
+        MySubMod.LOGGER.info("Player {} (UUID: {}) disconnected during SubMode at ({}, {}, {}) with {} HP - saved {} inventory items - tracking disconnect (disconnectedPlayers size now: {})",
             playerName, player.getUUID(), player.getX(), player.getY(), player.getZ(), player.getHealth(), savedInventory.stream().filter(s -> !s.isEmpty()).count(), disconnectedPlayers.size());
 
         // Log disconnection (if logger exists, otherwise queue for later)
@@ -2323,7 +2335,7 @@ public class SubModeParentManager {
                     // Record death time for leaderboard
                     recordPlayerDeath(playerId);
 
-                    SubMode1HealthManager.getInstance().stopHealthDegradation();
+                    healthManager.stopHealthDegradation();
                     teleportToSpectator(player);
 
                     // Broadcast death message
@@ -2484,7 +2496,7 @@ public class SubModeParentManager {
             }
             try {
                 String fileNumber ="";
-                fileNumber = SubModeManager.getInstance().getCurrentMode().getDisplayName().substring(8,
+                fileNumber = SubModeManager.getInstance().getCurrentMode().getDisplayName().substring(10,
                         SubModeManager.getInstance().getCurrentMode().getDisplayName().length());
                 java.io.File eventFile = new java.io.File(dataLogger.getGameSessionId() != null ?
                     new java.io.File(".", "mysubmod_data/submode"+fileNumber+"_game_" + dataLogger.getGameSessionId()) :
@@ -2554,7 +2566,7 @@ public class SubModeParentManager {
     public boolean isPlayerSpectator(UUID playerId) { return spectatorPlayers.contains(playerId); }
     public boolean isInSelectionPhase(UUID playerId) { return playersInSelectionPhase.contains(playerId); }
     public Set<UUID> getAlivePlayers() { return new HashSet<>(alivePlayers); }
-    public SubMode1DataLogger getDataLogger() { return dataLogger; }
+    public DataLogger getDataLogger() { return dataLogger; }
 
     /**
      * Get disconnected players info for server-side health tracking
@@ -2611,6 +2623,23 @@ public class SubModeParentManager {
             MySubMod.LOGGER.info("Marked DisconnectInfo as dead for {} - reconnection will send to spectator", playerName);
         }
     }
+
+    public void setSpawnFileManager(SpawnFileManager newSpawnFileManager){
+        this.spawnFileManager = newSpawnFileManager;
+    }
+
+    public void setHealthManager(HealthManager newHealthManager){
+        this.healthManager = newHealthManager;
+    }
+
+    public void setCandyManager(CandyManager newCandyManager){
+        this.candyManager = newCandyManager;
+    }
+
+    protected static void setInstance(SubModeParentManager newInstance) {
+        instance = newInstance;
+    }
+
     public BlockPos getSmallIslandCenter() { return smallIslandCenter; }
     public BlockPos getMediumIslandCenter() { return mediumIslandCenter; }
     public BlockPos getLargeIslandCenter() { return largeIslandCenter; }

@@ -1,6 +1,8 @@
 package com.example.mysubmod.auth;
 
 import com.example.mysubmod.MySubMod;
+import com.example.mysubmod.submodes.submode1.network.SubMode1CandyCountUpdatePacket;
+import com.example.mysubmod.submodes.submodeParent.network.GameTimerPacket;
 import net.minecraft.network.FriendlyByteBuf;
 import net.minecraft.network.chat.Component;
 import net.minecraft.server.level.ServerPlayer;
@@ -104,10 +106,10 @@ public class QueueTokenVerifyPacket {
                 // Clear SubMode1 UI elements
                 com.example.mysubmod.network.NetworkHandler.INSTANCE.send(
                     net.minecraftforge.network.PacketDistributor.PLAYER.with(() -> player),
-                    new com.example.mysubmod.submodes.submode1.network.GameTimerPacket(-1));
+                    new GameTimerPacket(-1));
                 com.example.mysubmod.network.NetworkHandler.INSTANCE.send(
                     net.minecraftforge.network.PacketDistributor.PLAYER.with(() -> player),
-                    new com.example.mysubmod.submodes.submode1.network.CandyCountUpdatePacket(new java.util.HashMap<>()));
+                    new SubMode1CandyCountUpdatePacket(new java.util.HashMap<>()));
 
                 // Open authentication screen based on account type
                 int remainingAttempts = 3; // Default value

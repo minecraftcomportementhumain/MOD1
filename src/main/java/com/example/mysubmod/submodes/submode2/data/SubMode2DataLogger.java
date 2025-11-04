@@ -2,7 +2,8 @@ package com.example.mysubmod.submodes.submode2.data;
 
 import com.example.mysubmod.MySubMod;
 import com.example.mysubmod.submodes.submode2.ResourceType;
-import com.example.mysubmod.submodes.submode2.islands.IslandType;
+import com.example.mysubmod.submodes.submodeParent.islands.IslandType;
+import com.example.mysubmod.submodes.submodeParent.data.DataLogger;
 import net.minecraft.core.BlockPos;
 import net.minecraft.server.level.ServerPlayer;
 
@@ -20,7 +21,7 @@ import java.util.concurrent.ConcurrentHashMap;
  * Format: timestamp,player,event_type,x,y,z,health,additional_data
  * Extended to track resource types (A/B), specialization changes, and penalties
  */
-public class SubMode2DataLogger {
+public class SubMode2DataLogger extends DataLogger {
     private final Map<String, FileWriter> playerLoggers = new ConcurrentHashMap<>();
     private String gameSessionId;
     private File gameDirectory;
@@ -98,6 +99,7 @@ public class SubMode2DataLogger {
     /**
      * Log candy consumption (eating) with resource type
      */
+    @Override
     public void logCandyConsumption(ServerPlayer player, ResourceType resourceType) {
         FileWriter logger = getPlayerLogger(player);
         if (logger != null) {
@@ -123,6 +125,7 @@ public class SubMode2DataLogger {
     /**
      * Log candy pickup (looting) with resource type
      */
+    @Override
     public void logCandyPickup(ServerPlayer player, BlockPos position, ResourceType resourceType) {
         FileWriter logger = getPlayerLogger(player);
         if (logger != null) {
@@ -247,6 +250,7 @@ public class SubMode2DataLogger {
     /**
      * Log health change with resource type context (for tracking penalty effects)
      */
+    @Override
     public void logHealthChange(ServerPlayer player, float oldHealth, float newHealth, ResourceType resourceType, boolean hasPenalty) {
         FileWriter logger = getPlayerLogger(player);
         if (logger != null) {
@@ -351,6 +355,7 @@ public class SubMode2DataLogger {
     /**
      * Log candy spawn with resource type (global event, not player-specific)
      */
+    @Override
     public void logCandySpawn(BlockPos position, ResourceType resourceType) {
         // This could be logged to a separate global events CSV if needed
         MySubMod.LOGGER.info("SubMode2 candy spawn: {} at ({},{},{}) - Type: {}",

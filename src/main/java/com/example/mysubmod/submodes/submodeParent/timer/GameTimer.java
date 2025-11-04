@@ -1,8 +1,9 @@
-package com.example.mysubmod.submodes.submode1.timer;
+package com.example.mysubmod.submodes.submodeParent.timer;
 
 import com.example.mysubmod.network.NetworkHandler;
 import com.example.mysubmod.submodes.submode1.SubMode1Manager;
-import com.example.mysubmod.submodes.submode1.network.GameTimerPacket;
+import com.example.mysubmod.submodes.submodeParent.SubModeParentManager;
+import com.example.mysubmod.submodes.submodeParent.network.GameTimerPacket;
 import com.example.mysubmod.util.PlayerFilterUtil;
 import net.minecraft.network.chat.Component;
 import net.minecraft.server.MinecraftServer;
@@ -108,7 +109,7 @@ public class GameTimer {
 
     private void endGame() {
         stop();
-        SubMode1Manager.getInstance().endGame(server);
+        SubModeParentManager.getInstance().endGame(server);
     }
 
     public int getSecondsLeft() {

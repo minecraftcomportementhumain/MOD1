@@ -1,8 +1,8 @@
-package com.example.mysubmod.submodes.submode2.network;
+package com.example.mysubmod.submodes.submodeParent.network;
 
+import com.example.mysubmod.submodes.submodeParent.client.ClientGameTimer;
 import com.example.mysubmod.submodes.submodeParent.client.FileListManager;
 import com.example.mysubmod.submodes.submodeParent.client.FileSelectionScreen;
-import com.example.mysubmod.submodes.submodeParent.client.ClientGameTimer;
 import com.example.mysubmod.submodes.submodeParent.client.IslandSelectionScreen;
 import net.minecraft.client.Minecraft;
 import net.minecraftforge.api.distmarker.Dist;
@@ -33,12 +33,12 @@ public class ClientPacketHandler {
         }
     }
 
-    public static void openCandyFileSelectionScreen() {
-        // Always request fresh file list from server when opening the menu
-        com.example.mysubmod.network.NetworkHandler.INSTANCE.sendToServer(new CandyFileListRequestPacket());
-    }
-
     public static void handleGameEnd() {
         ClientGameTimer.markGameAsEnded();
+    }
+
+    public static void openCandyFileSelectionScreen() {
+        // Always request fresh file list from server when opening the menu
+        com.example.mysubmod.network.NetworkHandler.INSTANCE.sendToServer(new FileListRequestPacket());
     }
 }

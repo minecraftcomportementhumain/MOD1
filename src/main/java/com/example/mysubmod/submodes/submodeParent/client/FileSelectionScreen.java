@@ -1,9 +1,9 @@
 package com.example.mysubmod.submodes.submodeParent.client;
 
 import com.example.mysubmod.network.NetworkHandler;
-import com.example.mysubmod.submodes.submode2.network.CandyFileSelectionPacket;
-import com.example.mysubmod.submodes.submode2.network.CandyFileDeletePacket;
-import com.example.mysubmod.submodes.submode2.network.CandyFileListRequestPacket;
+import com.example.mysubmod.submodes.submodeParent.network.FileDeletePacket;
+import com.example.mysubmod.submodes.submodeParent.network.FileListRequestPacket;
+import com.example.mysubmod.submodes.submodeParent.network.FileSelectionPacket;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.components.Button;
 import net.minecraft.client.gui.components.ObjectSelectionList;
@@ -89,7 +89,7 @@ public class FileSelectionScreen extends Screen {
     private void confirmSelection() {
         CandyFileList.CandyFileEntry selected = fileList.getSelected();
         if (selected != null) {
-            NetworkHandler.INSTANCE.sendToServer(new CandyFileSelectionPacket(selected.getFileName()));
+            NetworkHandler.INSTANCE.sendToServer(new FileSelectionPacket(selected.getFileName()));
             this.minecraft.player.sendSystemMessage(Component.literal("§aFichier sélectionné: " + selected.getFileName()));
             this.onClose();
         }
@@ -98,7 +98,7 @@ public class FileSelectionScreen extends Screen {
     private void deleteSelectedFile() {
         CandyFileList.CandyFileEntry selected = fileList.getSelected();
         if (selected != null && !"default.txt".equals(selected.getFileName())) {
-            NetworkHandler.INSTANCE.sendToServer(new CandyFileDeletePacket(selected.getFileName()));
+            NetworkHandler.INSTANCE.sendToServer(new FileDeletePacket(selected.getFileName()));
             this.minecraft.player.sendSystemMessage(Component.literal("§cSuppression de " + selected.getFileName() + "..."));
             availableFiles.remove(selected.getFileName());
             fileList.children().remove(selected);
@@ -107,7 +107,7 @@ public class FileSelectionScreen extends Screen {
     }
 
     private void refreshFileList() {
-        NetworkHandler.INSTANCE.sendToServer(new CandyFileListRequestPacket());
+        NetworkHandler.INSTANCE.sendToServer(new FileListRequestPacket());
     }
 
     @Override

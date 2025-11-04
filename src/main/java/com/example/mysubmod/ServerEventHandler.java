@@ -5,13 +5,12 @@ import com.example.mysubmod.network.AdminStatusPacket;
 import com.example.mysubmod.network.NetworkHandler;
 import com.example.mysubmod.network.SubModeChangePacket;
 import com.example.mysubmod.submodes.SubModeManager;
-import com.mojang.authlib.GameProfile;
+import com.example.mysubmod.submodes.submode1.network.SubMode1CandyCountUpdatePacket;
+import com.example.mysubmod.submodes.submodeParent.network.GameTimerPacket;
 import net.minecraft.network.chat.Component;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraftforge.event.RegisterCommandsEvent;
 import net.minecraftforge.event.entity.player.PlayerEvent;
-import net.minecraftforge.event.server.ServerStartingEvent;
-import net.minecraftforge.eventbus.api.Event;
 import net.minecraftforge.eventbus.api.EventPriority;
 import net.minecraftforge.eventbus.api.SubscribeEvent;
 import net.minecraftforge.fml.common.Mod;
@@ -108,13 +107,13 @@ public class ServerEventHandler {
 
                 // Clear any SubMode1 UI elements (timer, candy counts) from client
                 NetworkHandler.INSTANCE.send(PacketDistributor.PLAYER.with(() -> player),
-                    new com.example.mysubmod.submodes.submode1.network.GameTimerPacket(-1)); // -1 = deactivate
+                    new GameTimerPacket(-1)); // -1 = deactivate
                 NetworkHandler.INSTANCE.send(PacketDistributor.PLAYER.with(() -> player),
-                    new com.example.mysubmod.submodes.submode1.network.CandyCountUpdatePacket(new java.util.HashMap<>())); // Empty map = clear
+                    new SubMode1CandyCountUpdatePacket(new java.util.HashMap<>())); // Empty map = clear
 
                 // Clear any SubMode2 UI elements (timer, candy counts, penalty timer) from client
                 NetworkHandler.INSTANCE.send(PacketDistributor.PLAYER.with(() -> player),
-                    new com.example.mysubmod.submodes.submode2.network.GameTimerPacket(-1)); // -1 = deactivate
+                    new GameTimerPacket(-1)); // -1 = deactivate
                 NetworkHandler.INSTANCE.send(PacketDistributor.PLAYER.with(() -> player),
                     new com.example.mysubmod.submodes.submode2.network.CandyCountUpdatePacket(new java.util.HashMap<>())); // Empty map = clear
                 NetworkHandler.INSTANCE.send(PacketDistributor.PLAYER.with(() -> player),

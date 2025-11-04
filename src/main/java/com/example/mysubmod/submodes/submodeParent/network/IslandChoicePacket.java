@@ -1,7 +1,8 @@
-package com.example.mysubmod.submodes.submode2.network;
+package com.example.mysubmod.submodes.submodeParent.network;
 
-import com.example.mysubmod.submodes.submode2.SubMode2Manager;
-import com.example.mysubmod.submodes.submode2.islands.IslandType;
+import com.example.mysubmod.submodes.submode1.SubMode1Manager;
+import com.example.mysubmod.submodes.submodeParent.SubModeParentManager;
+import com.example.mysubmod.submodes.submodeParent.islands.IslandType;
 import net.minecraft.network.FriendlyByteBuf;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraftforge.network.NetworkEvent;
@@ -27,7 +28,7 @@ public class IslandChoicePacket {
         ctx.get().enqueueWork(() -> {
             ServerPlayer player = ctx.get().getSender();
             if (player != null) {
-                SubMode2Manager.getInstance().selectIsland(player, packet.selectedIsland);
+                SubModeParentManager.getInstance().selectIsland(player, packet.selectedIsland);
             }
         });
         ctx.get().setPacketHandled(true);

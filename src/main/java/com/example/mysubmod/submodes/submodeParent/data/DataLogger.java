@@ -1,8 +1,7 @@
-package com.example.mysubmod.submodes.submode1.data;
+package com.example.mysubmod.submodes.submodeParent.data;
 
 import com.example.mysubmod.MySubMod;
 import com.example.mysubmod.submodes.submode2.ResourceType;
-import com.example.mysubmod.submodes.submodeParent.data.DataLogger;
 import com.example.mysubmod.submodes.submodeParent.islands.IslandType;
 import net.minecraft.core.BlockPos;
 import net.minecraft.server.level.ServerPlayer;
@@ -20,7 +19,7 @@ import java.util.concurrent.ConcurrentHashMap;
  * CSV-based data logger for SubMode1
  * Format: timestamp,player,event_type,x,y,z,health,additional_data
  */
-public class SubMode1DataLogger extends DataLogger {
+public abstract class DataLogger {
     private final Map<String, FileWriter> playerLoggers = new ConcurrentHashMap<>();
     private String gameSessionId;
     private File gameDirectory;
@@ -169,17 +168,11 @@ public class SubMode1DataLogger extends DataLogger {
         }
     }
 
-    public void logCandyConsumption(ServerPlayer player, ResourceType resourceType) {
+    public abstract void logCandyConsumption(ServerPlayer player, ResourceType resourceType);
 
-    }
+    public abstract void logCandyPickup(ServerPlayer player, BlockPos position, ResourceType resourceType);
 
-    public void logCandyPickup(ServerPlayer player, BlockPos position, ResourceType resourceType) {
-
-    }
-
-    public void logHealthChange(ServerPlayer player, float oldHealth, float newHealth, ResourceType resourceType, boolean hasPenalty) {
-
-    }
+    public abstract void logHealthChange(ServerPlayer player, float oldHealth, float newHealth, ResourceType resourceType, boolean hasPenalty);
 
     /**
      * Log player death
@@ -266,9 +259,7 @@ public class SubMode1DataLogger extends DataLogger {
         // This could be logged to a separate global events CSV if needed
     }
 
-    public void logCandySpawn(BlockPos position, ResourceType resourceType) {
-
-    }
+    public abstract void logCandySpawn(BlockPos position, ResourceType resourceType);
 
     public String getGameSessionId() {
         return gameSessionId;

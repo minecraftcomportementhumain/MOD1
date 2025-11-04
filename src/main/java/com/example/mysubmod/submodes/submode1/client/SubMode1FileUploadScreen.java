@@ -16,14 +16,14 @@ import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.List;
 
-public class CandyFileUploadScreen extends Screen {
+public class SubMode1FileUploadScreen extends Screen {
     private EditBox pathBox;
     private Button uploadButton;
     private Button cancelButton;
     private String loadedContent = "";
     private String loadedFilename = "";
 
-    public CandyFileUploadScreen() {
+    public SubMode1FileUploadScreen() {
         super(Component.literal("Télécharger un fichier de spawn des bonbons"));
     }
 

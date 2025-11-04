@@ -4,7 +4,8 @@ import com.example.mysubmod.MySubMod;
 import com.example.mysubmod.network.NetworkHandler;
 import com.example.mysubmod.network.SubModeControlScreenRequestPacket;
 import com.example.mysubmod.submodes.SubMode;
-import com.example.mysubmod.submodes.submode1.network.ClientPacketHandler;
+import com.example.mysubmod.submodes.submode2.network.SubMode2ClientPacketHandler;
+import com.example.mysubmod.submodes.submodeParent.network.ClientPacketHandler;
 import com.example.mysubmod.submodes.submodeParent.client.ClientGameTimer;
 import net.minecraft.client.Minecraft;
 import net.minecraftforge.api.distmarker.Dist;
@@ -37,7 +38,7 @@ public class ClientEventHandler {
 
                 if (currentMode == SubMode.SUB_MODE_1) {
                     // Check if game has ended
-                    if (com.example.mysubmod.submodes.submode1.client.ClientGameTimer.hasGameEnded()) {
+                    if (ClientGameTimer.hasGameEnded()) {
                         mc.player.sendSystemMessage(net.minecraft.network.chat.Component.literal("§cLe menu de sélection de fichier est désactivé après la fin de la partie"));
                     } else {
                         ClientPacketHandler.openCandyFileSelectionScreen();
@@ -47,7 +48,7 @@ public class ClientEventHandler {
                     if (ClientGameTimer.hasGameEnded()) {
                         mc.player.sendSystemMessage(net.minecraft.network.chat.Component.literal("§cLe menu de sélection de fichier est désactivé après la fin de la partie"));
                     } else {
-                        com.example.mysubmod.submodes.submode2.network.ClientPacketHandler.openCandyFileSelectionScreen();
+                        ClientPacketHandler.openCandyFileSelectionScreen();
                     }
                 }
             }

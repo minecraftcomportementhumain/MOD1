@@ -3,6 +3,7 @@ package com.example.mysubmod.submodes;
 import com.example.mysubmod.MySubMod;
 import com.example.mysubmod.network.NetworkHandler;
 import com.example.mysubmod.network.SubModeChangePacket;
+import com.example.mysubmod.submodes.submodeParent.SubModeParentManager;
 import com.example.mysubmod.submodes.waitingroom.WaitingRoomManager;
 import com.example.mysubmod.submodes.submode1.SubMode1Manager;
 import com.example.mysubmod.submodes.submode2.SubMode2Manager;
@@ -119,9 +120,11 @@ public class SubModeManager {
                         WaitingRoomManager.getInstance().activate(server);
                         break;
                     case SUB_MODE_1:
+                        SubMode1Manager.initialize();
                         SubMode1Manager.getInstance().activate(server, requestingPlayer);
                         break;
                     case SUB_MODE_2:
+                        SubMode2Manager.initialize();
                         SubMode2Manager.getInstance().activate(server, requestingPlayer);
                         break;
                 }

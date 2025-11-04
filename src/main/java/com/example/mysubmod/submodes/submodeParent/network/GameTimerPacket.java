@@ -1,5 +1,6 @@
-package com.example.mysubmod.submodes.submode1.network;
+package com.example.mysubmod.submodes.submodeParent.network;
 
+import com.example.mysubmod.submodes.submodeParent.network.ClientPacketHandler;
 import net.minecraft.network.FriendlyByteBuf;
 import net.minecraftforge.api.distmarker.Dist;
 import net.minecraftforge.fml.DistExecutor;
