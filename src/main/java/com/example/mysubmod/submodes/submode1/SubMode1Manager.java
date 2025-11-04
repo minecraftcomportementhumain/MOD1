@@ -1,7 +1,9 @@
 package com.example.mysubmod.submodes.submode1;
 
+import com.example.mysubmod.submodes.submode1.data.SubMode1DataLogger;
 import com.example.mysubmod.submodes.submode1.data.SubMode1SpawnFileManager;
 import com.example.mysubmod.submodes.submode2.SubMode2CandyManager;
+import com.example.mysubmod.submodes.submode2.data.SubMode2DataLogger;
 import com.example.mysubmod.submodes.submodeParent.CandyManager;
 import com.example.mysubmod.submodes.submodeParent.HealthManager;
 import com.example.mysubmod.submodes.submodeParent.SubModeParentManager;
@@ -15,6 +17,6 @@ public class SubMode1Manager extends SubModeParentManager {
         instance.setSpawnFileManager(new SpawnFileManager());
         instance.setHealthManager(new HealthManager());
         instance.setCandyManager(new CandyManager());
-
+        instance.setDataLogger(new SubMode1DataLogger());
     }
 }

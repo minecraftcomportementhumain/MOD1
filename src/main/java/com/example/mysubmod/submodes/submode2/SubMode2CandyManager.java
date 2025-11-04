@@ -2,6 +2,7 @@ package com.example.mysubmod.submodes.submode2;
 
 import com.example.mysubmod.MySubMod;
 import com.example.mysubmod.items.ModItems;
+import com.example.mysubmod.submodes.submode2.data.SubMode2DataLogger;
 import com.example.mysubmod.submodes.submode2.data.SubMode2SpawnEntry;
 import com.example.mysubmod.submodes.submodeParent.CandyManager;
 import com.example.mysubmod.submodes.submodeParent.SubModeParentManager;
@@ -48,13 +49,13 @@ public class SubMode2CandyManager extends CandyManager {
             candySpawnTimer.schedule(new TimerTask() {
                 @Override
                 public void run() {
-                    server.execute(() -> spawnCandiesFromEntry(server, entry));
+                    server.execute(() -> spawnResourceFromEntry(server, entry));
                 }
             }, entry.getTimeMs());
         }
     }
 
-    protected void spawnCandiesFromEntry(MinecraftServer server, SubMode2SpawnEntry entry) {
+    protected void spawnResourceFromEntry(MinecraftServer server, SubMode2SpawnEntry entry) {
         ServerLevel overworld = server.getLevel(ServerLevel.OVERWORLD);
         if (overworld == null) return;
 
@@ -98,7 +99,7 @@ public class SubMode2CandyManager extends CandyManager {
 
                 // Log candy spawn with type
                 if (SubMode2Manager.getInstance().getDataLogger() != null) {
-                    SubMode2Manager.getInstance().getDataLogger().logCandySpawn(spawnPos, resourceType);
+                    SubMode2Manager.getRealDataLogger().logResourceSpawn(spawnPos, resourceType);
                 }
             }
         }

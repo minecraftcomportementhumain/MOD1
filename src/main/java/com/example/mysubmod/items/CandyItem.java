@@ -95,7 +95,7 @@ public class CandyItem extends Item {
 
                     // Log candy consumption with resource type
                     if (SubMode2Manager.getInstance().getDataLogger() != null) {
-                        SubMode2Manager.getInstance().getDataLogger().logCandyConsumption(serverPlayer, resourceType);
+                        SubMode2Manager.getRealDataLogger().logResourceConsumption(serverPlayer, resourceType);
                     }
 
                     return InteractionResultHolder.success(itemStack);

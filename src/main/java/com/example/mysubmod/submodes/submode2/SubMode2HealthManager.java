@@ -91,7 +91,7 @@ public class SubMode2HealthManager extends HealthManager {
 
         // Log health change with resource type context
         if (SubMode2Manager.getInstance().getDataLogger() != null) {
-            SubMode2Manager.getInstance().getDataLogger().logHealthChange(
+            SubMode2Manager.getRealDataLogger().logHealthChange(
                 player, currentHealth, newHealth, resourceType, hasPenalty
             );
         }

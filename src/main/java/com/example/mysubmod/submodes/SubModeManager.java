@@ -106,7 +106,7 @@ public class SubModeManager {
                         SubMode1Manager.getInstance().deactivate(server);
                         break;
                     case SUB_MODE_2:
-                        SubMode2Manager.getInstance().deactivate(server);
+                        SubMode2Manager.getRealInstance().deactivate(server);
                         break;
                 }
             }

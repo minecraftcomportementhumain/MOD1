@@ -31,7 +31,7 @@ public class CandyManager {
         return instance;
     }
 
-    public void startCandySpawning(MinecraftServer server) {
+    protected void startCandySpawning(MinecraftServer server) {
         MySubMod.LOGGER.info("Starting candy spawning for SubMode");
 
         // Clean up any previously loaded chunks before starting

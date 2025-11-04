@@ -1,6 +1,7 @@
 package com.example.mysubmod.submodes.submodeParent.data;
 
 import com.example.mysubmod.MySubMod;
+import com.example.mysubmod.submodes.SubModeManager;
 import com.example.mysubmod.submodes.submode2.ResourceType;
 import com.example.mysubmod.submodes.submodeParent.islands.IslandType;
 import net.minecraft.core.BlockPos;
@@ -19,24 +20,24 @@ import java.util.concurrent.ConcurrentHashMap;
  * CSV-based data logger for SubMode1
  * Format: timestamp,player,event_type,x,y,z,health,additional_data
  */
-public abstract class DataLogger {
-    private final Map<String, FileWriter> playerLoggers = new ConcurrentHashMap<>();
-    private String gameSessionId;
-    private File gameDirectory;
-    private static final DateTimeFormatter TIMESTAMP_FORMAT = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss.SSS");
+public class DataLogger {
+    protected final Map<String, FileWriter> playerLoggers = new ConcurrentHashMap<>();
+    protected String gameSessionId;
+    protected File gameDirectory;
+    protected static final DateTimeFormatter TIMESTAMP_FORMAT = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss.SSS");
 
     public void startNewGame() {
         gameSessionId = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyy-MM-dd_HH-mm-ss"));
 
         // Create game directory
         File modsDirectory = new File(".", "mysubmod_data");
-        gameDirectory = new File(modsDirectory, "submode1_game_" + gameSessionId);
+        gameDirectory = new File(modsDirectory, "submode"+ SubModeManager.getInstance().getCurrentMode().getNumberMode() +"_game_" + gameSessionId);
 
         if (!gameDirectory.exists()) {
             gameDirectory.mkdirs();
         }
 
-        MySubMod.LOGGER.info("Started CSV data logging for SubMode1 game session: {}", gameSessionId);
+        MySubMod.LOGGER.info("Started CSV data logging for SubMode game session: {}", gameSessionId);
     }
 
     public void endGame() {
@@ -50,10 +51,10 @@ public abstract class DataLogger {
         }
         playerLoggers.clear();
 
-        MySubMod.LOGGER.info("Ended data logging for SubMode1 game session: {}", gameSessionId);
+        MySubMod.LOGGER.info("Ended data logging for SubMode game session: {}", gameSessionId);
     }
 
-    private FileWriter getPlayerLogger(ServerPlayer player) {
+    protected FileWriter getPlayerLogger(ServerPlayer player) {
         String playerName = player.getName().getString();
         return playerLoggers.computeIfAbsent(playerName, name -> {
             try {
@@ -168,12 +169,6 @@ public abstract class DataLogger {
         }
     }
 
-    public abstract void logCandyConsumption(ServerPlayer player, ResourceType resourceType);
-
-    public abstract void logCandyPickup(ServerPlayer player, BlockPos position, ResourceType resourceType);
-
-    public abstract void logHealthChange(ServerPlayer player, float oldHealth, float newHealth, ResourceType resourceType, boolean hasPenalty);
-
     /**
      * Log player death
      */
@@ -258,8 +253,6 @@ public abstract class DataLogger {
     public void logCandySpawn(BlockPos position) {
         // This could be logged to a separate global events CSV if needed
     }
-
-    public abstract void logCandySpawn(BlockPos position, ResourceType resourceType);
 
     public String getGameSessionId() {
         return gameSessionId;

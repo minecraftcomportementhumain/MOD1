@@ -90,7 +90,7 @@ public class SubMode2EventHandler extends EventHandler {
                         BlockPos pos = new BlockPos((int)player.getX(), (int)player.getY(), (int)player.getZ());
                         ResourceType resourceType = SubMode2CandyManager.getResourceTypeFromCandy(stack);
                         if (resourceType != null) {
-                            SubMode2Manager.getInstance().getDataLogger().logCandyPickup(player, pos, resourceType);
+                            SubMode2Manager.getRealDataLogger().logCandyPickup(player, pos, resourceType);
                         }
                     }
 

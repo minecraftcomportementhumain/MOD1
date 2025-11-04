@@ -6,6 +6,7 @@ import com.example.mysubmod.network.NetworkHandler;
 import com.example.mysubmod.submodes.SubMode;
 import com.example.mysubmod.submodes.SubModeManager;
 import com.example.mysubmod.submodes.submode1.network.SubMode1CandyCountUpdatePacket;
+import com.example.mysubmod.submodes.submode2.data.SubMode2DataLogger;
 import com.example.mysubmod.submodes.submodeParent.data.CandySpawnEntry;
 import com.example.mysubmod.submodes.submode1.data.SubMode1DataLogger;
 import com.example.mysubmod.submodes.submodeParent.data.DataLogger;
@@ -29,6 +30,7 @@ import net.minecraft.world.entity.decoration.ArmorStand;
 import net.minecraft.world.item.ItemStack;
 import net.minecraftforge.network.PacketDistributor;
 
+import javax.xml.crypto.Data;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 
@@ -52,6 +54,7 @@ public class SubModeParentManager {
     protected SpawnFileManager spawnFileManager = new SpawnFileManager();
     protected HealthManager healthManager = new HealthManager();
     protected CandyManager candyManager = new CandyManager();
+    protected DataLogger newDataLogger;
 
     // Lock to prevent race conditions between UUID migration (handlePlayerReconnection) and server-side death (handleDisconnectedPlayerDeath)
     protected final Object reconnectionLock = new Object();
@@ -92,7 +95,7 @@ public class SubModeParentManager {
     protected boolean islandsGenerated = false;
     protected Timer selectionTimer;
     protected GameTimer gameTimer;
-    protected DataLogger dataLogger;
+    protected static DataLogger dataLogger;
     protected String selectedCandySpawnFile;
     protected List<? extends CandySpawnEntry> candySpawnConfig;
     protected ServerPlayer gameInitiator; // The admin who started the game
@@ -243,7 +246,6 @@ public class SubModeParentManager {
             }
 
             try {
-                System.out.println(gameTimer);
                 if (gameTimer != null) {
                     gameTimer.stop();
                     gameTimer = null;
@@ -1209,7 +1211,7 @@ public class SubModeParentManager {
 
         // Initialize data logger NOW (when file is selected and game really starts)
         if (dataLogger == null) {
-            dataLogger = new SubMode1DataLogger();
+            dataLogger = newDataLogger;
             dataLogger.startNewGame();
             MySubMod.LOGGER.info("Data logging started for game with file: {}", selectedCandySpawnFile);
 
@@ -2495,9 +2497,8 @@ public class SubModeParentManager {
                 ));
             }
             try {
-                String fileNumber ="";
-                fileNumber = SubModeManager.getInstance().getCurrentMode().getDisplayName().substring(10,
-                        SubModeManager.getInstance().getCurrentMode().getDisplayName().length());
+                int fileNumber = 1;
+                fileNumber = SubModeManager.getInstance().getCurrentMode().getNumberMode();
                 java.io.File eventFile = new java.io.File(dataLogger.getGameSessionId() != null ?
                     new java.io.File(".", "mysubmod_data/submode"+fileNumber+"_game_" + dataLogger.getGameSessionId()) :
                     new java.io.File(".", "mysubmod_data"), "game_events.txt");
@@ -2566,7 +2567,7 @@ public class SubModeParentManager {
     public boolean isPlayerSpectator(UUID playerId) { return spectatorPlayers.contains(playerId); }
     public boolean isInSelectionPhase(UUID playerId) { return playersInSelectionPhase.contains(playerId); }
     public Set<UUID> getAlivePlayers() { return new HashSet<>(alivePlayers); }
-    public DataLogger getDataLogger() { return dataLogger; }
+    public static DataLogger getDataLogger() { return dataLogger; }
 
     /**
      * Get disconnected players info for server-side health tracking
@@ -2638,6 +2639,10 @@ public class SubModeParentManager {
 
     protected static void setInstance(SubModeParentManager newInstance) {
         instance = newInstance;
+    }
+
+    public void setDataLogger(DataLogger newDataLogger) {
+        this.newDataLogger = newDataLogger;
     }
 
     public BlockPos getSmallIslandCenter() { return smallIslandCenter; }

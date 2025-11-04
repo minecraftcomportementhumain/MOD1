@@ -37,12 +37,13 @@ public class SubMode2Manager extends SubModeParentManager {
         instance.setSpawnFileManager(new SubMode2SpawnFileManager());
         instance.setHealthManager(new SubMode2HealthManager());
         instance.setCandyManager(new SubMode2CandyManager());
+        instance.setDataLogger(new SubMode2DataLogger());
     }
 
-    @Override
-    public DataLogger getDataLogger() {
-        return new SubMode2DataLogger();
+    public static SubMode2DataLogger getRealDataLogger() {
+        return (SubMode2DataLogger) getDataLogger();
     }
+    public static SubMode2Manager getRealInstance() {return (SubMode2Manager) getInstance();}
 
     @Override
     public void deactivate(MinecraftServer server) {
@@ -107,7 +108,8 @@ public class SubMode2Manager extends SubModeParentManager {
             // Stop data logging
             try {
                 if (dataLogger != null) {
-
+                    System.out.println(dataLogger.getGameSessionId());
+                    System.out.println("HELLLLLOOOOOOOOOOOOOOOOOOOO");
                     dataLogger.endGame();
 
                 }

@@ -61,6 +61,9 @@ public class EventHandler {
 
     @SubscribeEvent(priority = net.minecraftforge.eventbus.api.EventPriority.HIGHEST)
     public static void onPlayerInteractBlock(PlayerInteractEvent.RightClickBlock event) {
+        if(SubModeManager.getInstance().getCurrentMode() != SubMode.SUB_MODE_1){
+            return;
+        }
 
         if (event.getEntity() instanceof ServerPlayer player) {
             // Skip temporary queue candidate accounts
@@ -173,6 +176,9 @@ public class EventHandler {
 
     @SubscribeEvent
     public static void onEntityItemPickup(EntityItemPickupEvent event) {
+        if(SubModeManager.getInstance().getCurrentMode() != SubMode.SUB_MODE_1){
+            return;
+        }
 
         if (event.getEntity() instanceof ServerPlayer player) {
             // Skip temporary queue candidate accounts
@@ -294,6 +300,10 @@ public class EventHandler {
 
     @SubscribeEvent
     public static void onServerTick(TickEvent.ServerTickEvent event) {
+        if(SubModeManager.getInstance().getCurrentMode() != SubMode.SUB_MODE_1){
+            return;
+        }
+
         if (event.phase != TickEvent.Phase.END) {
             return;
         }
@@ -402,6 +412,9 @@ public class EventHandler {
 
     @SubscribeEvent
     public static void onPlayerDropItem(net.minecraftforge.event.entity.item.ItemTossEvent event) {
+        if(SubModeManager.getInstance().getCurrentMode() != SubMode.SUB_MODE_1){
+            return;
+        }
 
         if (event.getPlayer() instanceof ServerPlayer player) {
             // Skip temporary queue candidate accounts
@@ -433,6 +446,9 @@ public class EventHandler {
 
     @SubscribeEvent(priority = net.minecraftforge.eventbus.api.EventPriority.HIGHEST)
     public static void onEntityJoinLevel(EntityJoinLevelEvent event) {
+        if(SubModeManager.getInstance().getCurrentMode() != SubMode.SUB_MODE_1){
+            return;
+        }
 
         // Prevent ALL items (except candies from our spawn system) from spawning on islands and paths
         if (event.getEntity() instanceof ItemEntity itemEntity) {

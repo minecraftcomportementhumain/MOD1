@@ -61,7 +61,7 @@ public class CandyRedItem extends Item {
 
                     // Log consumption
                     if (SubMode2Manager.getInstance().getDataLogger() != null) {
-                        SubMode2Manager.getInstance().getDataLogger().logCandyConsumption(serverPlayer, ResourceType.TYPE_B);
+                        SubMode2Manager.getRealDataLogger().logResourceConsumption(serverPlayer, ResourceType.TYPE_B);
                     }
 
                     return InteractionResultHolder.success(itemStack);
