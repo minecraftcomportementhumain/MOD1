@@ -267,6 +267,7 @@ public class SubMode2EventHandler extends EventHandler {
             CandyCountUpdatePacket packet =
                     new CandyCountUpdatePacket(candyCounts);
             for (ServerPlayer player : PlayerFilterUtil.getAuthenticatedPlayers(event.getServer())) {
+                System.out.println(player.getName());
                 com.example.mysubmod.network.NetworkHandler.INSTANCE.send(
                         net.minecraftforge.network.PacketDistributor.PLAYER.with(() -> player), packet);
             }

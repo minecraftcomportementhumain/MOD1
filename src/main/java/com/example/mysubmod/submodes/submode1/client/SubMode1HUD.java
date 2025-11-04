@@ -35,6 +35,7 @@ public class SubMode1HUD {
     }
 
     public static void render(GuiGraphics guiGraphics, int screenWidth, int screenHeight) {
+        System.out.println(active);
         if (!active) return;
 
         Minecraft mc = Minecraft.getInstance();

@@ -25,21 +25,17 @@ public class HUDRenderer {
         }
 
         // SUB_MODE_1
-        if (SubModeManager.getInstance().getCurrentMode() == SubMode.SUB_MODE_1) {
             if (SubMode1HUD.isActive()) {
                 SubMode1HUD.render(event.getGuiGraphics(),
                         event.getGuiGraphics().guiWidth(),
                         event.getGuiGraphics().guiHeight());
             }
             // SUB_MODE_2
-        } else if (SubModeManager.getInstance().getCurrentMode() == SubMode.SUB_MODE_2) {
             if (SubMode2HUD.isActive()) {
                 SubMode2HUD.render(event.getGuiGraphics(),
                         event.getGuiGraphics().guiWidth(),
                         event.getGuiGraphics().guiHeight());
             }
-        }
-
         // Render penalty timer HUD
         if (PenaltyTimerHUD.isActive()) {
             PenaltyTimerHUD.render(event.getGuiGraphics(),
