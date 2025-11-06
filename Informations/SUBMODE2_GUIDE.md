@@ -223,9 +223,9 @@ mysubmod_data/
 
 ### Format du fichier
 
-Identique au Sous-Mode 1 :
+**DIFFÉRENT du Sous-Mode 1** - inclut le type de bonbon :
 ```
-temps,quantité,x,y,z
+temps,quantité,x,y,z,type
 ```
 
 **Paramètres** :
@@ -234,20 +234,23 @@ temps,quantité,x,y,z
 - `x, y, z` : Coordonnées exactes du spawn
   - Y : 100-120 strictement
   - X/Z : Dans les limites d'une île
+- `type` : **A** (Bonbon Bleu) ou **B** (Bonbon Rouge)
 
 **Exemple** :
 ```
-10,5,0,110,-350
-30,3,370,105,0
-60,8,-400,110,-30
+60,5,0,101,-360,A
+120,3,360,101,0,B
+180,2,0,101,360,A
+240,4,-360,101,0,B
 ```
 
-### Type de bonbon
+### Contrôle du type de bonbon
 
-Le type (bleu ou rouge) est déterminé **aléatoirement** à chaque spawn :
-- 50% de chance pour bonbon bleu
-- 50% de chance pour bonbon rouge
-- Distribution équilibrée sur l'ensemble de la partie
+Le type de bonbon est **défini explicitement dans le fichier** :
+- Type **A** = Bonbon Bleu (BLUE)
+- Type **B** = Bonbon Rouge (RED)
+- Vous pouvez planifier stratégiquement la distribution des deux types
+- Permet de créer des patterns de spawn personnalisés
 
 ---
 
