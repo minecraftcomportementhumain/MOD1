@@ -3,6 +3,7 @@ package com.example.mysubmod.submodes.submode2;
 import com.example.mysubmod.MySubMod;
 import com.example.mysubmod.network.NetworkHandler;
 import com.example.mysubmod.submodes.submode2.network.PenaltySyncPacket;
+import com.example.mysubmod.util.PlayerFilterUtil;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.network.chat.Component;
 import net.minecraftforge.network.PacketDistributor;
@@ -18,10 +19,10 @@ public class SpecializationManager {
     private static SpecializationManager instance;
 
     // Spécialisation actuelle de chaque joueur
-    private final Map<UUID, ResourceType> playerSpecialization = new ConcurrentHashMap<>();
+    private Map<UUID, ResourceType> playerSpecialization = new ConcurrentHashMap<>();
 
     // Temps de fin de la pénalité pour chaque joueur (en ms)
-    private final Map<UUID, Long> playerPenaltyEndTime = new ConcurrentHashMap<>();
+    private Map<UUID, Long> playerPenaltyEndTime = new ConcurrentHashMap<>();
 
     // Constante: durée de la pénalité en millisecondes (2 minutes 45 secondes)
     private static final long PENALTY_DURATION_MS = 2 * 60 * 1000 + 45 * 1000; // 165000 ms
@@ -37,6 +38,8 @@ public class SpecializationManager {
         }
         return instance;
     }
+
+
 
     /**
      * Réinitialise toutes les données pour une nouvelle partie
@@ -148,9 +151,13 @@ public class SpecializationManager {
             "§7Toutes les ressources restaurent 50% de santé."
         ));
 
+        int resourceTypeInt =0;
+        if(resourceType.equals(ResourceType.TYPE_B)){
+            resourceTypeInt =1;
+        }
         // Synchroniser avec le client pour activer le HUD
         NetworkHandler.INSTANCE.send(PacketDistributor.PLAYER.with(() -> player),
-            new PenaltySyncPacket(true, playerId));
+            new PenaltySyncPacket(true, playerId,resourceTypeInt,penaltyEnd));
 
         return PENALTY_HEALTH_MULTIPLIER; // 50% de santé pour cette collecte
     }
@@ -188,6 +195,18 @@ public class SpecializationManager {
             MySubMod.LOGGER.info("Synced penalty state for player {} - {} remaining",
                 player.getName().getString(), formatTime(remaining));
         }
+    }
+
+    public void setPlayerSpecialization(UUID player, int playerSpecialization) {
+        if(playerSpecialization == 0){
+            this.playerSpecialization.put(player,ResourceType.TYPE_A);
+        }else{
+            this.playerSpecialization.put(player,ResourceType.TYPE_B);
+        }
+    }
+
+    public void setPlayerPenaltyEndTime(UUID player,Long playerPenaltyEndTime) {
+        this.playerPenaltyEndTime.put(player,playerPenaltyEndTime);
     }
 
     /**

@@ -39,6 +39,7 @@ public class PenaltyTimerHUD {
 
         // Update penalty time from SpecializationManager
         penaltyRemainingMs = SpecializationManager.getInstance().getRemainingPenaltyTime(localPlayerId);
+        System.out.println(penaltyRemainingMs);
 
         // If penalty expired, deactivate
         if (penaltyRemainingMs <= 0) {

@@ -2,10 +2,12 @@ package com.example.mysubmod.submodes.submode2;
 
 import com.example.mysubmod.MySubMod;
 import com.example.mysubmod.items.ModItems;
+import com.example.mysubmod.network.NetworkHandler;
 import com.example.mysubmod.submodes.SubMode;
 import com.example.mysubmod.submodes.SubModeManager;
 import com.example.mysubmod.submodes.submode1.network.SubMode1CandyCountUpdatePacket;
 import com.example.mysubmod.submodes.submode2.network.CandyCountUpdatePacket;
+import com.example.mysubmod.submodes.submode2.network.PenaltySyncPacket;
 import com.example.mysubmod.submodes.submodeParent.CandyManager;
 import com.example.mysubmod.submodes.submodeParent.EventHandler;
 import com.example.mysubmod.submodes.submodeParent.SubModeParentManager;
@@ -23,6 +25,7 @@ import net.minecraftforge.event.entity.player.EntityItemPickupEvent;
 import net.minecraftforge.event.entity.player.PlayerInteractEvent;
 import net.minecraftforge.eventbus.api.SubscribeEvent;
 import net.minecraftforge.fml.common.Mod;
+import net.minecraftforge.network.PacketDistributor;
 
 import java.util.Map;
 
@@ -267,12 +270,11 @@ public class SubMode2EventHandler extends EventHandler {
             CandyCountUpdatePacket packet =
                     new CandyCountUpdatePacket(candyCounts);
             for (ServerPlayer player : PlayerFilterUtil.getAuthenticatedPlayers(event.getServer())) {
-                System.out.println(player.getName());
                 com.example.mysubmod.network.NetworkHandler.INSTANCE.send(
                         net.minecraftforge.network.PacketDistributor.PLAYER.with(() -> player), packet);
             }
-        }
 
+        }
         // Note: Dandelion cleanup is done once at start of selection phase in SubModeManager
     }
 }
