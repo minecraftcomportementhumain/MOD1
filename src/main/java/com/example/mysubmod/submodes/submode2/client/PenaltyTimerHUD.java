@@ -1,6 +1,5 @@
 package com.example.mysubmod.submodes.submode2.client;
 
-import com.example.mysubmod.submodes.submode2.SpecializationManager;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphics;
@@ -16,17 +15,18 @@ import java.util.UUID;
 @OnlyIn(Dist.CLIENT)
 public class PenaltyTimerHUD {
     private static boolean active = false;
-    private static long penaltyRemainingMs = 0;
+    private static long penaltyEndTime = 0; // Temps de fin de la pénalité en ms (epoch)
     private static UUID localPlayerId = null;
 
-    public static void activate(UUID playerId) {
+    public static void activate(UUID playerId, long endTime) {
         active = true;
         localPlayerId = playerId;
+        penaltyEndTime = endTime;
     }
 
     public static void deactivate() {
         active = false;
-        penaltyRemainingMs = 0;
+        penaltyEndTime = 0;
         localPlayerId = null;
     }
 
@@ -37,8 +37,9 @@ public class PenaltyTimerHUD {
     public static void render(GuiGraphics guiGraphics, int screenWidth, int screenHeight) {
         if (!isActive()) return;
 
-        // Update penalty time from SpecializationManager
-        penaltyRemainingMs = SpecializationManager.getInstance().getRemainingPenaltyTime(localPlayerId);
+        // Calculate remaining time
+        long now = System.currentTimeMillis();
+        long penaltyRemainingMs = penaltyEndTime - now;
 
         // If penalty expired, deactivate
         if (penaltyRemainingMs <= 0) {
@@ -54,7 +55,7 @@ public class PenaltyTimerHUD {
         int y = 10;
 
         // Format time as "M:SS"
-        String timeStr = SpecializationManager.formatTime(penaltyRemainingMs);
+        String timeStr = formatTime(penaltyRemainingMs);
 
         // Background for better readability
         String displayText = "§cPénalité: " + timeStr;
@@ -67,6 +68,16 @@ public class PenaltyTimerHUD {
 
         // Render penalty text
         guiGraphics.drawString(font, displayText, x, y, 0xFF5555); // Red color
+    }
+
+    /**
+     * Format time in milliseconds as "M:SS"
+     */
+    private static String formatTime(long milliseconds) {
+        long seconds = milliseconds / 1000;
+        long minutes = seconds / 60;
+        long remainingSeconds = seconds % 60;
+        return String.format("%d:%02d", minutes, remainingSeconds);
     }
 
     /**

@@ -45,7 +45,7 @@ public class CandyCountHUD {
         Font font = mc.font;
 
         // Position: right corner, compact layout
-        int x = screenWidth - 120; // Adjusted for full text
+        int x = screenWidth - 95; // Moved closer to the right edge
         int y = 35; // Below the timer
         int lineHeight = 10; // Very compact
 

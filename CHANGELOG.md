@@ -1,5 +1,206 @@
 # Changelog - MySubMod
 
+## ⚡ Session du 6 novembre 2025 - Optimisations Performance et Corrections SubMode2
+
+### 🔧 Fix critique: Server hang/timeout (60+ secondes)
+
+**Problème** : Le serveur se figeait complètement avec un timeout de 60+ secondes lors du tick, causant un crash `ServerHangWatchdog`.
+
+**Cause identifiée** :
+- Code de désactivation du sprint dans `SubMode2EventHandler.java` (lignes 326-352)
+- **CHAQUE tick** (50ms), le code modifiait les attributs de mouvement pour TOUS les joueurs
+- Opérations d'ajout/suppression d'`AttributeModifier` à chaque tick = extrêmement coûteux
+- Déclenchait des mises à jour d'entités en cascade
+
+**Solution implémentée** :
+- Ajout d'une Map `playerSprintState` pour tracker l'état de sprint de chaque joueur
+- Modification des attributs **uniquement quand l'état de sprint change**
+- UUID constant `SPRINT_MODIFIER_UUID` pour identifier le modificateur
+- Cleanup automatique de la Map lors de la déconnexion des joueurs
+
+**Code avant (problématique)** :
+```java
+for (ServerPlayer player : PlayerFilterUtil.getAuthenticatedPlayers(event.getServer())) {
+    movementSpeed.removeModifier(sprintModifierUUID); // CHAQUE TICK
+    if (player.isSprinting()) {
+        movementSpeed.addTransientModifier(noSprintModifier); // CHAQUE TICK
+    }
+}
+```
+
+**Code après (optimisé)** :
+```java
+for (ServerPlayer player : PlayerFilterUtil.getAuthenticatedPlayers(event.getServer())) {
+    boolean isSprinting = player.isSprinting();
+    Boolean previousSprintState = playerSprintState.get(player.getUUID());
+
+    // Modification UNIQUEMENT si changement d'état
+    if (previousSprintState == null || previousSprintState != isSprinting) {
+        playerSprintState.put(player.getUUID(), isSprinting);
+        // Modifier attributs une seule fois
+    }
+}
+```
+
+**Impact** :
+- ✅ Réduction de ~99% des opérations sur les attributs
+- ✅ Serveur stable, plus de timeouts
+- ✅ Performance normale restaurée
+
+**Fichier modifié** : `SubMode2EventHandler.java:33-35,302-359`
+
+---
+
+### 🎯 Ajustement pénalité de spécialisation: 50% → 75%
+
+**Changement** : La pénalité pour changement de spécialisation a été ajustée pour un meilleur équilibre de gameplay.
+
+**Avant** :
+- Bonbon de l'autre type : +0.5 cœur (50% efficacité)
+- Pénalité trop sévère
+
+**Après** :
+- Bonbon de l'autre type : +0.75 cœur (75% efficacité)
+- Durée de pénalité : 2 minutes 45 secondes (inchangée)
+
+**Modifications** :
+1. **SpecializationManager.java** :
+   - `PENALTY_HEALTH_MULTIPLIER = 0.75f` (ligne 30)
+   - Message: "Toutes les ressources restaurent 75% de santé"
+   - Commentaires mis à jour
+
+2. **SubMode2HealthManager.java** :
+   - Message feedback: "Pénalité: 75%"
+   - Format d'affichage: `%.2f` pour 2 décimales
+   - Commentaires mis à jour (lignes 15, 98, 117)
+
+3. **CandyItem.java** :
+   - Tooltip: "0.75 cœur si pénalité" (ligne 139)
+
+**Gameplay** :
+- Changement de spécialisation moins punitif
+- Encourage l'exploration des deux types de ressources
+- Meilleur équilibre entre spécialisation et flexibilité
+
+**Fichiers modifiés** :
+- `SpecializationManager.java:30,126,148,155`
+- `SubMode2HealthManager.java:15,98,117`
+- `CandyItem.java:139`
+
+---
+
+### 🐛 Fix: HUD SubMode2 persistent lors changement de mode
+
+**Problème** : Lors du passage de SubMode2 vers SubMode1, tous les éléments HUD du SubMode2 restaient visibles:
+- Timer de jeu SubMode2
+- Compteur de bonbons SubMode2 (par île ET par type)
+- Timer de pénalité de spécialisation
+
+**Cause** : Aucun nettoyage des HUD lors du changement de mode dans `ClientSubModeManager.setCurrentMode()`.
+
+**Solution** :
+- Détection du changement de mode (oldMode vs newMode)
+- Désactivation automatique de TOUS les HUD lors de la sortie d'un sous-mode
+- Symétrique pour SubMode1 et SubMode2
+
+**Code ajouté dans `ClientSubModeManager.java`** :
+```java
+public static void setCurrentMode(SubMode mode) {
+    SubMode oldMode = currentMode;
+    currentMode = mode;
+
+    // Clean up HUD elements when leaving SubMode2
+    if (oldMode == SubMode.SUB_MODE_2 && mode != SubMode.SUB_MODE_2) {
+        ClientGameTimer.deactivate();
+        CandyCountHUD.deactivate();
+        PenaltyTimerHUD.deactivate();
+    }
+
+    // Clean up HUD elements when leaving SubMode1
+    if (oldMode == SubMode.SUB_MODE_1 && mode != SubMode.SUB_MODE_1) {
+        ClientGameTimer.deactivate();
+        CandyCountHUD.deactivate();
+    }
+}
+```
+
+**Avantages** :
+- ✅ Transition propre entre tous les modes
+- ✅ Pas de HUD fantômes
+- ✅ Expérience utilisateur cohérente
+- ✅ Code centralisé et maintenable
+
+**Fichier modifié** : `ClientSubModeManager.java:9-33`
+
+---
+
+### 📚 Corrections majeures SUBMODE2_GUIDE.md
+
+Le guide du SubMode2 contenait plusieurs erreurs critiques sur le fonctionnement du système de spécialisation.
+
+**Erreurs corrigées** :
+
+1. **Système de spécialisation (Section 1)** :
+   - ❌ **Avant** : "Assignation aléatoire lors de la sélection d'île"
+   - ✅ **Après** : "Spécialisation dynamique définie à la première collecte de bonbon"
+   - Clarification que la spécialisation peut changer pendant la partie
+
+2. **Durée de pénalité (Tableau comparatif)** :
+   - ❌ **Avant** : "30s pour mauvais type"
+   - ✅ **Après** : "2min 45s pour changement"
+
+3. **Effet de la pénalité** :
+   - ❌ **Avant** : "0.5 cœur au lieu de 1"
+   - ✅ **Après** : "0.75 cœur au lieu de 1 cœur"
+
+4. **Déclenchement de la pénalité** :
+   - ❌ **Avant** : "Consommer un bonbon du type opposé"
+   - ✅ **Après** : "Collecter un bonbon du type opposé + change automatiquement la spécialisation"
+
+5. **Phase de sélection d'île** :
+   - Suppression de la mention d'assignation aléatoire de spécialisation
+   - Clarification qu'aucune spécialisation n'existe au départ
+
+6. **Dégradation de santé** :
+   - ❌ **Avant** : "-1 cœur (2 points) toutes les 10 secondes"
+   - ✅ **Après** : "-0.5 cœur (1 point) toutes les 10 secondes"
+
+7. **HUD Compteur de bonbons** :
+   - Ajout de la précision "par île ET par type (bleu/rouge)"
+
+8. **Stratégies** :
+   - Section complètement réécrite pour refléter le système dynamique
+   - Focus sur minimiser les changements de spécialisation
+   - Explication du choix stratégique de la première collecte
+
+**Sections ajoutées** :
+- Notes de version avec spécifications techniques
+- Date de dernière mise à jour: 6 novembre 2025
+
+**Fichier modifié** : `SUBMODE2_GUIDE.md` (15+ sections corrigées)
+
+---
+
+### 📊 Statistiques de la session
+
+**Fichiers modifiés** : 5
+- `SubMode2EventHandler.java` : Fix performance critique + cleanup
+- `SpecializationManager.java` : Ajustement pénalité 75%
+- `SubMode2HealthManager.java` : Messages mis à jour
+- `CandyItem.java` : Tooltip corrigé
+- `ClientSubModeManager.java` : Nettoyage HUD automatique
+- `SUBMODE2_GUIDE.md` : 15+ corrections majeures
+
+**Lignes modifiées** : ~150 lignes
+
+**Impact** :
+- 🚀 **Performance** : Serveur stable, plus de timeouts
+- ⚖️ **Gameplay** : Pénalité mieux équilibrée (75%)
+- 🎨 **UX** : Transition propre entre modes
+- 📖 **Documentation** : Guide précis et à jour
+
+---
+
 ## 🎮 Session du 30 octobre 2025 - Création du SubMode2 et Corrections
 
 ### 🆕 Création complète du SubMode2

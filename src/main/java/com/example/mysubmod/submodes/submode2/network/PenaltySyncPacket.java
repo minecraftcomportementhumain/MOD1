@@ -17,19 +17,31 @@ import java.util.function.Supplier;
 public class PenaltySyncPacket {
     private final boolean hasPenalty;
     private final UUID playerId;
+    private final long penaltyEndTime; // Temps de fin de la pénalité en ms (epoch)
 
     public PenaltySyncPacket(boolean hasPenalty, UUID playerId) {
         this.hasPenalty = hasPenalty;
         this.playerId = playerId;
+        this.penaltyEndTime = 0;
+    }
+
+    public PenaltySyncPacket(boolean hasPenalty, UUID playerId, long penaltyEndTime) {
+        this.hasPenalty = hasPenalty;
+        this.playerId = playerId;
+        this.penaltyEndTime = penaltyEndTime;
     }
 
     public static void encode(PenaltySyncPacket packet, FriendlyByteBuf buf) {
         buf.writeBoolean(packet.hasPenalty);
         buf.writeUUID(packet.playerId);
+        buf.writeLong(packet.penaltyEndTime);
     }
 
     public static PenaltySyncPacket decode(FriendlyByteBuf buf) {
-        return new PenaltySyncPacket(buf.readBoolean(), buf.readUUID());
+        boolean hasPenalty = buf.readBoolean();
+        UUID playerId = buf.readUUID();
+        long penaltyEndTime = buf.readLong();
+        return new PenaltySyncPacket(hasPenalty, playerId, penaltyEndTime);
     }
 
     public static void handle(PenaltySyncPacket packet, Supplier<NetworkEvent.Context> ctx) {
@@ -39,7 +51,7 @@ public class PenaltySyncPacket {
                 Minecraft mc = Minecraft.getInstance();
                 if (mc.player != null && mc.player.getUUID().equals(packet.playerId)) {
                     if (packet.hasPenalty) {
-                        PenaltyTimerHUD.activate(packet.playerId);
+                        PenaltyTimerHUD.activate(packet.playerId, packet.penaltyEndTime);
                     } else {
                         PenaltyTimerHUD.deactivate();
                     }

@@ -27,7 +27,7 @@ public class SpecializationManager {
     private static final long PENALTY_DURATION_MS = 2 * 60 * 1000 + 45 * 1000; // 165000 ms
 
     // Multiplicateur de santé pendant la pénalité
-    private static final float PENALTY_HEALTH_MULTIPLIER = 0.5f; // 50% de réduction
+    private static final float PENALTY_HEALTH_MULTIPLIER = 0.75f; // 75% au lieu de 100% (25% de réduction)
 
     private SpecializationManager() {}
 
@@ -97,11 +97,11 @@ public class SpecializationManager {
 
     /**
      * Gère la collecte d'une ressource par un joueur
-     * Retourne le multiplicateur de santé à appliquer (1.0 normal, 0.5 pénalité)
+     * Retourne le multiplicateur de santé à appliquer (1.0 normal, 0.75 pénalité)
      *
      * @param player Le joueur qui collecte
      * @param resourceType Le type de ressource collectée
-     * @return Le multiplicateur de santé (0.5 si pénalité, 1.0 sinon)
+     * @return Le multiplicateur de santé (0.75 si pénalité, 1.0 sinon)
      */
     public float handleResourceCollection(ServerPlayer player, ResourceType resourceType) {
         UUID playerId = player.getUUID();
@@ -123,7 +123,7 @@ public class SpecializationManager {
         if (currentSpecialization == resourceType) {
             // Vérifier si le joueur a une pénalité active
             if (hasPenalty(playerId)) {
-                return PENALTY_HEALTH_MULTIPLIER; // 50% de santé
+                return PENALTY_HEALTH_MULTIPLIER; // 75% de santé
             }
             return 1.0f; // 100% de santé
         }
@@ -145,14 +145,14 @@ public class SpecializationManager {
             "§c§lChangement de spécialisation!\n" +
             "§eVous collectez maintenant: " + resourceType.getDisplayName() + "\n" +
             "§c§lPénalité activée: 2 minutes 45 secondes\n" +
-            "§7Toutes les ressources restaurent 50% de santé."
+            "§7Toutes les ressources restaurent 75% de santé."
         ));
 
         // Synchroniser avec le client pour activer le HUD
         NetworkHandler.INSTANCE.send(PacketDistributor.PLAYER.with(() -> player),
-            new PenaltySyncPacket(true, playerId));
+            new PenaltySyncPacket(true, playerId, penaltyEnd));
 
-        return PENALTY_HEALTH_MULTIPLIER; // 50% de santé pour cette collecte
+        return PENALTY_HEALTH_MULTIPLIER; // 75% de santé pour cette collecte
     }
 
     /**
@@ -179,9 +179,15 @@ public class SpecializationManager {
         UUID playerId = player.getUUID();
         boolean hasPenalty = hasPenalty(playerId);
 
+        // Get penalty end time if active
+        long penaltyEnd = 0;
+        if (hasPenalty) {
+            penaltyEnd = playerPenaltyEndTime.getOrDefault(playerId, 0L);
+        }
+
         // Envoyer le packet de synchronisation
         NetworkHandler.INSTANCE.send(PacketDistributor.PLAYER.with(() -> player),
-            new PenaltySyncPacket(hasPenalty, playerId));
+            new PenaltySyncPacket(hasPenalty, playerId, penaltyEnd));
 
         if (hasPenalty) {
             long remaining = getRemainingPenaltyTime(playerId);

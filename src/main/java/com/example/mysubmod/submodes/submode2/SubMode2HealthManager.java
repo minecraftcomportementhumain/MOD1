@@ -12,7 +12,7 @@ import java.util.UUID;
 
 /**
  * SubMode2 health manager with specialization penalty support
- * Applies health multipliers (50% during penalty, 100% otherwise) when players consume resources
+ * Applies health multipliers (75% during penalty, 100% otherwise) when players consume resources
  */
 public class SubMode2HealthManager {
     private static SubMode2HealthManager instance;
@@ -95,7 +95,7 @@ public class SubMode2HealthManager {
         float currentHealth = player.getHealth();
         float maxHealth = player.getMaxHealth();
 
-        // Get health multiplier from SpecializationManager (1.0 or 0.5)
+        // Get health multiplier from SpecializationManager (1.0 or 0.75)
         float healthMultiplier = SpecializationManager.getInstance().handleResourceCollection(player, resourceType);
 
         // Base health restoration: 1 heart (2.0 health points)
@@ -114,7 +114,7 @@ public class SubMode2HealthManager {
             long remainingMs = SpecializationManager.getInstance().getRemainingPenaltyTime(player.getUUID());
             String timeStr = SpecializationManager.formatTime(remainingMs);
             player.sendSystemMessage(Component.literal(
-                String.format("§e+%.1f ❤ §c(Pénalité: 50%% - %s restant)", actualRestoration / 2.0f, timeStr)
+                String.format("§e+%.2f ❤ §c(Pénalité: 75%% - %s restant)", actualRestoration / 2.0f, timeStr)
             ));
         } else {
             player.sendSystemMessage(Component.literal(

@@ -37,6 +37,8 @@ public class GameEndPacket {
             com.example.mysubmod.submodes.submode2.client.ClientGameTimer.markGameAsEnded();
             // Also deactivate the timer to stop displaying it
             com.example.mysubmod.submodes.submode2.client.ClientGameTimer.deactivate();
+            // Deactivate penalty timer HUD
+            com.example.mysubmod.submodes.submode2.client.PenaltyTimerHUD.deactivate();
         }
     }
 }

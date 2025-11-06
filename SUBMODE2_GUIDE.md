@@ -9,9 +9,9 @@ Le Sous-Mode 2 est un mode de jeu compétitif basé sur un système de **spécia
 | Aspect | Sous-Mode 1 | Sous-Mode 2 |
 |--------|-------------|-------------|
 | **Bonbons** | Un seul type (bleu) | Deux types (bleu et rouge) |
-| **Spécialisation** | Aucune | Type A ou Type B |
-| **Pénalités** | Aucune | 30s pour mauvais type |
-| **Stratégie** | Collecte simple | Gestion des ressources |
+| **Spécialisation** | Aucune | Dynamique (change selon collecte) |
+| **Pénalités** | Aucune | 2min 45s pour changement |
+| **Stratégie** | Collecte simple | Gestion des ressources et spécialisation |
 
 ---
 
@@ -19,46 +19,49 @@ Le Sous-Mode 2 est un mode de jeu compétitif basé sur un système de **spécia
 
 ### 1. Système de spécialisation
 
-**Assignation automatique** :
-- Chaque joueur reçoit aléatoirement une spécialisation lors de la sélection d'île
-- **Type A** : Efficacité maximale avec bonbons bleus
-- **Type B** : Efficacité maximale avec bonbons rouges
+**Spécialisation dynamique** :
+- La spécialisation se définit **automatiquement lors de la première collecte** de bonbon
+- Premier bonbon bleu collecté → Spécialisation BLUE (bonbons bleus)
+- Premier bonbon rouge collecté → Spécialisation RED (bonbons rouges)
+- La spécialisation peut **changer** pendant la partie
 
 **Effets de la spécialisation** :
 - Bonbon de votre type : **+1 cœur** (100% efficacité)
-- Bonbon de l'autre type : **+0.5 cœur** + **30 secondes de pénalité**
+- Bonbon de l'autre type : **+0.75 cœur** (75% efficacité) + **2 minutes 45 secondes de pénalité**
 
 ### 2. Système de pénalités
 
 **Déclenchement** :
-- Consommer un bonbon du type opposé à votre spécialisation
-- Durée : 30 secondes
+- Collecter un bonbon du type opposé à votre spécialisation actuelle
+- **Change automatiquement votre spécialisation** vers le nouveau type
+- Durée de la pénalité : **2 minutes 45 secondes** (165 secondes)
 
 **Effets pendant la pénalité** :
-- Healing réduit de moitié (0.5 cœur au lieu de 1)
-- Timer visible au centre-haut de l'écran : "⚠ PÉNALITÉ: XXs"
+- Healing réduit à 75% (0.75 cœur au lieu de 1 cœur)
+- Timer visible au centre-haut de l'écran : "⚠ PÉNALITÉ: MM:SS"
 - Couleur rouge pour alerter le joueur
+- La pénalité reste active même si vous collectez d'autres bonbons de votre nouvelle spécialisation
 
 **Stratégie** :
-- Privilégier les bonbons de votre type
-- Utiliser les bonbons opposés uniquement en urgence
-- Planifier les déplacements selon les spawns de bonbons
+- Minimiser les changements de spécialisation
+- Planifier les changements stratégiquement
+- Accepter la pénalité seulement si nécessaire pour la survie
 
 ### 3. Types de bonbons
 
-#### Bonbon Bleu (Type A)
+#### Bonbon Bleu (BLUE)
 - **Item** : `candy_blue`
-- **Texture** : Bonbon bleu distinct
+- **Texture** : Bonbon bleu distinct avec effet brillant
 - **Efficacité** :
-  - Joueur Type A : +1 cœur
-  - Joueur Type B : +0.5 cœur + pénalité 30s
+  - Spécialisation BLUE : +1 cœur (100%)
+  - Spécialisation RED : +0.75 cœur (75%) + pénalité 2min 45s
 
-#### Bonbon Rouge (Type B)
+#### Bonbon Rouge (RED)
 - **Item** : `candy_red`
-- **Texture** : Bonbon rouge distinct
+- **Texture** : Bonbon rouge distinct avec effet brillant
 - **Efficacité** :
-  - Joueur Type B : +1 cœur
-  - Joueur Type A : +0.5 cœur + pénalité 30s
+  - Spécialisation RED : +1 cœur (100%)
+  - Spécialisation BLUE : +0.75 cœur (75%) + pénalité 2min 45s
 
 ### 4. Distribution des bonbons
 
@@ -114,14 +117,13 @@ Identique au Sous-Mode 1 :
 
 **Choix de l'île** :
 - Interface avec 4 options d'îles
-- Assignation **aléatoire de la spécialisation** à ce moment
 - Sélection automatique si pas de choix après 30s
 - Téléportation au centre de l'île choisie
 
-**Assignation de spécialisation** :
-- Type A ou Type B assigné aléatoirement
-- Information visible dans les logs
-- Pas d'indication visuelle pendant la partie (stratégie)
+**Spécialisation** :
+- Aucune spécialisation au départ
+- La spécialisation se définit automatiquement lors de la **première collecte** de bonbon
+- Information visible dans les logs et messages système
 
 ### Phase 3 : Partie active (15 minutes)
 
@@ -131,16 +133,16 @@ Identique au Sous-Mode 1 :
 - Gérer stratégiquement sa spécialisation
 
 **Mécaniques** :
-- Santé initiale : 10 cœurs (100%)
+- Santé initiale : 10 cœurs (20 points de santé)
 - Faim initiale : 5 barres (50%)
-- Dégradation : -0.5 cœur toutes les 10 secondes
-- Sprint désactivé
+- Dégradation : -0.5 cœur (1 point) toutes les 10 secondes
+- Sprint désactivé (vitesse de marche uniquement)
 - Spawn de bonbons selon le fichier sélectionné
 
 **HUD affiché** :
 1. **Timer** (haut-gauche) : Temps restant en MM:SS
-2. **Compteur bonbons** (haut-droite) : Nombre par île avec couleurs
-3. **Timer pénalité** (centre-haut) : Si pénalité active
+2. **Compteur bonbons** (haut-droite) : Nombre par île ET par type (bleu/rouge) avec couleurs
+3. **Timer pénalité** (centre-haut) : Si pénalité active (MM:SS restantes)
 
 ### Phase 4 : Fin de partie
 
@@ -179,11 +181,11 @@ mysubmod_data/
 
 **Logs individuels par joueur** :
 - Sélection d'île (manuel/automatique)
-- Spécialisation assignée (TYPE_A/TYPE_B)
+- Spécialisation définie/changée (BLUE/RED, timestamp)
 - Ramassage de bonbons (position, type, timestamp)
-- Consommation de bonbons (type, compatibilité, timestamp)
-- Pénalités appliquées (début, fin, timestamp)
-- Changements de santé (avant, après, timestamp)
+- Consommation de bonbons (type, efficacité appliquée, timestamp)
+- Pénalités appliquées (début, durée restante, timestamp)
+- Changements de santé (avant, après, multiplicateur, timestamp)
 - Mort (position, timestamp)
 - Déconnexions/reconnexions
 
@@ -270,9 +272,10 @@ Le type (bleu ou rouge) est déterminé **aléatoirement** à chaque spawn :
 
 ### HUD Timer de pénalité
 - **Position** : Centre-haut de l'écran
-- **Format** : "⚠ PÉNALITÉ: XXs"
-- **Couleur** : Rouge vif
-- **Affichage** : Uniquement pendant les 30 secondes de pénalité
+- **Format** : "⚠ PÉNALITÉ: MM:SS"
+- **Couleur** : Rouge vif avec clignotement
+- **Affichage** : Uniquement pendant les 2 minutes 45 secondes (165s) de pénalité
+- **Information** : Indique le temps restant avant la fin de la pénalité
 
 ---
 
@@ -303,15 +306,21 @@ Le type (bleu ou rouge) est déterminé **aléatoirement** à chaque spawn :
 
 ### Gestion de la spécialisation
 
-**Découverte de votre type** :
-- Première consommation révèle votre spécialisation
-- Si pénalité → Vous avez consommé le mauvais type
-- Si guérison complète → Vous avez consommé le bon type
+**Définition initiale** :
+- Première collecte de bonbon définit votre spécialisation
+- Message système confirme votre spécialisation (BLUE ou RED)
+- Pas de pénalité à la première collecte
+
+**Changement de spécialisation** :
+- Collecter un bonbon du type opposé change votre spécialisation
+- Déclenche automatiquement une pénalité de 2min 45s
+- Vous restaurez 0.75 cœur au lieu de 1 cœur pendant la pénalité
+- La pénalité reste active même après plusieurs consommations
 
 **Optimisation** :
-- Mémoriser les positions de spawn de votre type
-- Planifier les déplacements selon les spawns
-- Garder des bonbons de l'autre type pour urgences
+- Éviter de changer de spécialisation sauf nécessité absolue
+- Planifier les changements pendant les moments de santé élevée
+- Mémoriser les patterns de spawn pour votre type actuel
 
 ### Gestion des îles
 
@@ -328,19 +337,19 @@ Le type (bleu ou rouge) est déterminé **aléatoirement** à chaque spawn :
 ### Timing optimal
 
 **Début de partie** :
-- Collecter rapidement les premiers bonbons
-- Identifier votre spécialisation tôt
-- Établir un circuit de collecte
+- Choisir stratégiquement votre première collecte (définit votre spécialisation)
+- Établir un circuit de collecte efficace
+- Mémoriser les emplacements de spawn
 
 **Mi-partie** :
-- Maintenir un stock de bonbons de votre type
-- Éviter les pénalités autant que possible
-- Observer les patterns de spawn
+- Rester fidèle à votre spécialisation autant que possible
+- Éviter les changements sauf urgence absolue
+- Observer les patterns de spawn des deux types
 
 **Fin de partie** :
-- Devenir plus agressif dans la collecte
+- Devenir plus flexible avec les changements de spécialisation
 - Accepter les pénalités si nécessaire pour survivre
-- Optimiser chaque déplacement
+- La pénalité de 2min 45s devient moins critique en fin de partie
 
 ---
 
@@ -359,4 +368,17 @@ Les logs peuvent être utilisés pour :
 
 ---
 
-*Guide créé le 30 octobre 2025*
+---
+
+## 📝 Notes de version
+
+**Dernière mise à jour : 6 novembre 2025**
+
+### Spécifications techniques
+- Pénalité de changement : 2 minutes 45 secondes (165 secondes)
+- Efficacité réduite pendant pénalité : 75% (0.75 cœur)
+- Système de spécialisation : Dynamique (défini à la première collecte)
+- Dégradation de santé : -0.5 cœur toutes les 10 secondes
+- Durée totale de partie : 15 minutes (900 secondes)
+
+*Guide créé le 30 octobre 2025 - Mis à jour le 6 novembre 2025*

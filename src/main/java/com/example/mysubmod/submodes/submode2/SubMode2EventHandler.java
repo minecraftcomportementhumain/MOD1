@@ -30,6 +30,10 @@ public class SubMode2EventHandler {
     private static int candyCountUpdateTicks = 0;
     private static final int CANDY_COUNT_UPDATE_INTERVAL = 40; // Update every 2 seconds (40 ticks)
 
+    // Track sprint state to avoid modifying attributes every tick
+    private static final java.util.Map<java.util.UUID, Boolean> playerSprintState = new java.util.concurrent.ConcurrentHashMap<>();
+    private static final java.util.UUID SPRINT_MODIFIER_UUID = java.util.UUID.fromString("662A6B8D-DA3E-4C1C-8813-96EA6097278D");
+
     @SubscribeEvent
     public static void onPlayerAttack(LivingAttackEvent event) {
         if (SubModeManager.getInstance().getCurrentMode() != SubMode.SUB_MODE_2) {
@@ -278,6 +282,12 @@ public class SubMode2EventHandler {
                     new com.example.mysubmod.submodes.submode2.network.GameTimerPacket(-1)
                 );
 
+                // Deactivate penalty timer HUD
+                com.example.mysubmod.network.NetworkHandler.INSTANCE.send(
+                    net.minecraftforge.network.PacketDistributor.PLAYER.with(() -> player),
+                    new com.example.mysubmod.submodes.submode2.network.PenaltySyncPacket(false, player.getUUID())
+                );
+
                 MySubMod.LOGGER.info("Cleared SubMode2 HUD for reconnecting player: {}", player.getName().getString());
             }
         }
@@ -288,6 +298,9 @@ public class SubMode2EventHandler {
         if (event.getEntity() instanceof ServerPlayer player) {
             MySubMod.LOGGER.info("DEBUG: SubMode2EventHandler.onPlayerLogout called for {}",
                 player.getName().getString());
+
+            // Clean up sprint state tracking
+            playerSprintState.remove(player.getUUID());
 
             // Skip temporary queue candidate accounts (but don't return - they're already filtered in handlePlayerDisconnection)
             if (SubModeManager.getInstance().getCurrentMode() == SubMode.SUB_MODE_2) {
@@ -317,28 +330,31 @@ public class SubMode2EventHandler {
         }
 
         // Disable sprinting for all players in SubMode2 by setting sprint speed to walk speed
+        // Only modify attributes when sprint state changes to avoid performance issues
         for (ServerPlayer player : PlayerFilterUtil.getAuthenticatedPlayers(event.getServer())) {
-            // Set movement speed attribute modifier to prevent sprint speed boost
-            net.minecraft.world.entity.ai.attributes.AttributeInstance movementSpeed =
-                player.getAttribute(net.minecraft.world.entity.ai.attributes.Attributes.MOVEMENT_SPEED);
+            boolean isSprinting = player.isSprinting();
+            Boolean previousSprintState = playerSprintState.get(player.getUUID());
 
-            if (movementSpeed != null) {
-                // Remove any existing sprint modifier
-                java.util.UUID sprintModifierUUID = java.util.UUID.fromString("662A6B8D-DA3E-4C1C-8813-96EA6097278D");
-                movementSpeed.removeModifier(sprintModifierUUID);
+            // Only update if sprint state changed or first time checking
+            if (previousSprintState == null || previousSprintState != isSprinting) {
+                playerSprintState.put(player.getUUID(), isSprinting);
 
-                // Add a modifier that cancels sprint speed (sprint normally adds 30% speed)
-                // By adding -0.03 modifier when sprinting, we cancel the boost
-                if (player.isSprinting()) {
-                    net.minecraft.world.entity.ai.attributes.AttributeModifier noSprintModifier =
-                        new net.minecraft.world.entity.ai.attributes.AttributeModifier(
-                            sprintModifierUUID,
-                            "No sprint boost",
-                            -0.003, // Cancel 30% sprint boost (base speed is 0.1, so 0.1 * 0.3 = 0.03)
-                            net.minecraft.world.entity.ai.attributes.AttributeModifier.Operation.ADDITION
-                        );
+                net.minecraft.world.entity.ai.attributes.AttributeInstance movementSpeed =
+                    player.getAttribute(net.minecraft.world.entity.ai.attributes.Attributes.MOVEMENT_SPEED);
 
-                    if (movementSpeed.getModifier(sprintModifierUUID) == null) {
+                if (movementSpeed != null) {
+                    // Remove any existing sprint modifier
+                    movementSpeed.removeModifier(SPRINT_MODIFIER_UUID);
+
+                    // Add a modifier that cancels sprint speed if player is sprinting
+                    if (isSprinting) {
+                        net.minecraft.world.entity.ai.attributes.AttributeModifier noSprintModifier =
+                            new net.minecraft.world.entity.ai.attributes.AttributeModifier(
+                                SPRINT_MODIFIER_UUID,
+                                "No sprint boost",
+                                -0.003, // Cancel 30% sprint boost (base speed is 0.1, so 0.1 * 0.3 = 0.03)
+                                net.minecraft.world.entity.ai.attributes.AttributeModifier.Operation.ADDITION
+                            );
                         movementSpeed.addTransientModifier(noSprintModifier);
                     }
                 }
