@@ -20,6 +20,7 @@ public class CandyFileUploadScreen extends Screen {
     private EditBox pathBox;
     private Button uploadButton;
     private Button cancelButton;
+    private Button randomButton;
     private String loadedContent = "";
     private String loadedFilename = "";
 
@@ -33,6 +34,8 @@ public class CandyFileUploadScreen extends Screen {
 
         int centerX = this.width / 2;
         int startY = 100;
+        int widthButton = 140;
+        int heightButton = 20;
 
         // File path input (single field)
         pathBox = new EditBox(this.font, centerX - 200, startY, 400, 20, Component.literal("Chemin du fichier"));
@@ -43,10 +46,10 @@ public class CandyFileUploadScreen extends Screen {
 
         // Upload button
         uploadButton = Button.builder(
-            Component.literal("Charger et envoyer au serveur"),
+            Component.literal("Charger au serveur"),
             button -> uploadFile()
         )
-        .bounds(centerX - 150, startY + 50, 140, 20)
+        .bounds(centerX - widthButton - 10, startY + 40, widthButton, heightButton)
         .build();
         uploadButton.active = false;
         this.addRenderableWidget(uploadButton);
@@ -56,9 +59,20 @@ public class CandyFileUploadScreen extends Screen {
             Component.literal("Annuler"),
             button -> onClose()
         )
-        .bounds(centerX + 10, startY + 50, 140, 20)
+        .bounds(centerX - widthButton/2 - 10, startY + 70, widthButton, heightButton)
         .build();
         this.addRenderableWidget(cancelButton);
+
+
+        // Create Random File
+        randomButton = Button.builder(
+                        Component.literal("Générer un fichier"),
+                        button -> uploadRandom()
+                )
+                .bounds(centerX + 10, startY + 40, widthButton, heightButton)
+                .build();
+        this.addRenderableWidget(randomButton);
+
     }
 
     private void onPathChanged(String newPath) {
@@ -242,6 +256,10 @@ public class CandyFileUploadScreen extends Screen {
 
         NetworkHandler.INSTANCE.sendToServer(new CandyFileUploadPacket(loadedFilename, loadedContent));
         onClose();
+    }
+
+    private void uploadRandom(){
+        this.minecraft.setScreen(new CandyRandomFileScreen());
     }
 
     @Override
