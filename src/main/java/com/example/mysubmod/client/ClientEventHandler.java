@@ -7,12 +7,39 @@ import com.example.mysubmod.submodes.submode1.network.ClientPacketHandler;
 import net.minecraft.client.Minecraft;
 import net.minecraftforge.api.distmarker.Dist;
 import net.minecraftforge.client.event.InputEvent;
+import net.minecraftforge.event.TickEvent;
 import net.minecraftforge.eventbus.api.SubscribeEvent;
 import net.minecraftforge.fml.common.Mod;
 import org.lwjgl.glfw.GLFW;
 
 @Mod.EventBusSubscriber(modid = MySubMod.MOD_ID, bus = Mod.EventBusSubscriber.Bus.FORGE, value = Dist.CLIENT)
 public class ClientEventHandler {
+
+    private static boolean autoSuggestionsDisabled = false;
+
+    @SubscribeEvent
+    public static void onClientTick(TickEvent.ClientTickEvent event) {
+        if (event.phase == TickEvent.Phase.END) {
+            return;
+        }
+
+        Minecraft mc = Minecraft.getInstance();
+
+        // Disable command suggestions and tutorial once when the game is loaded
+        if (!autoSuggestionsDisabled && mc.options != null) {
+            mc.options.autoSuggestions().set(false);
+
+            // Force tutorial to NONE to disable all tips
+            if (mc.options.tutorialStep != net.minecraft.client.tutorial.TutorialSteps.NONE) {
+                mc.options.tutorialStep = net.minecraft.client.tutorial.TutorialSteps.NONE;
+                mc.options.save();
+                MySubMod.LOGGER.info("Tutorial forced to NONE (disabled)");
+            }
+
+            autoSuggestionsDisabled = true;
+            MySubMod.LOGGER.info("Command suggestions and tutorial disabled automatically");
+        }
+    }
 
     @SubscribeEvent
     public static void onKeyInput(InputEvent.Key event) {

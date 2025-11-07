@@ -273,10 +273,11 @@ public class SubMode2Manager {
                 MySubMod.LOGGER.error("Error stopping health degradation", e);
             }
 
-            // Stop candy spawning and remove all existing candies
+            // Proper candy cleanup sequence: stop timer -> clean candies -> unload chunks
             try {
-                SubMode2CandyManager.getInstance().stopCandySpawning();
-                SubMode2CandyManager.getInstance().removeAllCandiesFromWorld(server);
+                SubMode2CandyManager.getInstance().stopTimer(); // Stop future spawns
+                SubMode2CandyManager.getInstance().removeAllCandiesFromWorld(server); // Clean while chunks loaded
+                SubMode2CandyManager.getInstance().unforceLoadChunks(); // Unload chunks
             } catch (Exception e) {
                 MySubMod.LOGGER.error("Error stopping candy spawning", e);
             }
@@ -1594,8 +1595,10 @@ public class SubMode2Manager {
         // Stop systems immediately to prevent further operations
         try {
             SubMode2HealthManager.getInstance().stopHealthDegradation();
-            SubMode2CandyManager.getInstance().stopCandySpawning();
-            SubMode2CandyManager.getInstance().removeAllCandiesFromWorld(server);
+            // Proper candy cleanup sequence: stop timer -> clean candies -> unload chunks
+            SubMode2CandyManager.getInstance().stopTimer(); // Stop future spawns
+            SubMode2CandyManager.getInstance().removeAllCandiesFromWorld(server); // Clean while chunks loaded
+            SubMode2CandyManager.getInstance().unforceLoadChunks(); // Unload chunks
 
             // Stop game timer to prevent duplicate calls
             if (gameTimer != null) {

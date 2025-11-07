@@ -70,12 +70,22 @@ public class SubMode2CandyManager {
         }
     }
 
-    public void stopCandySpawning() {
+    /**
+     * Stop the candy spawn timer only (does not clean candies or unload chunks)
+     */
+    public void stopTimer() {
         if (candySpawnTimer != null) {
             candySpawnTimer.cancel();
             candySpawnTimer = null;
+            MySubMod.LOGGER.info("Stopped candy spawn timer for SubMode2");
         }
+    }
 
+    /**
+     * Complete cleanup: stops timer, removes candies, and unloads chunks
+     */
+    public void stopCandySpawning() {
+        stopTimer();
         removeAllCandies();
         unforceLoadChunks();
 
@@ -310,7 +320,7 @@ public class SubMode2CandyManager {
         }
     }
 
-    private void unforceLoadChunks() {
+    public void unforceLoadChunks() {
         if (gameServer == null || forceLoadedChunks.isEmpty()) return;
 
         ServerLevel overworld = gameServer.getLevel(ServerLevel.OVERWORLD);
