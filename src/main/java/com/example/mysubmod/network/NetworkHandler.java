@@ -309,6 +309,15 @@ public class NetworkHandler {
             com.example.mysubmod.submodes.submode2.network.PenaltySyncPacket::handle
         );
 
+        // SubMode2 specialization sync packet
+        INSTANCE.registerMessage(
+            packetId++,
+            com.example.mysubmod.submodes.submode2.network.SpecializationSyncPacket.class,
+            com.example.mysubmod.submodes.submode2.network.SpecializationSyncPacket::encode,
+            com.example.mysubmod.submodes.submode2.network.SpecializationSyncPacket::decode,
+            com.example.mysubmod.submodes.submode2.network.SpecializationSyncPacket::handle
+        );
+
         // SubMode2 log management packet
         INSTANCE.registerMessage(
             packetId++,

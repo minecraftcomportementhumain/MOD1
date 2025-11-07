@@ -18,6 +18,7 @@ import java.util.Map;
 public class CandyCountHUD {
     private static final Map<IslandType, Map<ResourceType, Integer>> candyCounts = new HashMap<>();
     private static boolean active = false;
+    private static ResourceType playerSpecialization = null;
 
     public static void updateCandyCounts(Map<IslandType, Map<ResourceType, Integer>> counts) {
         candyCounts.clear();
@@ -32,6 +33,11 @@ public class CandyCountHUD {
     public static void deactivate() {
         active = false;
         candyCounts.clear();
+        playerSpecialization = null;
+    }
+
+    public static void setPlayerSpecialization(ResourceType specialization) {
+        playerSpecialization = specialization;
     }
 
     public static boolean isActive() {
@@ -45,12 +51,21 @@ public class CandyCountHUD {
         Font font = mc.font;
 
         // Position: right corner, compact layout
-        int x = screenWidth - 95; // Moved closer to the right edge
+        // Increased width to accommodate "Spécialisation: Rouge" without overflow
+        int x = screenWidth - 120; // More space for longer text
         int y = 35; // Below the timer
         int lineHeight = 10; // Very compact
 
+        // Show player specialization first if set
+        if (playerSpecialization != null) {
+            String specText = "Spécialisation: " + getSpecializationName(playerSpecialization);
+            guiGraphics.drawString(font, specText, x, y, playerSpecialization.getColor());
+            y += lineHeight;
+        }
+
         // Title
-        guiGraphics.drawString(font, "§6Bonbons:", x, y, 0xFFFFFF);
+        String title = "§6Bonbon(s) par île:";
+        guiGraphics.drawString(font, title, x, y, 0xFFFFFF);
         y += lineHeight;
 
         // Display counts per island with type breakdown
@@ -67,19 +82,19 @@ public class CandyCountHUD {
         int typeB = typeCounts.getOrDefault(ResourceType.TYPE_B, 0);
         int total = typeA + typeB;
 
-        // Island name with total
-        String islandText = getIslandShortName(island) + ": " + total;
+        // Island name with total (indented slightly)
+        String islandText = "  " + getIslandShortName(island) + ": " + total;
         int islandColor = getIslandColor(island);
         guiGraphics.drawString(font, islandText, x, y, islandColor);
         y += lineHeight;
 
-        // Type breakdown (minimal indent)
-        String typeAText = "§9Bleu: " + typeA;
-        guiGraphics.drawString(font, typeAText, x + 3, y, ResourceType.TYPE_A.getColor());
+        // Type breakdown (more indent)
+        String typeAText = "§9    Bleu: " + typeA;
+        guiGraphics.drawString(font, typeAText, x, y, ResourceType.TYPE_A.getColor());
         y += lineHeight;
 
-        String typeBText = "§cRouge: " + typeB;
-        guiGraphics.drawString(font, typeBText, x + 3, y, ResourceType.TYPE_B.getColor());
+        String typeBText = "§c    Rouge: " + typeB;
+        guiGraphics.drawString(font, typeBText, x, y, ResourceType.TYPE_B.getColor());
         y += lineHeight;
 
         return y;
@@ -100,6 +115,13 @@ public class CandyCountHUD {
             case MEDIUM -> 0x55FF55;     // Green
             case LARGE -> 0x5555FF;      // Blue
             case EXTRA_LARGE -> 0xFFAA00; // Orange
+        };
+    }
+
+    private static String getSpecializationName(ResourceType type) {
+        return switch (type) {
+            case TYPE_A -> "Bleu";
+            case TYPE_B -> "Rouge";
         };
     }
 }

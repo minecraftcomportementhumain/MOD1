@@ -113,6 +113,13 @@ public class SpecializationManager {
                 "§a§lSpécialisation définie: " + resourceType.getDisplayName() + "\n" +
                 "§7Collecter l'autre type de ressource activera une pénalité de 2 minutes 45 secondes."
             ));
+
+            // Send specialization to client for HUD display
+            com.example.mysubmod.network.NetworkHandler.INSTANCE.send(
+                net.minecraftforge.network.PacketDistributor.PLAYER.with(() -> player),
+                new com.example.mysubmod.submodes.submode2.network.SpecializationSyncPacket(resourceType)
+            );
+
             MySubMod.LOGGER.info("Player {} specialized in {}", player.getName().getString(), resourceType);
             return 1.0f; // Pas de pénalité à la première collecte
         }
@@ -134,6 +141,12 @@ public class SpecializationManager {
 
         // Changer la spécialisation
         playerSpecialization.put(playerId, resourceType);
+
+        // Send specialization change to client for HUD display
+        com.example.mysubmod.network.NetworkHandler.INSTANCE.send(
+            net.minecraftforge.network.PacketDistributor.PLAYER.with(() -> player),
+            new com.example.mysubmod.submodes.submode2.network.SpecializationSyncPacket(resourceType)
+        );
 
         // Appliquer la pénalité de 2 minutes 45 secondes
         long now = System.currentTimeMillis();

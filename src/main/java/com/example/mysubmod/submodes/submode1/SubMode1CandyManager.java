@@ -33,14 +33,13 @@ public class SubMode1CandyManager {
     public void startCandySpawning(MinecraftServer server) {
         MySubMod.LOGGER.info("Starting candy spawning for SubMode1");
 
-        // Clean up any previously loaded chunks before starting
-        unforceLoadChunks();
-
         // Store server reference
         this.gameServer = server;
 
-        // Force load chunks for all islands to keep entities loaded
-        forceLoadIslandChunks(server);
+        // Only force-load if not already done (avoid repeated calls and crashes)
+        if (forceLoadedChunks.isEmpty()) {
+            forceLoadIslandChunks(server);
+        }
 
         // Get spawn configuration from SubMode1Manager
         List<CandySpawnEntry> spawnConfig = SubMode1Manager.getInstance().getCandySpawnConfig();
@@ -78,8 +77,7 @@ public class SubMode1CandyManager {
         // Remove all existing candies
         removeAllCandies();
 
-        // Unforce load chunks
-        unforceLoadChunks();
+        // Note: We keep chunks force-loaded to avoid crashes from unloading
 
         MySubMod.LOGGER.info("Stopped candy spawning for SubMode1");
     }
