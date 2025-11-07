@@ -89,10 +89,10 @@ public class CandyCountHUD {
 
         // Type breakdown (minimal indent)
         String typeAText = "§9" + typeA;
-        guiGraphics.drawString(font, typeAText, x + 80, y+lineHeight/2 +5, ResourceType.TYPE_A.getColor());
+        guiGraphics.drawString(font, typeAText, x + 90, y+lineHeight/2 +5, ResourceType.TYPE_A.getColor());
 
         String typeBText = "§c" + typeB;
-        guiGraphics.drawString(font, typeBText, x + 80, y-lineHeight/2 +5, ResourceType.TYPE_B.getColor());
+        guiGraphics.drawString(font, typeBText, x + 90, y-lineHeight/2 +5, ResourceType.TYPE_B.getColor());
         y += lineHeight + lineHeight/2 + 10;
 
         return y;

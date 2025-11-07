@@ -185,8 +185,8 @@ public class CandyRandomFileScreen extends Screen {
                 """+
                 """            
                 # FICHIER GÉNÉRER Seed : \
-                """+seed+ ", Distance entre spawns: " + distance + ", temps entre spawn: " + time + "\n"+
-                        "Pourcentage de chance de type:  "+ pourcentage + ":" + pourcentageB +
+                """+seed+ ", Distance entre spawns: " + distance + ", temps entre spawn: " + time +
+                        "Pourcentage de chance de type:  "+ pourcentage + ":" + pourcentageB + "\n" +
                 """
                 # Format: temps_en_secondes,nombre_bonbons,x,y,z,type
                 # Temps: 0-900 secondes (15 minutes max)
