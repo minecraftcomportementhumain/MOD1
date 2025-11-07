@@ -1,6 +1,8 @@
-package com.example.mysubmod.submodes.submode1.client;
+package com.example.mysubmod.submodes.submode2.client;
 
+import com.example.mysubmod.submodes.submode2.client.CandyFileUploadScreen;
 import net.minecraft.client.gui.GuiGraphics;
+import net.minecraft.client.gui.components.AbstractSliderButton;
 import net.minecraft.client.gui.components.Button;
 import net.minecraft.client.gui.components.EditBox;
 import net.minecraft.client.gui.screens.Screen;
@@ -18,12 +20,13 @@ public class CandyRandomFileScreen extends Screen {
     private static final int EDITBOX_SIZE = 100;
     private static final int BUTTON_WIDTH = 80;
     private static final int BUTTON_HEIGHT = 20;
-    private static final int SPACING = 20;
+    private static final int SPACING = 15;
 
     private EditBox fileBox;
     private EditBox seedBox;
     private EditBox timeBox;
     private EditBox distanceBox;
+    private CustomSlider customSlider;
     private Button createButton;
     private Button returnButton;
 
@@ -35,7 +38,7 @@ public class CandyRandomFileScreen extends Screen {
     @Override
     protected void init() {
         super.init();
-
+        
         int centerX = this.width / 2;
         int startY = 80;
 
@@ -55,12 +58,21 @@ public class CandyRandomFileScreen extends Screen {
         distanceBox = new EditBox(this.font, centerX+SPACING, startY+SPACING*3, EDITBOX_SIZE, BUTTON_HEIGHT, Component.literal("Distance between spawns"));
         this.addRenderableWidget(distanceBox);
 
+        // Add a slider to the screen
+        customSlider = this.addRenderableWidget(new CustomSlider(
+                centerX+SPACING, // x position (centered)
+                startY+SPACING*6, // y position (centered)
+                EDITBOX_SIZE, // width
+                BUTTON_HEIGHT, // height
+                0.5 // initial value (0.0 to 1.0)
+        ));
+
         // Create button
         createButton = Button.builder(
                         Component.literal("Générer"),
                         button -> createFile()
                 )
-                .bounds(centerX - BUTTON_WIDTH - SPACING/2, startY + BUTTON_HEIGHT*5, BUTTON_WIDTH, BUTTON_HEIGHT)
+                .bounds(centerX - BUTTON_WIDTH - SPACING/2, startY + BUTTON_HEIGHT*6, BUTTON_WIDTH, BUTTON_HEIGHT)
                 .build();
         this.addRenderableWidget(createButton);
 
@@ -69,7 +81,7 @@ public class CandyRandomFileScreen extends Screen {
                         Component.literal("Retour"),
                         button -> setUploadScreen()
                 )
-                .bounds(centerX + SPACING/2, startY + BUTTON_HEIGHT*5, BUTTON_WIDTH, BUTTON_HEIGHT)
+                .bounds(centerX + SPACING/2, startY + BUTTON_HEIGHT*6, BUTTON_WIDTH, BUTTON_HEIGHT)
                 .build();
         this.addRenderableWidget(returnButton);
 
@@ -99,7 +111,10 @@ public class CandyRandomFileScreen extends Screen {
         guiGraphics.drawString(this.font, "Temps entre spawns", centerX + SPACING, startY - 15, 0xFFFFFF);
 
         // Label Distance between spawns
-        guiGraphics.drawString(this.font, "Distance entre spawns", centerX + SPACING, startY - 15 + SPACING*3, 0xFFFFFF);
+        guiGraphics.drawString(this.font, "Distance entre spawns", centerX + SPACING, startY - 15+SPACING*3, 0xFFFFFF);
+
+        // Label Distance between spawns
+        guiGraphics.drawString(this.font, "Pourcentage de chance de types(A:B)", centerX + SPACING, startY - 15 + SPACING *6, 0xFFFFFF);
 
 
         super.render(guiGraphics, mouseX, mouseY, partialTick);
@@ -107,6 +122,40 @@ public class CandyRandomFileScreen extends Screen {
 
     private void setUploadScreen(){
         this.minecraft.setScreen(new CandyFileUploadScreen());
+    }
+
+    private static class CustomSlider extends AbstractSliderButton {
+
+        public CustomSlider(int x, int y, int width, int height, double initialValue) {
+            super(x, y, width, height, Component.empty(), initialValue);
+            this.updateMessage();
+        }
+
+        @Override
+        protected void updateMessage() {
+            // Update the slider's display text
+            int percentageA = (int)(this.value * 100);
+            int percentageB = 100-percentageA;
+            this.setMessage(Component.literal(percentageA + ":"+percentageB));
+        }
+
+        @Override
+        protected void applyValue() {
+            // This is called when the slider value changes
+            // Add your logic here (e.g., update a config value)
+            System.out.println("Slider value changed to: " + (int)(this.value*100));
+        }
+
+        // Optional: Get the current value
+        public int getValue() {
+            return (int)(this.value*100);
+        }
+
+        // Optional: Set a specific value programmatically
+        public void setValue(double value) {
+            this.value = Math.max(0.0, Math.min(1.0, value));
+            this.updateMessage();
+        }
     }
 
     private void createFile(){
@@ -124,8 +173,11 @@ public class CandyRandomFileScreen extends Screen {
             }
             int time = Integer.parseInt(timeBox.getValue());
             int distance = Integer.parseInt(distanceBox.getValue());
+            int pourcentage = customSlider.getValue();
+            int pourcentageB = 100 - pourcentage;
+
             //If distance is higher than possible distance between last spawn than just spawn it anyway
-            if(!(file.isEmpty() || (time < 0 || time > 900) || distance < 0)){
+            if(!(file.isEmpty() || (time < 0 || time > 900) || distance < 0 || (pourcentage < 0 || pourcentage > 100))){
                 random.setSeed(seed);
 
                 String content = """
@@ -133,9 +185,10 @@ public class CandyRandomFileScreen extends Screen {
                 """+
                 """            
                 # FICHIER GÉNÉRER Seed : \
-                """+seed+ ", Distance entre spawns:" + distance + ", temps entre spawn: " + time + "\n"+
+                """+seed+ ", Distance entre spawns: " + distance + ", temps entre spawn: " + time + "\n"+
+                        "Pourcentage de chance de type:  "+ pourcentage + ":" + pourcentageB +
                 """
-                # Format: temps_en_secondes,nombre_bonbons,x,y,z
+                # Format: temps_en_secondes,nombre_bonbons,x,y,z,type
                 # Temps: 0-900 secondes (15 minutes max)
                 # Nombre de bonbons: 1-100 max
                 # Coordonnées: doivent être sur une des 4 îles
@@ -198,7 +251,13 @@ public class CandyRandomFileScreen extends Screen {
                             }
 
                             list.add(point);
-                            content += timeCounter+",1,"+x+",101,"+z+"\n";
+                            char type = 'A';
+                            int randomTypeNumber = random.nextInt(0,100);
+                            System.out.println(randomTypeNumber +" "+ pourcentage);
+                            if(randomTypeNumber > pourcentage){
+                                type='B';
+                            }
+                            content += timeCounter+",1,"+x+",101,"+z+","+type+"\n";
                             if(spawnerCounter != 0){
                                 list.clear();
                             }
