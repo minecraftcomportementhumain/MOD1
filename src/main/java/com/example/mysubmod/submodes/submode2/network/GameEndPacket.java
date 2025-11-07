@@ -39,6 +39,8 @@ public class GameEndPacket {
             com.example.mysubmod.submodes.submode2.client.ClientGameTimer.deactivate();
             // Deactivate penalty timer HUD
             com.example.mysubmod.submodes.submode2.client.PenaltyTimerHUD.deactivate();
+            // Deactivate candy count HUD (this will also clear specialization)
+            com.example.mysubmod.submodes.submode2.client.CandyCountHUD.deactivate();
         }
     }
 }
