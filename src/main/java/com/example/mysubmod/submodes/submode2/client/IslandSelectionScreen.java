@@ -83,10 +83,10 @@ public class IslandSelectionScreen extends Screen {
 
         String timeText = "Temps restant: " + timeLeft + "s";
         int timeColor = timeLeft <= 10 ? 0xFF5555 : 0xFFFF55;
-        guiGraphics.drawCenteredString(this.font, Component.literal(timeText), centerX, titleY + 20, timeColor);
+        guiGraphics.drawCenteredString(this.font, Component.literal(timeText), centerX, titleY + 10, timeColor);
 
         String instructionText = "Choisissez votre île de départ";
-        guiGraphics.drawCenteredString(this.font, Component.literal(instructionText), centerX, titleY + 35, 0xAAAAAA);
+        guiGraphics.drawCenteredString(this.font, Component.literal(instructionText), centerX, titleY + 20, 0xAAAAAA);
 
         super.render(guiGraphics, mouseX, mouseY, partialTick);
     }
