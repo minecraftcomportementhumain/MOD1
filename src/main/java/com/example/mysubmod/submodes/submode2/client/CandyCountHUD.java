@@ -70,17 +70,15 @@ public class CandyCountHUD {
         // Island name with total
         String islandText = getIslandShortName(island) + ": " + total;
         int islandColor = getIslandColor(island);
-        guiGraphics.drawString(font, islandText, x, y, islandColor);
-        y += lineHeight;
+        guiGraphics.drawString(font, islandText, x, y+5, islandColor);
 
         // Type breakdown (minimal indent)
-        String typeAText = "§9Bleu: " + typeA;
-        guiGraphics.drawString(font, typeAText, x + 3, y, ResourceType.TYPE_A.getColor());
-        y += lineHeight;
+        String typeAText = "§9" + typeA;
+        guiGraphics.drawString(font, typeAText, x + 80, y+lineHeight/2 +5, ResourceType.TYPE_A.getColor());
 
-        String typeBText = "§cRouge: " + typeB;
-        guiGraphics.drawString(font, typeBText, x + 3, y, ResourceType.TYPE_B.getColor());
-        y += lineHeight;
+        String typeBText = "§c" + typeB;
+        guiGraphics.drawString(font, typeBText, x + 80, y-lineHeight/2 +5, ResourceType.TYPE_B.getColor());
+        y += lineHeight + lineHeight/2 + 10;
 
         return y;
     }
