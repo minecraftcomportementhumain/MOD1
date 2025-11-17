@@ -12,7 +12,7 @@
       "parent": "mysubmod:item/candy_red_3d"
     },
     "fixed": {
-      "parent": "mysubmod:item/candy_red_2d"
+      "parent": "mysubmod:item/candy_red_3d"
     }
   }
 }

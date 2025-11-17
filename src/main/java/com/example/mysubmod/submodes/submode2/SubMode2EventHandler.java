@@ -11,6 +11,8 @@ import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.InteractionResult;
 import net.minecraft.world.entity.item.ItemEntity;
 import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.level.GameType;
+import net.minecraft.world.level.block.entity.SignBlockEntity;
 import net.minecraft.world.phys.Vec3;
 import net.minecraftforge.event.entity.living.LivingAttackEvent;
 import net.minecraftforge.event.entity.EntityJoinLevelEvent;
@@ -84,9 +86,13 @@ public class SubMode2EventHandler {
                 event.setCancellationResult(InteractionResult.FAIL);
                 player.sendSystemMessage(Component.literal("§cVous ne pouvez pas interagir avec les blocs en sous-mode 2"));
             } else if (SubMode2Manager.getInstance().isPlayerSpectator(player.getUUID())) {
-                event.setCanceled(true);
-                event.setCancellationResult(InteractionResult.FAIL);
-                player.sendSystemMessage(Component.literal("§cVous ne pouvez pas interagir avec les blocs en tant que spectateur"));
+                if (event.getLevel().getBlockEntity(event.getPos()) instanceof SignBlockEntity) {
+                    player.setGameMode(GameType.SPECTATOR);
+                } else {
+                    event.setCanceled(true);
+                    event.setCancellationResult(InteractionResult.FAIL);
+                    player.sendSystemMessage(Component.literal("§cVous ne pouvez pas interagir avec les blocs en tant que spectateur"));
+                }
             }
         }
     }
@@ -115,19 +121,6 @@ public class SubMode2EventHandler {
                 SubMode2Manager.getInstance().isPlayerAlive(player.getUUID()),
                 SubMode2Manager.getInstance().isPlayerSpectator(player.getUUID()));
 
-            // ALWAYS prevent sign breaking for non-admins (to preserve text) - even during selection phase
-            if (block instanceof net.minecraft.world.level.block.SignBlock ||
-                block instanceof net.minecraft.world.level.block.StandingSignBlock ||
-                block instanceof net.minecraft.world.level.block.WallSignBlock) {
-                if (!SubModeManager.getInstance().isAdmin(player)) {
-                    event.setCanceled(true);
-                    MySubMod.LOGGER.info("BLOCKED sign break for non-admin player: {}", player.getName().getString());
-                    return;
-                } else {
-                    MySubMod.LOGGER.info("ALLOWED sign break for admin player: {}", player.getName().getString());
-                    return; // Allow admin to break signs
-                }
-            }
 
             if (SubMode2Manager.getInstance().isPlayerAlive(player.getUUID())) {
                 event.setCanceled(true);
@@ -567,7 +560,8 @@ public class SubMode2EventHandler {
         double distanceZ = Math.abs(playerPos.z - spectatorCenter.getZ());
 
         // Check if player is outside platform bounds or below platform
-        if (distanceX > platformSize/2.0 - 1 || distanceZ > platformSize/2.0 - 1 || playerPos.y < spectatorCenter.getY() - 5) {
+        if ((distanceX > platformSize/2.0 - 1 || distanceZ > platformSize/2.0 - 1 || playerPos.y < spectatorCenter.getY() - 5)
+            && player.gameMode.getGameModeForPlayer() != GameType.SPECTATOR) {
             Vec3 teleportPos = new Vec3(spectatorCenter.getX() + 0.5, spectatorCenter.getY() + 1, spectatorCenter.getZ() + 0.5);
             player.teleportTo(teleportPos.x, teleportPos.y, teleportPos.z);
             player.sendSystemMessage(Component.literal("§eVous ne pouvez pas quitter la plateforme spectateur"));
