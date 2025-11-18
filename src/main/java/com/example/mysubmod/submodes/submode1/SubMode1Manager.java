@@ -15,11 +15,18 @@ import com.example.mysubmod.submodes.submode1.network.GameTimerPacket;
 import com.example.mysubmod.submodes.submode1.network.GameEndPacket;
 import com.example.mysubmod.submodes.submode1.timer.GameTimer;
 import net.minecraft.core.BlockPos;
+import net.minecraft.core.Direction;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.network.chat.Component;
+import net.minecraft.world.item.DyeColor;
 import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.level.GameType;
+import net.minecraft.world.level.block.Blocks;
+import net.minecraft.world.level.block.WallSignBlock;
+import net.minecraft.world.level.block.entity.SignBlockEntity;
+import net.minecraft.world.level.block.entity.SignText;
 import net.minecraftforge.network.PacketDistributor;
 
 import java.util.*;
@@ -831,7 +838,7 @@ public class SubMode1Manager {
         for (int x = -10; x <= 10; x++) {
             for (int z = -10; z <= 10; z++) {
                 level.setBlock(spectatorPlatform.offset(x, 0, z),
-                    net.minecraft.world.level.block.Blocks.GLASS.defaultBlockState(), 3);
+                        net.minecraft.world.level.block.Blocks.GLASS.defaultBlockState(), 3);
             }
         }
 
@@ -844,12 +851,32 @@ public class SubMode1Manager {
                 // Place barriers 1-3 blocks high around the platform
                 for (int y = 1; y <= 3; y++) {
                     level.setBlock(spectatorPlatform.offset(x, y, z),
-                        net.minecraft.world.level.block.Blocks.BARRIER.defaultBlockState(), 3);
+                            net.minecraft.world.level.block.Blocks.BARRIER.defaultBlockState(), 3);
                 }
             }
         }
-    }
 
+        //Ajouter un signe
+        level.setBlock(spectatorPlatform.offset(0, 2, 10),
+                Blocks.OAK_WALL_SIGN.defaultBlockState().setValue(WallSignBlock.FACING, Direction.NORTH), 3);
+        if (level.getBlockEntity(spectatorPlatform.offset(0, 2, 10)) instanceof SignBlockEntity sign) {
+            Component[] c1 = new Component[]{
+                    Component.literal("Cliquer sur ce"),
+                    Component.literal("signe pour aller"),
+                    Component.literal("en mode"),
+                    Component.literal("spectacteur")
+            };
+            Component[] c2 = new Component[]{
+                    Component.literal("Cliquer sur ce"),
+                    Component.literal("signe pour aller"),
+                    Component.literal("en mode"),
+                    Component.literal("spectacteur")
+            };
+
+            sign.setText(new SignText(c1, c2, DyeColor.BLACK, false), true);
+            sign.setChanged();
+        }
+    }
     private void clearMap(ServerLevel level) {
         if (level == null) return;
 
@@ -1665,6 +1692,7 @@ public class SubMode1Manager {
                 spectatorPlatform.getX() + 0.5,
                 spectatorPlatform.getY() + 1,
                 spectatorPlatform.getZ() + 0.5);
+            player.setGameMode(GameType.SURVIVAL);
             spectatorPlayers.add(player.getUUID());
             alivePlayers.remove(player.getUUID());
         }
@@ -2540,6 +2568,7 @@ public class SubMode1Manager {
                     centralSquare.getX() + 0.5,
                     centralSquare.getY() + 1,
                     centralSquare.getZ() + 0.5);
+                player.setGameMode(GameType.SURVIVAL);
             }
         }
     }

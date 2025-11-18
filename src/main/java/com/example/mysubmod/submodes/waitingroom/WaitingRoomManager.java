@@ -7,6 +7,7 @@ import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.level.GameType;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.dimension.DimensionType;
 import net.minecraft.network.chat.Component;
@@ -136,6 +137,7 @@ public class WaitingRoomManager {
             Vec3 spawnPos = new Vec3(PLATFORM_CENTER.getX() + 0.5, PLATFORM_CENTER.getY() + 1, PLATFORM_CENTER.getZ() + 0.5);
             player.teleportTo(overworld, spawnPos.x, spawnPos.y, spawnPos.z, 0.0f, 0.0f);
             waitingRoomPlayers.add(player.getUUID());
+            player.setGameMode(GameType.SURVIVAL);
 
             player.sendSystemMessage(Component.literal("§eVous avez été téléporté vers la salle d'attente"));
         }
