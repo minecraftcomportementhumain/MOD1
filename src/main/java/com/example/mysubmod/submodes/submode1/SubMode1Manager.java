@@ -2153,15 +2153,18 @@ public class SubMode1Manager {
         if (gameActive && playersInSelectionPhase.contains(playerId) && !alivePlayers.contains(playerId)) {
             // Check if player disconnected BEFORE island selection phase started
             // If they disconnected during file selection phase, they should be spectator
-            if (selectionStartTime > 0 && disconnectTime < selectionStartTime) {
-                MySubMod.LOGGER.info("Player {} disconnected during file selection phase (before island selection started) - sending to spectator", player.getName().getString());
-                spectatorPlayers.add(playerId);
+            // or if player died and reconnected in spectactor
+            if ((selectionStartTime > 0 && disconnectTime < selectionStartTime) || spectatorPlayers.contains(playerId)) {
+                if(selectionStartTime > 0 && disconnectTime < selectionStartTime){
+                    spectatorPlayers.add(playerId);
+                    player.sendSystemMessage(Component.literal("§cVous vous êtes déconnecté avant la phase de sélection des îles.\n§7Vous êtes maintenant spectateur."));
+                }
                 teleportToSpectator(player);
-                player.sendSystemMessage(Component.literal("§cVous vous êtes déconnecté avant la phase de sélection des îles.\n§7Vous êtes maintenant spectateur."));
+                MySubMod.LOGGER.info("Player {} disconnected during file selection phase (before island selection started) - sending to spectator", player.getName().getString());
 
                 // Log reconnection as spectator
                 if (dataLogger != null) {
-                    dataLogger.logPlayerAction(player, "RECONNECTED (spectator - missed island selection)");
+                    dataLogger.logPlayerAction(player, "RECONNECTED (spectator - missed island selection or  reconnected in spectator)");
                 }
                 return;
             }
