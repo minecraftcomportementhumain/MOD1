@@ -1,14 +1,17 @@
 package com.example.mysubmod.submodes.submode2.data;
 
 import com.example.mysubmod.MySubMod;
+import com.example.mysubmod.submodes.submode2.network.CandyFileUploadPacket;
 import com.example.mysubmod.submodes.submode2.ResourceType;
 import net.minecraft.core.BlockPos;
 
 import java.io.*;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.*;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.stream.Collectors;
 
 /**
@@ -19,6 +22,7 @@ import java.util.stream.Collectors;
 public class CandySpawnFileManager {
     private static final String CANDY_SPAWN_DIRECTORY = "candy_spawn_configs_submode2";
     private static CandySpawnFileManager instance;
+    private static final Map<UUID, ConcurrentHashMap<Integer, byte[]>> pendingUploads = new ConcurrentHashMap<>();
 
     private CandySpawnFileManager() {}
 
@@ -273,6 +277,76 @@ public class CandySpawnFileManager {
             MySubMod.LOGGER.error("Failed to save uploaded SubMode2 candy spawn config", e);
             return false;
         }
+    }
+
+    public int handleChunk(CandyFileUploadPacket packet) {
+
+        // Store the chunk
+        pendingUploads
+                .computeIfAbsent(packet.getTransferId(), k -> new ConcurrentHashMap<>())
+                .put(packet.getChunkIndex(), packet.getChunkData());
+        Path configFile = Path.of("");
+        // Check if all chunks are received
+        if (pendingUploads.get(packet.getTransferId()).size() == packet.getTotalChunks()) {
+            // Reassemble
+            byte[] fullData = combineByteArrays(pendingUploads.get(packet.getTransferId()), packet.getTotalChunks());
+            String fileContent = new String(fullData, StandardCharsets.UTF_8);
+            try {
+                ensureDirectoryExists();
+                String filename = packet.getFilename();
+                configFile = Paths.get(CANDY_SPAWN_DIRECTORY, filename);
+
+                // Validate content
+                String[] lines = fileContent.split("\\r?\\n");
+                List<CandySpawnEntry> testEntries = new ArrayList<>();
+
+                for (String line : lines) {
+                    line = line.trim();
+                    if (line.isEmpty() || line.startsWith("#")) {
+                        continue;
+                    }
+
+                    try {
+                        CandySpawnEntry entry = parseLine(line);
+                        if (entry != null) {
+                            testEntries.add(entry);
+                        }
+                    } catch (Exception e) {
+                        MySubMod.LOGGER.warn("Invalid line in uploaded SubMode2 file: {} ({})", line, e.getMessage());
+                        return -1;
+                    }
+                }
+
+                if (testEntries.isEmpty()) {
+                    MySubMod.LOGGER.warn("Uploaded SubMode2 file contains no valid entries");
+                    return -1;
+                }
+
+                Files.writeString(configFile, fileContent);
+                MySubMod.LOGGER.info("Successfully saved uploaded SubMode2 candy spawn config: {}", filename);
+                // Clean up storage
+                pendingUploads.remove(packet.getTransferId());
+                return 0;
+
+            } catch (IOException e) {
+                MySubMod.LOGGER.error("Failed to save uploaded SubMode2 candy spawn config", e);
+                return -1;
+            }
+        }
+        //Still waiting for more
+        return 1;
+    }
+
+    private static byte[] combineByteArrays(Map<Integer, byte[]> chunks, int totalChunks) {
+        ByteArrayOutputStream outputStream = new ByteArrayOutputStream();
+        for (int i = 0; i < totalChunks; i++) {
+            try {
+                outputStream.write(chunks.get(i));
+            } catch (IOException e) {
+                e.printStackTrace();
+            }
+        }
+        return outputStream.toByteArray();
     }
 
     public String getDefaultFile() {

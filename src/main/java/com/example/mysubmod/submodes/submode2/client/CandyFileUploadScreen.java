@@ -10,11 +10,13 @@ import net.minecraft.network.chat.Component;
 import org.lwjgl.glfw.GLFW;
 
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.UUID;
 
 public class CandyFileUploadScreen extends Screen {
     private EditBox pathBox;
@@ -259,7 +261,7 @@ public class CandyFileUploadScreen extends Screen {
             return;
         }
 
-        NetworkHandler.INSTANCE.sendToServer(new CandyFileUploadPacket(loadedFilename, loadedContent));
+        sendChunksFile(loadedFilename,loadedContent);
         onClose();
     }
 
@@ -301,6 +303,25 @@ public class CandyFileUploadScreen extends Screen {
         guiGraphics.drawCenteredString(this.font, format, centerX, startY + 100, 0x888888);
 
         super.render(guiGraphics, mouseX, mouseY, partialTick);
+    }
+
+    public void sendChunksFile(String loadedFilename,String loadedContent){
+        byte[] data = loadedContent.getBytes(StandardCharsets.UTF_8);
+        final int MAX_CHUNK_SIZE = 1000;
+        UUID transferId = UUID.randomUUID();
+        int totalChunks = (int) Math.ceil((double) data.length / MAX_CHUNK_SIZE);
+
+        for (int i = 0; i < totalChunks; i++) {
+            int start = i * MAX_CHUNK_SIZE;
+            int length = Math.min(data.length - start, MAX_CHUNK_SIZE);
+            byte[] chunkData = new byte[length];
+            System.arraycopy(data, start, chunkData, 0, length);
+
+            // Send the new chunk packet:
+            CandyFileUploadPacket packet = new CandyFileUploadPacket(transferId, loadedFilename, totalChunks, i, chunkData);
+            NetworkHandler.INSTANCE.sendToServer(packet);
+        }
+
     }
 
     @Override

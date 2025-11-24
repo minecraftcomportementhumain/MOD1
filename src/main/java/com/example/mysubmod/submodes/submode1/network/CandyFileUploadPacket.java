@@ -8,34 +8,42 @@ import net.minecraft.server.level.ServerPlayer;
 import net.minecraftforge.network.NetworkEvent;
 
 import java.nio.charset.StandardCharsets;
+import java.util.UUID;
 import java.util.function.Supplier;
 
 public class CandyFileUploadPacket {
+    private final UUID transferId;
     private final String filename;
-    private final byte[] content;
+    private final int totalChunks;
+    private final int chunkIndex;
+    private final byte[] chunkData;
 
-    public CandyFileUploadPacket(String filename, String content) {
+    public CandyFileUploadPacket(UUID transferId, String filename, int totalChunks, int chunkIndex, byte[] chunkData) {
+        this.transferId = transferId;
         this.filename = filename;
-        this.content = content.getBytes(StandardCharsets.UTF_8);
-    }
-
-    public CandyFileUploadPacket(String filename, byte[] content) {
-        this.filename = filename;
-        this.content = content;
+        this.totalChunks = totalChunks;
+        this.chunkIndex = chunkIndex;
+        this.chunkData = chunkData;
     }
 
     public static void encode(CandyFileUploadPacket packet, FriendlyByteBuf buf) {
+        buf.writeUUID(packet.transferId);
         buf.writeUtf(packet.filename);
-        buf.writeInt(packet.content.length);
-        buf.writeBytes(packet.content);
+        buf.writeInt(packet.totalChunks);
+        buf.writeInt(packet.chunkIndex);
+        buf.writeInt(packet.chunkData.length);
+        buf.writeBytes(packet.chunkData);
     }
 
     public static CandyFileUploadPacket decode(FriendlyByteBuf buf) {
+        UUID transferId = buf.readUUID();
         String filename = buf.readUtf();
+        int totalChunks = buf.readInt();
+        int chunkIndex = buf.readInt();
         int length = buf.readInt();
-        byte[] content = new byte[length];
-        buf.readBytes(content);
-        return new CandyFileUploadPacket(filename, content);
+        byte[] chunkData = new byte[length];
+        buf.readBytes(chunkData);
+        return new CandyFileUploadPacket(transferId, filename, totalChunks, chunkIndex, chunkData);
     }
 
     public static void handle(CandyFileUploadPacket packet, Supplier<NetworkEvent.Context> ctx) {
@@ -44,11 +52,10 @@ public class CandyFileUploadPacket {
             if (player != null) {
                 // Verify admin permissions on server side
                 if (SubModeManager.getInstance().isAdmin(player)) {
-                    boolean success = CandySpawnFileManager.getInstance().saveUploadedFile(
-                            packet.filename, packet.intoString(packet.content));
-                    if (success) {
+                    int success = CandySpawnFileManager.getInstance().handleChunk(packet);
+                    if (success == 0) {
                         player.sendSystemMessage(Component.literal("§aFichier de spawn de bonbons téléchargé avec succès: " + packet.filename));
-                    } else {
+                    } else if(success == -1){
                         player.sendSystemMessage(Component.literal("§cErreur lors du téléchargement du fichier. Vérifiez le format."));
                     }
                 } else {
@@ -63,11 +70,9 @@ public class CandyFileUploadPacket {
         return new String(byteArray, StandardCharsets.UTF_8);
     }
 
-    public String getFilename() {
-        return filename;
-    }
-
-    public byte[] getContent() {
-        return content;
-    }
+    public UUID getTransferId() { return transferId; }
+    public String getFilename() { return filename; }
+    public int getTotalChunks() { return totalChunks; }
+    public int getChunkIndex() { return chunkIndex; }
+    public byte[] getChunkData() { return chunkData; }
 }

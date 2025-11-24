@@ -66,6 +66,10 @@ public class SubMode1EventHandler {
             return;
         }
 
+        if (event.getHand() != InteractionHand.MAIN_HAND) {
+            return;
+        }
+
         if (event.getEntity() instanceof ServerPlayer player) {
             // Skip temporary queue candidate accounts
             if (PlayerFilterUtil.isRestrictedPlayer(player)) {

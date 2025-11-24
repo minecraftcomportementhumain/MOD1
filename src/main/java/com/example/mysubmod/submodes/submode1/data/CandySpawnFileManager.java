@@ -1,18 +1,22 @@
 package com.example.mysubmod.submodes.submode1.data;
 
 import com.example.mysubmod.MySubMod;
+import com.example.mysubmod.submodes.submode1.network.CandyFileUploadPacket;
 import net.minecraft.core.BlockPos;
 
 import java.io.*;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.*;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.stream.Collectors;
 
 public class CandySpawnFileManager {
     private static final String CANDY_SPAWN_DIRECTORY = "candy_spawn_configs";
     private static CandySpawnFileManager instance;
+    private static final Map<UUID, ConcurrentHashMap<Integer, byte[]>> pendingUploads = new ConcurrentHashMap<>();
 
     private CandySpawnFileManager() {}
 
@@ -235,13 +239,25 @@ public class CandySpawnFileManager {
         return false;
     }
 
-    public boolean saveUploadedFile(String filename, String content) {
-        try {
+    public int handleChunk(CandyFileUploadPacket packet) {
+
+        // Store the chunk
+        pendingUploads
+                .computeIfAbsent(packet.getTransferId(), k -> new ConcurrentHashMap<>())
+                .put(packet.getChunkIndex(), packet.getChunkData());
+        Path configFile = Path.of("");
+        // Check if all chunks are received
+        if (pendingUploads.get(packet.getTransferId()).size() == packet.getTotalChunks()) {
+            // Reassemble
+            byte[] fullData = combineByteArrays(pendingUploads.get(packet.getTransferId()), packet.getTotalChunks());
+            String fileContent = new String(fullData, StandardCharsets.UTF_8);
+            try {
             ensureDirectoryExists();
-            Path configFile = Paths.get(CANDY_SPAWN_DIRECTORY, filename);
+            String filename = packet.getFilename();
+            configFile = Paths.get(CANDY_SPAWN_DIRECTORY, filename);
 
             // Validate the content by trying to parse it
-            String[] lines = content.split("\\r?\\n");
+            String[] lines = fileContent.split("\\r?\\n");
             List<CandySpawnEntry> testEntries = new ArrayList<>();
 
             for (String line : lines) {
@@ -257,23 +273,40 @@ public class CandySpawnFileManager {
                     }
                 } catch (Exception e) {
                     MySubMod.LOGGER.warn("Invalid line in uploaded file: {} ({})", line, e.getMessage());
-                    return false;
+                    return -1;
                 }
             }
 
             if (testEntries.isEmpty()) {
                 MySubMod.LOGGER.warn("Uploaded file contains no valid entries");
-                return false;
+                return -1;
             }
 
-            Files.writeString(configFile, content);
+            Files.writeString(configFile, fileContent);
             MySubMod.LOGGER.info("Successfully saved uploaded candy spawn config: {}", filename);
-            return true;
 
+            // Clean up storage
+            pendingUploads.remove(packet.getTransferId());
+            return 0;
         } catch (IOException e) {
             MySubMod.LOGGER.error("Failed to save uploaded candy spawn config", e);
-            return false;
+            return -1;
         }
+        }
+        //Still waiting for more
+        return 1;
+    }
+
+    private static byte[] combineByteArrays(Map<Integer, byte[]> chunks, int totalChunks) {
+        ByteArrayOutputStream outputStream = new ByteArrayOutputStream();
+        for (int i = 0; i < totalChunks; i++) {
+            try {
+                outputStream.write(chunks.get(i));
+            } catch (IOException e) {
+                e.printStackTrace();
+            }
+        }
+        return outputStream.toByteArray();
     }
 
     public String getDefaultFile() {
