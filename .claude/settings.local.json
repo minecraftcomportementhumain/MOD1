@@ -1,0 +1,31 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(cat:*)",
+      "Bash(dir /s /b /ad \"C:\\Users\\Olivier Lafontaine\\Desktop\\Projet Minecraft\\forge-1.20.1-47.3.39-mdk\\src\\main\\java\\com\\example\\mysubmod\\sousmodes\")",
+      "Bash(powershell -Command \"(Get-Content ''authentification/GestionnaireAuth.java'' -Raw) -replace ''sousmodes\\.waitingroom'', ''sousmodes.salleattente'' | Set-Content ''authentification/GestionnaireAuth.java'' -NoNewline\")",
+      "Bash(powershell -Command \"(Get-Content ''authentification/GestionnaireAuthAdmin.java'' -Raw) -replace ''sousmodes\\.waitingroom'', ''sousmodes.salleattente'' | Set-Content ''authentification/GestionnaireAuthAdmin.java'' -NoNewline\")",
+      "Bash(powershell -Command \"(Get-Content ''MonSubMod.java'' -Raw) -replace ''sousmodes\\.waitingroom'', ''sousmodes.salleattente'' | Set-Content ''MonSubMod.java'' -NoNewline\")",
+      "Bash(git commit:*)",
+      "Bash(cmd /c:*)",
+      "Bash(./gradlew build:*)",
+      "Bash(powershell -Command:*)",
+      "Bash(git add:*)",
+      "Bash(icacls:*)",
+      "Bash(dir /b:*)",
+      "Bash(powershell -ExecutionPolicy Bypass -File \"C:\\Users\\Olivier Lafontaine\\Desktop\\Projet Minecraft\\rename_folders.ps1\")",
+      "Bash(powershell -ExecutionPolicy Bypass -File \"C:\\Users\\Olivier Lafontaine\\Desktop\\Projet Minecraft\\replace_logger.ps1\")",
+      "Bash(powershell -ExecutionPolicy Bypass -File \"C:\\Users\\Olivier Lafontaine\\Desktop\\Projet Minecraft\\fix_bom.ps1\")",
+      "Bash(powershell -ExecutionPolicy Bypass -File \"C:\\Users\\Olivier Lafontaine\\Desktop\\Projet Minecraft\\replace_submode.ps1\")",
+      "Bash(powershell -ExecutionPolicy Bypass -File:*)",
+      "Bash(del \"C:\\Users\\Olivier Lafontaine\\Desktop\\Projet Minecraft\\MOD1-MAIN-FR\\MOD1-MAIN-FR\\traduire_variables.py\")",
+      "Bash(del \"C:\\Users\\Olivier Lafontaine\\Desktop\\Projet Minecraft\\MOD1-MAIN-FR\\MOD1-MAIN-FR\\src\\main\\java\\com\\example\\mysubmod\\sousmodes\\sousmode1\\SubMode1Manager.java.backup\")",
+      "Bash(git init:*)",
+      "Bash(git remote add:*)",
+      "Bash(git fetch:*)",
+      "Bash(git checkout:*)"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}
