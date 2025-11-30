@@ -31,14 +31,14 @@ public class PaquetSuppressionFichierBonbons {
             if (joueur != null && GestionnaireSousModes.getInstance().estAdmin(joueur)) {
                 boolean succes = GestionnaireFichiersApparitionBonbons.getInstance().supprimerFichier(paquet.nomFichier);
                 if (succes) {
-                    MonSubMod.JOURNALISEUR.info("Admin {} a supprimé le fichier de spawn de bonbons Sous-mode 2: {}",
+                    MonSubMod.JOURNALISEUR.info("Admin {} a supprimé le fichier d'apparition de bonbons Sous-mode 2: {}",
                         joueur.getName().getString(), paquet.nomFichier);
                 } else {
-                    MonSubMod.JOURNALISEUR.warn("Échec de la suppression du fichier de spawn de bonbons Sous-mode 2: {} par {}",
+                    MonSubMod.JOURNALISEUR.warn("Échec de la suppression du fichier d'apparition de bonbons Sous-mode 2: {} par {}",
                         paquet.nomFichier, joueur.getName().getString());
                 }
             } else {
-                MonSubMod.JOURNALISEUR.warn("Joueur non-admin {} a tenté de supprimer un fichier de spawn de bonbons Sous-mode 2",
+                MonSubMod.JOURNALISEUR.warn("Joueur non-admin {} a tenté de supprimer un fichier d'apparition de bonbons Sous-mode 2",
                     joueur != null ? joueur.getName().getString() : "inconnu");
             }
         });

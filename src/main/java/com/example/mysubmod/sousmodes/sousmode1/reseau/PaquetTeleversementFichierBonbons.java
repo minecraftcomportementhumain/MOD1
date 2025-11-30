@@ -54,7 +54,7 @@ public class PaquetTeleversementFichierBonbons {
                 if (GestionnaireSousModes.getInstance().estAdmin(joueur)) {
                     int succes = GestionnaireFichiersApparitionBonbons.getInstance().gererMorceau(paquet);
                     if (succes == 0) {
-                        joueur.sendSystemMessage(Component.literal("§aFichier de spawn de bonbons téléchargé avec succès: " + paquet.nomFichier));
+                        joueur.sendSystemMessage(Component.literal("§aFichier d'apparition de bonbons téléchargé avec succès: " + paquet.nomFichier));
                     } else if(succes == -1){
                         joueur.sendSystemMessage(Component.literal("§cErreur lors du téléchargement du fichier. Vérifiez le format."));
                     }

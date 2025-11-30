@@ -1771,7 +1771,7 @@ public class GestionnaireSousMode2 {
         List<String> fichiersDisponibles = GestionnaireFichiersApparitionBonbons.getInstance().obtenirFichiersDisponibles();
 
         if (fichiersDisponibles.isEmpty()) {
-            joueur.sendSystemMessage(Component.literal("§cAucun fichier de spawn de bonbons trouvé. Utilisation de la configuration par défaut."));
+            joueur.sendSystemMessage(Component.literal("§cAucun fichier d'apparition de bonbons trouvé. Utilisation de la configuration par défaut."));
             definirFichierApparitionBonbons(null);
             demarrerSelectionIle(joueur.getServer());
             return;
@@ -1789,15 +1789,15 @@ public class GestionnaireSousMode2 {
 
         if (nomFichier != null) {
             this.configApparitionBonbons = GestionnaireFichiersApparitionBonbons.getInstance().chargerConfigApparition(nomFichier);
-            MonSubMod.JOURNALISEUR.info("Fichier de spawn bonbons sélectionné: {} avec {} entrées", nomFichier, configApparitionBonbons.size());
+            MonSubMod.JOURNALISEUR.info("Fichier d'apparition bonbons sélectionné: {} avec {} entrées", nomFichier, configApparitionBonbons.size());
 
             // Notifier l'initiateur de partie (mais NE PAS démarrer la sélection d'île - l'appelant le fera)
             if (initiateurPartie != null) {
-                initiateurPartie.sendSystemMessage(Component.literal("§aFichier de spawn sélectionné: " + nomFichier));
+                initiateurPartie.sendSystemMessage(Component.literal("§aFichier d'apparition sélectionné: " + nomFichier));
             }
         } else {
             this.configApparitionBonbons = new ArrayList<>();
-            MonSubMod.JOURNALISEUR.warn("Aucun fichier de spawn bonbons sélectionné, utilisation d'une configuration vide");
+            MonSubMod.JOURNALISEUR.warn("Aucun fichier d'apparition bonbons sélectionné, utilisation d'une configuration vide");
         }
     }
 
