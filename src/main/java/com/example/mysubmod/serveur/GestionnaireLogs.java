@@ -67,7 +67,7 @@ public class GestionnaireLogs {
         try {
             File repertoireBase = new File(REPERTOIRE_BASE_LOGS);
             if (!repertoireBase.exists()) {
-                joueur.sendSystemMessage(net.minecraft.network.chat.Component.literal("§cAucun dossier de logs trouvé"));
+                joueur.sendSystemMessage(net.minecraft.network.chat.Component.literal("§cAucun dossier de journalisation trouvé"));
                 return;
             }
 
@@ -77,8 +77,8 @@ public class GestionnaireLogs {
                 envoyerDossierUniqueAuClient(joueur, new File(repertoireBase, nomDossier));
             }
         } catch (Exception e) {
-            MonSubMod.JOURNALISEUR.error("Erreur lors du téléchargement des logs", e);
-            joueur.sendSystemMessage(net.minecraft.network.chat.Component.literal("§cErreur lors du téléchargement des logs"));
+            MonSubMod.JOURNALISEUR.error("Erreur lors du téléchargement des journaux", e);
+            joueur.sendSystemMessage(net.minecraft.network.chat.Component.literal("§cErreur lors du téléchargement des journaux"));
         }
     }
 
@@ -101,10 +101,10 @@ public class GestionnaireLogs {
         byte[] donneesZip = fluxSortieTableauOctets.toByteArray();
         GestionnaireReseau.INSTANCE.send(
             PacketDistributor.PLAYER.with(() -> joueur),
-            new com.example.mysubmod.reseau.PaquetDonneesLogs("all_logs.zip", donneesZip)
+            new com.example.mysubmod.reseau.PaquetDonneesLogs("tous_journaux.zip", donneesZip)
         );
 
-        MonSubMod.JOURNALISEUR.info("Envoi du ZIP de tous les logs ({} octets) au client {}", donneesZip.length, joueur.getName().getString());
+        MonSubMod.JOURNALISEUR.info("Envoi du ZIP de tous les journaux ({} octets) au client {}", donneesZip.length, joueur.getName().getString());
     }
 
     private static void envoyerDossierUniqueAuClient(ServerPlayer joueur, File dossier) throws IOException {
@@ -129,7 +129,7 @@ public class GestionnaireLogs {
             new com.example.mysubmod.reseau.PaquetDonneesLogs(nomFichier, donneesZip)
         );
 
-        MonSubMod.JOURNALISEUR.info("Envoi du dossier de logs {} ({} octets) au client {}", dossier.getName(), donneesZip.length, joueur.getName().getString());
+        MonSubMod.JOURNALISEUR.info("Envoi du dossier de journalisation {} ({} octets) au client {}", dossier.getName(), donneesZip.length, joueur.getName().getString());
     }
 
     private static void ajouterDossierAuZip(File dossier, String cheminParent, ZipOutputStream fluxSortieZip) throws IOException {
@@ -160,7 +160,7 @@ public class GestionnaireLogs {
         try {
             File repertoireBase = new File(REPERTOIRE_BASE_LOGS);
             if (!repertoireBase.exists()) {
-                joueur.sendSystemMessage(net.minecraft.network.chat.Component.literal("§cAucun dossier de logs trouvé"));
+                joueur.sendSystemMessage(net.minecraft.network.chat.Component.literal("§cAucun dossier de journalisation trouvé"));
                 return;
             }
 
@@ -170,8 +170,8 @@ public class GestionnaireLogs {
                 supprimerDossierUnique(joueur, new File(repertoireBase, nomDossier));
             }
         } catch (Exception e) {
-            MonSubMod.JOURNALISEUR.error("Erreur lors de la suppression des logs", e);
-            joueur.sendSystemMessage(net.minecraft.network.chat.Component.literal("§cErreur lors de la suppression des logs"));
+            MonSubMod.JOURNALISEUR.error("Erreur lors de la suppression des journaux", e);
+            joueur.sendSystemMessage(net.minecraft.network.chat.Component.literal("§cErreur lors de la suppression des journaux"));
         }
     }
 
@@ -189,8 +189,8 @@ public class GestionnaireLogs {
         }
 
         joueur.sendSystemMessage(net.minecraft.network.chat.Component.literal(
-            "§aTous les logs ont été supprimés (" + nombreSupprimes + " dossier(s))"));
-        MonSubMod.JOURNALISEUR.info("Tous les dossiers de logs supprimés: {} dossiers", nombreSupprimes);
+            "§aTous les journaux ont été supprimés (" + nombreSupprimes + " dossier(s))"));
+        MonSubMod.JOURNALISEUR.info("Tous les dossiers de journalisation supprimés: {} dossiers", nombreSupprimes);
     }
 
     private static void supprimerDossierUnique(ServerPlayer joueur, File dossier) throws IOException {
@@ -203,7 +203,7 @@ public class GestionnaireLogs {
 
         joueur.sendSystemMessage(net.minecraft.network.chat.Component.literal(
             "§aDossier supprimé: " + dossier.getName()));
-        MonSubMod.JOURNALISEUR.info("Dossier de logs supprimé: {}", dossier.getName());
+        MonSubMod.JOURNALISEUR.info("Dossier de journalisation supprimé: {}", dossier.getName());
     }
 
     private static void supprimerRepertoire(File repertoire) throws IOException {

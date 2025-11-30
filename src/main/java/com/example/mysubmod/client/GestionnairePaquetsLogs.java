@@ -36,10 +36,10 @@ public class GestionnairePaquetsLogs {
                 Minecraft.getInstance().player.sendSystemMessage(
                     net.minecraft.network.chat.Component.literal(
                         "§aJournaux téléchargés dans: " + fichierSortie.getAbsolutePath()));
-                MonSubMod.JOURNALISEUR.info("Fichier de log téléchargé vers: {}", fichierSortie.getAbsolutePath());
+                MonSubMod.JOURNALISEUR.info("Fichier de journalisation téléchargé vers: {}", fichierSortie.getAbsolutePath());
 
             } catch (IOException e) {
-                MonSubMod.JOURNALISEUR.error("Erreur lors de la sauvegarde du fichier de log téléchargé", e);
+                MonSubMod.JOURNALISEUR.error("Erreur lors de la sauvegarde du fichier de journalisation téléchargé", e);
                 if (Minecraft.getInstance().player != null) {
                     Minecraft.getInstance().player.sendSystemMessage(
                         net.minecraft.network.chat.Component.literal("§cErreur lors de la sauvegarde du fichier"));
