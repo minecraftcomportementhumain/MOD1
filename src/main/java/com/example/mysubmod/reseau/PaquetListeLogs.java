@@ -12,9 +12,11 @@ import java.util.function.Supplier;
  */
 public class PaquetListeLogs {
     private final List<String> dossiersJournaux;
+    private final int numeroSousMode;
 
-    public PaquetListeLogs(List<String> dossiersJournaux) {
+    public PaquetListeLogs(List<String> dossiersJournaux, int numeroSousMode) {
         this.dossiersJournaux = dossiersJournaux;
+        this.numeroSousMode = numeroSousMode;
     }
 
     public PaquetListeLogs(FriendlyByteBuf tampon) {
@@ -23,6 +25,7 @@ public class PaquetListeLogs {
         for (int i = 0; i < taille; i++) {
             this.dossiersJournaux.add(tampon.readUtf());
         }
+        this.numeroSousMode = tampon.readInt();
     }
 
     public void toBytes(FriendlyByteBuf tampon) {
@@ -30,10 +33,15 @@ public class PaquetListeLogs {
         for (String dossier : dossiersJournaux) {
             tampon.writeUtf(dossier);
         }
+        tampon.writeInt(numeroSousMode);
     }
 
     public List<String> obtenirDossiersJournaux() {
         return dossiersJournaux;
+    }
+
+    public int obtenirNumeroSousMode() {
+        return numeroSousMode;
     }
 
     public boolean traiter(Supplier<NetworkEvent.Context> fournisseur) {

@@ -1,0 +1,5 @@
+{
+  "variants": {
+    "": { "model": "mysubmod:block/bonbon_cache_terre" }
+  }
+}

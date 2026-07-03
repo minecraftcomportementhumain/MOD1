@@ -30,6 +30,7 @@ public class MonSubMod {
         IEventBus busEvenementsMod = FMLJavaModLoadingContext.get().getModEventBus();
 
         ItemsMod.register(busEvenementsMod);
+        com.example.mysubmod.objets.BlocsMod.register(busEvenementsMod);
         busEvenementsMod.addListener(this::commonSetup);
         MinecraftForge.EVENT_BUS.register(this);
     }
@@ -56,6 +57,8 @@ public class MonSubMod {
             if (overworld != null) {
                 // Nettoyer AVANT d'activer la salle d'attente
                 nettoyerHologrammesOrphelins(overworld);
+                // Nettoyer la carte résiduelle du Sous-mode 3 (après un arrêt inattendu)
+                com.example.mysubmod.sousmodes.sousmode3.GenerateurCarteSousMode3.nettoyerRegionResiduelle(overworld);
             }
             com.example.mysubmod.sousmodes.salleattente.GestionnaireSalleAttente.getInstance().activate(event.getServer());
         });

@@ -8,21 +8,25 @@ import net.minecraftforge.network.NetworkEvent;
 import java.util.function.Supplier;
 
 /**
- * Paquet envoyé du serveur au client pour ouvrir l'écran de contrôle des sous-modes avec le nombre de joueurs
+ * Paquet envoyé du serveur au client pour ouvrir l'écran de contrôle des sous-modes
+ * avec le nombre de joueurs et la carte active (système de cartes).
  */
 public class PaquetEcranControleSousMode {
     private final int nombreJoueursNonAdmin;
+    private final String carteActive;
 
-    public PaquetEcranControleSousMode(int nombreJoueursNonAdmin) {
+    public PaquetEcranControleSousMode(int nombreJoueursNonAdmin, String carteActive) {
         this.nombreJoueursNonAdmin = nombreJoueursNonAdmin;
+        this.carteActive = carteActive != null ? carteActive : "";
     }
 
     public static void encode(PaquetEcranControleSousMode paquet, FriendlyByteBuf tampon) {
         tampon.writeInt(paquet.nombreJoueursNonAdmin);
+        tampon.writeUtf(paquet.carteActive);
     }
 
     public static PaquetEcranControleSousMode decode(FriendlyByteBuf tampon) {
-        return new PaquetEcranControleSousMode(tampon.readInt());
+        return new PaquetEcranControleSousMode(tampon.readInt(), tampon.readUtf());
     }
 
     public static void traiter(PaquetEcranControleSousMode paquet, Supplier<NetworkEvent.Context> ctx) {
@@ -38,7 +42,8 @@ public class PaquetEcranControleSousMode {
         public static void gererEcranControle(PaquetEcranControleSousMode paquet) {
             net.minecraft.client.Minecraft minecraft = net.minecraft.client.Minecraft.getInstance();
             minecraft.execute(() -> {
-                minecraft.setScreen(new com.example.mysubmod.client.gui.EcranControleSousMode(paquet.nombreJoueursNonAdmin));
+                minecraft.setScreen(new com.example.mysubmod.client.gui.EcranControleSousMode(
+                    paquet.nombreJoueursNonAdmin, paquet.carteActive));
             });
         }
     }

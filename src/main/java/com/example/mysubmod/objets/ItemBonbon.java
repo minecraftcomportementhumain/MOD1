@@ -104,8 +104,35 @@ public class ItemBonbon extends Item {
                     return InteractionResultHolder.fail(pileObjets);
                 }
             }
+            // Logique Sous-mode 3 (reprend la base du Sous-mode 1)
+            else if (modeActuel == SousMode.SOUS_MODE_3
+                && com.example.mysubmod.sousmodes.sousmode3.GestionnaireSousMode3.getInstance().estPartieActive()) {
+                com.example.mysubmod.sousmodes.sousmode3.GestionnaireSousMode3 gestionnaireSM3 =
+                    com.example.mysubmod.sousmodes.sousmode3.GestionnaireSousMode3.getInstance();
+                if (gestionnaireSM3.estJoueurVivant(joueurServeur.getUUID())) {
+                    float vieActuelle = joueurServeur.getHealth();
+                    float vieMaximale = joueurServeur.getMaxHealth();
+
+                    if (vieActuelle + MONTANT_SOIN > vieMaximale) {
+                        joueurServeur.sendSystemMessage(Component.literal("§cVous ne pouvez pas utiliser ce bonbon car il vous donnerait plus de vie que votre maximum"));
+                        return InteractionResultHolder.fail(pileObjets);
+                    }
+
+                    soignerJoueur(joueurServeur);
+                    pileObjets.shrink(1);
+
+                    if (gestionnaireSM3.obtenirEnregistreurDonnees() != null) {
+                        gestionnaireSM3.obtenirEnregistreurDonnees().enregistrerConsommationBonbon(joueurServeur);
+                    }
+
+                    return InteractionResultHolder.success(pileObjets);
+                } else {
+                    joueurServeur.sendSystemMessage(Component.literal("§cVous ne pouvez pas utiliser de bonbons en tant que spectateur"));
+                    return InteractionResultHolder.fail(pileObjets);
+                }
+            }
             else {
-                joueurServeur.sendSystemMessage(Component.literal("§cLes bonbons ne peuvent être utilisés qu'en sous-mode 1 ou 2"));
+                joueurServeur.sendSystemMessage(Component.literal("§cLes bonbons ne peuvent être utilisés qu'en sous-mode 1, 2 ou 3"));
                 return InteractionResultHolder.fail(pileObjets);
             }
         }
@@ -139,9 +166,9 @@ public class ItemBonbon extends Item {
             tooltip.add(Component.literal("§7Restaure §c1 cœur §7(0.75 cœur si pénalité)"));
             tooltip.add(Component.literal("§eUtilisable en sous-mode 2"));
         } else {
-            // Bonbon Sous-mode 1
+            // Bonbon Sous-mode 1 / Sous-mode 3
             tooltip.add(Component.literal("§7Restaure §c1 cœur §7de santé"));
-            tooltip.add(Component.literal("§eUtilisable en sous-mode 1"));
+            tooltip.add(Component.literal("§eUtilisable en sous-mode 1 et 3"));
         }
     }
 

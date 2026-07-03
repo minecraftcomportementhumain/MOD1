@@ -54,7 +54,8 @@ public class GestionnaireSousMode2 {
     private final Object verrouReconnexion = new Object();
 
     // Classe interne pour stocker les infos de déconnexion
-    private static class InfoDeconnexion {
+    // (visibilité paquet : accès typé depuis GestionnaireSanteSousMode2)
+    static class InfoDeconnexion {
         UUID ancienUUID; // Stocker l'ancien UUID pour migrer les données lors d'une reconnexion
         long tempsDeconnexion;
         double x, y, z;
@@ -79,6 +80,13 @@ public class GestionnaireSousMode2 {
     private boolean phaseSelectionFichier = false; // L'admin sélectionne le fichier de bonbons
     private boolean finPartieEnCours = false;
     private boolean ilesGenerees = false;
+
+    // Partie sur carte (système de cartes) : la carte sélectionnée fournit la
+    // géographie, les zones et les bonbons typés Bleu/Rouge — pas de fichier d'apparition
+    private final com.example.mysubmod.cartes.jeu.GestionnairePartieCarte partieCarte =
+        new com.example.mysubmod.cartes.jeu.GestionnairePartieCarte(2, () -> partieActive);
+    private boolean phaseAttenteCarte = false; // Joueurs sur la plateforme, en attente du lancement (menu N)
+
     private Timer minuteurSelection;
     private MinuterieJeu minuteurPartie;
     private EnregistreurDonneesSousMode2 enregistreurDonnees;
@@ -165,6 +173,13 @@ public class GestionnaireSousMode2 {
         // Initialiser les positions
         initialiserPositions();
 
+        // Partie sur carte : la carte sélectionnée remplace la génération automatique
+        // des îles et le fichier d'apparition de bonbons
+        if (com.example.mysubmod.cartes.GestionnaireCartes.getInstance().aCarteSelectionnee()) {
+            activerModeCarte(serveur);
+            return;
+        }
+
         // Générer les îles et la plateforme spectateur
         ServerLevel mondePrincipal = serveur.getLevel(ServerLevel.OVERWORLD);
         MonSubMod.JOURNALISEUR.info("DEBUG: mondePrincipal est null? {}", (mondePrincipal == null));
@@ -214,6 +229,368 @@ public class GestionnaireSousMode2 {
             String fichierDefaut = GestionnaireFichiersApparitionBonbons.getInstance().obtenirFichierParDefaut();
             definirFichierApparitionBonbons(fichierDefaut);
             demarrerSelectionIle(serveur);
+        }
+    }
+
+    // ==================== Partie sur carte (système de cartes) ====================
+
+    public boolean modeCarteActif() {
+        return partieCarte.estActif();
+    }
+
+    public com.example.mysubmod.cartes.jeu.GestionnairePartieCarte obtenirPartieCarte() {
+        return partieCarte;
+    }
+
+    public boolean estPhaseAttenteCarte() {
+        return phaseAttenteCarte;
+    }
+
+    /**
+     * Activation avec carte sélectionnée : génère la carte (bonbons non-visibles
+     * ignorés), la plateforme spectateur, et place tous les joueurs en attente
+     * du lancement par un admin (menu N). Les bonbons de la carte sont typés
+     * Bleu / Rouge (refus strict au lancement du sous-mode sinon).
+     */
+    private void activerModeCarte(MinecraftServer serveur) {
+        ServerLevel monde = serveur.getLevel(ServerLevel.OVERWORLD);
+        if (monde == null || !partieCarte.activer(serveur)) {
+            diffuserMessage(serveur, "§cImpossible de charger la carte sélectionnée.");
+            return;
+        }
+
+        genererPlateformeSpectateur(monde);
+        monde.setDayTime(6000);
+
+        // Journalisation démarrée dès l'activation (la partie est lancée via le menu N)
+        if (enregistreurDonnees == null) {
+            enregistreurDonnees = new EnregistreurDonneesSousMode2();
+            enregistreurDonnees.demarrerNouvellePartie();
+        }
+
+        phaseAttenteCarte = true;
+
+        for (ServerPlayer joueur : UtilitaireFiltreJoueurs.obtenirJoueursAuthentifies(serveur)) {
+            if (GestionnaireSousModes.getInstance().estAdmin(joueur)) {
+                teleporterVersSpectateur(joueur);
+                joueur.sendSystemMessage(Component.literal("§6Appuyez sur N pour ouvrir le menu de lancement de partie"));
+            } else {
+                ajouterJoueurEnAttenteCarte(joueur);
+            }
+        }
+
+        diffuserMessage(serveur, "§eCarte « " + partieCarte.obtenirNomCarte()
+            + " » chargée. En attente du lancement de la partie...");
+    }
+
+    /** Ajoute un joueur à la phase d'attente d'une partie sur carte (plateforme spectateur) */
+    public void ajouterJoueurEnAttenteCarte(ServerPlayer joueur) {
+        stockerInventaireJoueur(joueur);
+        viderInventaireJoueur(joueur);
+        joueursEnPhaseSelection.add(joueur.getUUID());
+        nomsJoueurs.put(joueur.getUUID(), joueur.getName().getString());
+        teleporterVersPlateformeAttente(joueur);
+    }
+
+    /** Téléporte un participant sur la plateforme spectateur sans le marquer spectateur */
+    private void teleporterVersPlateformeAttente(ServerPlayer joueur) {
+        ServerLevel monde = joueur.server.getLevel(ServerLevel.OVERWORLD);
+        if (monde != null && plateformeSpectateur != null) {
+            teleportationSecurisee(joueur, monde,
+                plateformeSpectateur.getX() + 0.5,
+                plateformeSpectateur.getY() + 1,
+                plateformeSpectateur.getZ() + 0.5);
+            joueur.setGameMode(GameType.SURVIVAL);
+        }
+    }
+
+    /**
+     * Lancement demandé par un admin (menu N) : démarre la phase de sélection
+     * de la zone de départ (30 s), ou directement la partie si la carte n'a
+     * aucune zone de type Île.
+     */
+    public boolean lancerPartieCarte(MinecraftServer serveur, ServerPlayer admin) {
+        if (!modeCarteActif() || !phaseAttenteCarte || partieActive || phaseSelection) {
+            if (admin != null) {
+                admin.sendSystemMessage(Component.literal("§cLa partie est déjà lancée"));
+            }
+            return false;
+        }
+
+        phaseAttenteCarte = false;
+
+        if (partieCarte.aZonesIle()) {
+            demarrerSelectionZoneDepart(serveur);
+        } else {
+            // Aucune zone Île : tous les joueurs partent du point d'apparition de la carte
+            terminerSelectionZoneDepart(serveur);
+        }
+        return true;
+    }
+
+    private void demarrerSelectionZoneDepart(MinecraftServer serveur) {
+        phaseSelection = true;
+        heureDebutSelection = System.currentTimeMillis();
+
+        List<String> zonesIle = partieCarte.obtenirZonesIle();
+        for (ServerPlayer joueur : UtilitaireFiltreJoueurs.obtenirJoueursAuthentifies(serveur)) {
+            if (!GestionnaireSousModes.getInstance().estAdmin(joueur)) {
+                joueursEnPhaseSelection.add(joueur.getUUID());
+                GestionnaireReseau.INSTANCE.send(PacketDistributor.PLAYER.with(() -> joueur),
+                    new com.example.mysubmod.cartes.reseau.PaquetSelectionZoneDepart(zonesIle, TEMPS_SELECTION_SECONDES));
+            }
+        }
+
+        minuteurSelection = new Timer();
+        minuteurSelection.schedule(new TimerTask() {
+            @Override
+            public void run() {
+                serveur.execute(() -> terminerSelectionZoneDepart(serveur));
+            }
+        }, TEMPS_SELECTION_SECONDES * 1000L);
+
+        diffuserMessage(serveur, "§eChoisissez votre zone de départ ! Temps restant: "
+            + TEMPS_SELECTION_SECONDES + " secondes");
+    }
+
+    /** Choix de zone de départ par un joueur (paquet réseau) */
+    public void selectionnerZoneDepart(ServerPlayer joueur, String nomZone) {
+        if (!modeCarteActif() || !phaseSelection) {
+            return;
+        }
+        if (estJoueurRestreintLocal(joueur)) {
+            return;
+        }
+        if (partieCarte.selectionnerZone(joueur.getUUID(), nomZone)) {
+            joueur.sendSystemMessage(Component.literal("§aVous avez sélectionné: " + nomZone));
+            if (enregistreurDonnees != null) {
+                enregistreurDonnees.enregistrerSelectionZone(joueur, nomZone, "MANUELLE");
+                selectionIleJoueurJournalisee.add(joueur.getUUID());
+            }
+        }
+    }
+
+    private void terminerSelectionZoneDepart(MinecraftServer serveur) {
+        if (partieActive) {
+            return;
+        }
+        phaseSelection = false;
+        arreterMinuterieSelection();
+
+        // Assigner une zone aléatoire aux participants sans choix (connectés ou non)
+        for (UUID idJoueur : joueursEnPhaseSelection) {
+            joueursVivants.add(idJoueur);
+            if (partieCarte.obtenirZoneChoisie(idJoueur) == null && partieCarte.aZonesIle()) {
+                String zone = partieCarte.assignerZoneAleatoire(idJoueur);
+                ServerPlayer joueur = serveur.getPlayerList().getPlayer(idJoueur);
+                if (joueur != null) {
+                    nomsJoueurs.put(idJoueur, joueur.getName().getString());
+                    joueur.sendSystemMessage(Component.literal("§eZone assignée automatiquement: " + zone));
+                    if (enregistreurDonnees != null && !selectionIleJoueurJournalisee.contains(idJoueur)) {
+                        enregistreurDonnees.enregistrerSelectionZone(joueur, zone, "AUTOMATIQUE");
+                        selectionIleJoueurJournalisee.add(idJoueur);
+                    }
+                }
+            }
+        }
+
+        // Téléporter les joueurs connectés vers leur zone de départ
+        ServerLevel monde = serveur.getLevel(ServerLevel.OVERWORLD);
+        if (monde != null) {
+            for (ServerPlayer joueur : UtilitaireFiltreJoueurs.obtenirJoueursAuthentifies(serveur)) {
+                if (GestionnaireSousModes.getInstance().estAdmin(joueur)) {
+                    continue;
+                }
+                if (estJoueurRestreintLocal(joueur)) {
+                    continue;
+                }
+                joueursVivants.add(joueur.getUUID());
+                nomsJoueurs.put(joueur.getUUID(), joueur.getName().getString());
+                BlockPos spawn = partieCarte.obtenirSpawnZone(partieCarte.obtenirZoneChoisie(joueur.getUUID()));
+                teleportationSecurisee(joueur, monde, spawn.getX() + 0.5, spawn.getY(), spawn.getZ() + 0.5);
+                partieCarte.enregistrerPositionValide(joueur.getUUID(), spawn);
+            }
+        }
+
+        demarrerPartieCarte(serveur);
+    }
+
+    private void demarrerPartieCarte(MinecraftServer serveur) {
+        partieActive = true;
+        heureDebutPartie = System.currentTimeMillis();
+
+        reinitialiserSanteTousJoueurs(serveur);
+
+        minuteurPartie = new MinuterieJeu(TEMPS_PARTIE_MINUTES, serveur);
+        minuteurPartie.demarrer();
+        GestionnaireSanteSousMode2.getInstance().demarrerDegradationSante(serveur);
+
+        // Les bonbons proviennent de la carte (types Bleu / Rouge, apparition différée, réapparition)
+        partieCarte.demarrerBonbons(serveur);
+
+        // Journaliser le nom de la carte pour chaque joueur vivant
+        if (enregistreurDonnees != null) {
+            for (ServerPlayer joueur : UtilitaireFiltreJoueurs.obtenirJoueursAuthentifies(serveur)) {
+                if (estJoueurVivant(joueur.getUUID())) {
+                    enregistreurDonnees.enregistrerActionJoueur(joueur, "PARTIE_CARTE=" + partieCarte.obtenirNomCarte());
+                }
+            }
+        }
+
+        diffuserMessage(serveur, "§aLa partie commence ! Survivez " + TEMPS_PARTIE_MINUTES + " minutes !");
+    }
+
+    /**
+     * Reconnexion pendant une partie sur carte (appelée après la migration d'UUID
+     * et le calcul de la pénalité de santé).
+     */
+    private void gererReconnexionModeCarte(ServerPlayer joueur, InfoDeconnexion infoDeconnexion,
+                                           int ticksSanteManques, float perteSante, long tempsDeconnexion) {
+        UUID idJoueur = joueur.getUUID();
+        MinecraftServer serveur = joueur.getServer();
+        ServerLevel monde = serveur != null ? serveur.getLevel(ServerLevel.OVERWORLD) : null;
+
+        // Phase d'attente (avant le lancement) : retour sur la plateforme
+        if (!partieActive && phaseAttenteCarte) {
+            joueursEnPhaseSelection.add(idJoueur);
+            nomsJoueurs.put(idJoueur, joueur.getName().getString());
+            teleporterVersPlateformeAttente(joueur);
+            joueur.sendSystemMessage(Component.literal("§eVous avez été reconnecté. En attente du lancement de la partie..."));
+            if (enregistreurDonnees != null) {
+                enregistreurDonnees.enregistrerActionJoueur(joueur, "RECONNECTE (attente lancement)");
+            }
+            return;
+        }
+
+        // Phase de sélection de zone : renvoyer l'écran avec le temps restant
+        if (!partieActive && phaseSelection) {
+            joueursEnPhaseSelection.add(idJoueur);
+            nomsJoueurs.put(idJoueur, joueur.getName().getString());
+            teleporterVersPlateformeAttente(joueur);
+            int tempsRestant = obtenirTempsSelectionRestant();
+            if (partieCarte.obtenirZoneChoisie(idJoueur) == null && tempsRestant > 0) {
+                GestionnaireReseau.INSTANCE.send(PacketDistributor.PLAYER.with(() -> joueur),
+                    new com.example.mysubmod.cartes.reseau.PaquetSelectionZoneDepart(
+                        partieCarte.obtenirZonesIle(), tempsRestant));
+            }
+            joueur.sendSystemMessage(Component.literal(
+                "§eVous avez été reconnecté pendant la sélection de zone. Temps restant: " + tempsRestant + "s"));
+            if (enregistreurDonnees != null) {
+                enregistreurDonnees.enregistrerActionJoueur(joueur, "RECONNECTE (selection zone)");
+            }
+            return;
+        }
+
+        // La partie a commencé pendant la déconnexion (le joueur était en attente/sélection)
+        if (partieActive && joueursEnPhaseSelection.contains(idJoueur) && !joueursVivants.contains(idJoueur)
+            && !joueursSpectateurs.contains(idJoueur)) {
+            joueursVivants.add(idJoueur);
+            nomsJoueurs.put(idJoueur, joueur.getName().getString());
+
+            if (partieCarte.obtenirZoneChoisie(idJoueur) == null && partieCarte.aZonesIle()) {
+                String zone = partieCarte.assignerZoneAleatoire(idJoueur);
+                joueur.sendSystemMessage(Component.literal("§eZone assignée automatiquement (reconnexion tardive): " + zone));
+                if (enregistreurDonnees != null && !selectionIleJoueurJournalisee.contains(idJoueur)) {
+                    enregistreurDonnees.enregistrerSelectionZone(joueur, zone, "AUTOMATIQUE");
+                    selectionIleJoueurJournalisee.add(idJoueur);
+                }
+            }
+
+            BlockPos spawn = partieCarte.obtenirSpawnZone(partieCarte.obtenirZoneChoisie(idJoueur));
+            if (monde != null) {
+                teleportationSecurisee(joueur, monde, spawn.getX() + 0.5, spawn.getY(), spawn.getZ() + 0.5);
+                partieCarte.enregistrerPositionValide(idJoueur, spawn);
+            }
+            joueur.setGameMode(GameType.SURVIVAL);
+
+            joueur.setHealth(joueur.getMaxHealth());
+            joueur.getFoodData().setFoodLevel(10);
+            joueur.getFoodData().setSaturation(5.0f);
+            float nouvelleSante = Math.max(0.5f, joueur.getMaxHealth() - perteSante);
+            joueur.setHealth(nouvelleSante);
+
+            joueur.sendSystemMessage(Component.literal(String.format(
+                "§eVous avez été reconnecté. Le jeu a démarré pendant votre absence. Perte de santé: %.1f cœurs",
+                perteSante / 2.0f)));
+            if (enregistreurDonnees != null) {
+                enregistreurDonnees.enregistrerActionJoueur(joueur, "RECONNECTE (debut partie manque)");
+            }
+            verifierMortApresReconnexionCarte(joueur, nouvelleSante);
+            return;
+        }
+
+        // Joueur vivant : restaurer position, inventaire et santé
+        if (joueursVivants.contains(idJoueur)) {
+            boolean deconnecteAvantDebutPartie = heureDebutPartie > 0 && tempsDeconnexion < heureDebutPartie;
+
+            if (monde != null) {
+                if (deconnecteAvantDebutPartie) {
+                    BlockPos spawn = partieCarte.obtenirSpawnZone(partieCarte.obtenirZoneChoisie(idJoueur));
+                    teleportationSecurisee(joueur, monde, spawn.getX() + 0.5, spawn.getY(), spawn.getZ() + 0.5);
+                    partieCarte.enregistrerPositionValide(idJoueur, spawn);
+                } else {
+                    teleportationSecurisee(joueur, monde, infoDeconnexion.x, infoDeconnexion.y, infoDeconnexion.z);
+                }
+            }
+            joueur.setGameMode(GameType.SURVIVAL);
+
+            // Restaurer l'inventaire sauvegardé à la déconnexion
+            if (infoDeconnexion.inventaireSauvegarde != null && !infoDeconnexion.inventaireSauvegarde.isEmpty()) {
+                joueur.getInventory().clearContent();
+                for (int i = 0; i < Math.min(infoDeconnexion.inventaireSauvegarde.size(),
+                    joueur.getInventory().getContainerSize()); i++) {
+                    joueur.getInventory().setItem(i, infoDeconnexion.inventaireSauvegarde.get(i).copy());
+                }
+            } else if (!joueur.getInventory().isEmpty()) {
+                viderInventaireJoueur(joueur);
+            }
+
+            float santeActuelle = joueur.getHealth();
+            if (deconnecteAvantDebutPartie) {
+                joueur.setHealth(joueur.getMaxHealth());
+                joueur.getFoodData().setFoodLevel(10);
+                joueur.getFoodData().setSaturation(5.0f);
+                santeActuelle = joueur.getMaxHealth();
+            }
+            float nouvelleSante = Math.max(0.5f, santeActuelle - perteSante);
+            joueur.setHealth(nouvelleSante);
+            joueur.sendSystemMessage(Component.literal(String.format(
+                "§eVous avez été reconnecté. Perte de santé: %.1f cœurs (%d ticks de dégradation manqués)",
+                perteSante / 2.0f, ticksSanteManques)));
+
+            if (enregistreurDonnees != null) {
+                enregistreurDonnees.enregistrerActionJoueur(joueur,
+                    String.format("RECONNECTE (-%d ticks, -%.1f PV)", ticksSanteManques, perteSante));
+            }
+            verifierMortApresReconnexionCarte(joueur, nouvelleSante);
+        } else if (joueursSpectateurs.contains(idJoueur)) {
+            teleporterVersSpectateur(joueur);
+            joueur.sendSystemMessage(Component.literal("§eVous avez été reconnecté en mode spectateur"));
+        }
+    }
+
+    private void verifierMortApresReconnexionCarte(ServerPlayer joueur, float nouvelleSante) {
+        if (nouvelleSante > 0.5f) {
+            return;
+        }
+        joueur.sendSystemMessage(Component.literal("§cVous êtes mort pendant votre déconnexion !"));
+        enregistrerMortJoueur(joueur.getUUID());
+        teleporterVersSpectateur(joueur);
+
+        MinecraftServer serveur = joueur.getServer();
+        if (serveur != null) {
+            String messageMort = "§e" + joueur.getName().getString() + " §cest mort pendant sa déconnexion !";
+            for (ServerPlayer j : UtilitaireFiltreJoueurs.obtenirJoueursAuthentifies(serveur)) {
+                j.sendSystemMessage(Component.literal(messageMort));
+            }
+            if (obtenirJoueursVivants().isEmpty()) {
+                serveur.execute(() -> {
+                    for (ServerPlayer j : UtilitaireFiltreJoueurs.obtenirJoueursAuthentifies(serveur)) {
+                        j.sendSystemMessage(Component.literal("§c§lTous les joueurs sont morts !"));
+                    }
+                    terminerPartie(serveur);
+                });
+            }
         }
     }
 
@@ -299,6 +676,26 @@ public class GestionnaireSousMode2 {
                 MonSubMod.JOURNALISEUR.error("Erreur lors de la restauration des inventaires", e);
             }
 
+            // Partie sur carte : supprimer le monde généré, les bonbons et la plateforme
+            try {
+                if (partieCarte.estActif()) {
+                    partieCarte.nettoyer(serveur);
+                    ServerLevel monde = serveur.getLevel(ServerLevel.OVERWORLD);
+                    if (monde != null && plateformeSpectateur != null) {
+                        for (int x = -15; x <= 15; x++) {
+                            for (int z = -15; z <= 15; z++) {
+                                for (int y = -5; y <= 10; y++) {
+                                    monde.setBlock(plateformeSpectateur.offset(x, y, z),
+                                        net.minecraft.world.level.block.Blocks.AIR.defaultBlockState(), 3);
+                                }
+                            }
+                        }
+                    }
+                }
+            } catch (Exception e) {
+                MonSubMod.JOURNALISEUR.error("Erreur lors du nettoyage de la partie sur carte", e);
+            }
+
             // Effacer la carte (îles + plateforme spectateur) APRÈS que les joueurs soient téléportés en sécurité
             try {
                 effacerCarte(serveur.getLevel(ServerLevel.OVERWORLD));
@@ -311,6 +708,7 @@ public class GestionnaireSousMode2 {
             partieActive = false;
             phaseSelection = false;
             phaseSelectionFichier = false;
+            phaseAttenteCarte = false;
             finPartieEnCours = false;
             ilesGenerees = false;
             selectionsIleJoueurs.clear();
@@ -1957,6 +2355,12 @@ public class GestionnaireSousMode2 {
             joueurEstMort = infoDeconnexion.estMort;
         } // Fin du bloc synchronisé - libérer le verrou AVANT de téléporter
 
+        // Restaurer le HUD des zones (partie sur carte) — nécessaire quand la reconnexion passe
+        // par l'authentification (le onPlayerJoin du sous-mode est ignoré pour les joueurs restreints)
+        if (modeCarteActif()) {
+            partieCarte.envoyerZonesCompletesAJoueur(joueur);
+        }
+
         // Gérer le joueur mort EN DEHORS du bloc synchronisé pour éviter les deadlocks
         if (joueurEstMort) {
             MonSubMod.JOURNALISEUR.info("Joueur {} est mort côté serveur pendant sa déconnexion - envoi vers spectateur", nomJoueur);
@@ -2046,6 +2450,9 @@ public class GestionnaireSousMode2 {
                 // Migrer les données de spécialisation (spécialisation et pénalité)
                 GestionnaireSpecialisation.getInstance().migrerDonneesJoueur(ancienUUID, nouvelUUID);
 
+                // Migrer la sélection de zone de départ (partie sur carte)
+                partieCarte.migrerSelectionZone(ancienUUID, nouvelUUID);
+
                 MonSubMod.JOURNALISEUR.info("Migration UUID complétée pour le compte {}", nomJoueur);
             } else {
                 MonSubMod.JOURNALISEUR.info("Aucune migration UUID nécessaire - même UUID qui se reconnecte");
@@ -2098,6 +2505,12 @@ public class GestionnaireSousMode2 {
             joueur.sendSystemMessage(Component.literal("§c§lVous devez être authentifié pour participer au jeu\n\n§7Veuillez vous authentifier et rejoindre le serveur."));
             // Retirer de joueursVivants s'il y était
             joueursVivants.remove(idJoueur);
+            return;
+        }
+
+        // Partie sur carte : reconnexion gérée avec les zones de la carte
+        if (modeCarteActif()) {
+            gererReconnexionModeCarte(joueur, infoDeconnexion, ticksSanteManques, perteSante, tempsDeconnexion);
             return;
         }
 
@@ -2418,6 +2831,41 @@ public class GestionnaireSousMode2 {
     }
 
     /**
+     * Gérer la noyade d'un joueur : agit comme s'il avait perdu tous ses points
+     * de vie — fin de la partie pour lui (mort enregistrée + zone spectateur).
+     */
+    public void gererNoyadeJoueur(ServerPlayer joueur) {
+        if (!partieActive || !joueursVivants.contains(joueur.getUUID())) {
+            return;
+        }
+
+        joueur.sendSystemMessage(Component.literal("§cVous vous êtes noyé ! Téléportation vers la zone spectateur..."));
+
+        enregistrerMortJoueur(joueur.getUUID());
+        teleporterVersSpectateur(joueur);
+        joueur.setHealth(joueur.getMaxHealth());
+
+        String messageMort = "§e" + joueur.getName().getString() + " §cs'est noyé !";
+        for (ServerPlayer j : UtilitaireFiltreJoueurs.obtenirJoueursAuthentifies(joueur.server)) {
+            j.sendSystemMessage(Component.literal(messageMort));
+        }
+
+        if (enregistreurDonnees != null) {
+            enregistreurDonnees.enregistrerMortJoueur(joueur);
+        }
+
+        if (obtenirJoueursVivants().isEmpty()) {
+            MonSubMod.JOURNALISEUR.info("Tous les joueurs sont morts (noyade) - fin du jeu");
+            joueur.server.execute(() -> {
+                for (ServerPlayer j : UtilitaireFiltreJoueurs.obtenirJoueursAuthentifies(joueur.server)) {
+                    j.sendSystemMessage(Component.literal("§c§lTous les joueurs sont morts !"));
+                }
+                terminerPartie(joueur.server);
+            });
+        }
+    }
+
+    /**
      * Incrémenter le compteur de bonbons pour un joueur
      */
     public void incrementerCompteurBonbons(UUID idJoueur, int montant) {
@@ -2440,9 +2888,15 @@ public class GestionnaireSousMode2 {
         // Créer les entrées de classement pour tous les joueurs qui ont participé
         List<EntreeClassement> entrees = new ArrayList<>();
 
-        // Itérer sur TOUS les joueurs qui ont sélectionné une île (ont participé), pas seulement ceux connectés
-        for (Map.Entry<UUID, TypeIle> entreeMap : selectionsIleJoueurs.entrySet()) {
-            UUID idJoueur = entreeMap.getKey();
+        // Itérer sur TOUS les joueurs qui ont participé, pas seulement ceux connectés :
+        // sélections d'îles (mode classique) ou joueurs suivis (partie sur carte)
+        Set<UUID> participants = new HashSet<>(selectionsIleJoueurs.keySet());
+        if (modeCarteActif()) {
+            participants.addAll(joueursVivants);
+            participants.addAll(heureMortJoueur.keySet());
+            participants.addAll(joueursEnPhaseSelection);
+        }
+        for (UUID idJoueur : participants) {
 
             // Obtenir le nom du joueur - essayer d'abord de trouver le joueur en ligne, puis utiliser le nom stocké
             String nomJoueur = null;

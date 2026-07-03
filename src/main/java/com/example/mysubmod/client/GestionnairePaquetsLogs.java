@@ -12,7 +12,8 @@ import java.io.IOException;
 public class GestionnairePaquetsLogs {
     public static void gererPaquetListeLogs(PaquetListeLogs paquet) {
         Minecraft.getInstance().execute(() -> {
-            Minecraft.getInstance().setScreen(new EcranGestionLogs(paquet.obtenirDossiersJournaux()));
+            Minecraft.getInstance().setScreen(new EcranGestionLogs(
+                paquet.obtenirDossiersJournaux(), paquet.obtenirNumeroSousMode()));
         });
     }
 

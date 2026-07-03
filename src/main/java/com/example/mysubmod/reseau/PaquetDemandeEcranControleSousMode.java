@@ -32,10 +32,13 @@ public class PaquetDemandeEcranControleSousMode {
                 // Ceci exclut les joueurs non authentifiés et les admins authentifiés
                 int nombreJoueurs = joueur.server.getPlayerList().getPlayerCount();
 
-                // Envoyer la réponse avec le nombre de joueurs
+                // Carte active du système de cartes (affichée dans le menu admin)
+                String carteActive = com.example.mysubmod.cartes.GestionnaireCartes.getInstance().obtenirCarteSelectionnee();
+
+                // Envoyer la réponse avec le nombre de joueurs et la carte active
                 GestionnaireReseau.INSTANCE.send(
                     PacketDistributor.PLAYER.with(() -> joueur),
-                    new PaquetEcranControleSousMode(nombreJoueurs)
+                    new PaquetEcranControleSousMode(nombreJoueurs, carteActive != null ? carteActive : "")
                 );
             }
         });

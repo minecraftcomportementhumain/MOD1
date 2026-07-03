@@ -15,6 +15,7 @@ import java.util.List;
 
 public class EcranGestionLogs extends Screen {
     private final List<String> dossiersLog;
+    private final int numeroSousMode;
     private ListeDossiersLog listeDossiers;
     private Button boutonTéléchargerTout;
     private Button boutonSupprimerTout;
@@ -23,8 +24,13 @@ public class EcranGestionLogs extends Screen {
     private Button boutonActualiser;
 
     public EcranGestionLogs(List<String> dossiersLog) {
-        super(Component.literal("Gestion des Journaux"));
+        this(dossiersLog, 1); // Par défaut Sous-mode 1 pour rétrocompatibilité
+    }
+
+    public EcranGestionLogs(List<String> dossiersLog, int numeroSousMode) {
+        super(Component.literal("Gestion des Journaux — Sous-mode " + numeroSousMode));
         this.dossiersLog = new ArrayList<>(dossiersLog);
+        this.numeroSousMode = numeroSousMode;
     }
 
     @Override
@@ -101,12 +107,12 @@ public class EcranGestionLogs extends Screen {
     }
 
     private void téléchargerTousLesLogs() {
-        GestionnaireReseau.INSTANCE.sendToServer(new PaquetTelechargementLogs(null, true));
+        GestionnaireReseau.INSTANCE.sendToServer(new PaquetTelechargementLogs(null, true, numeroSousMode));
         this.minecraft.player.sendSystemMessage(Component.literal("§aTéléchargement de tous les journaux en cours..."));
     }
 
     private void supprimerTousLesLogs() {
-        GestionnaireReseau.INSTANCE.sendToServer(new PaquetSuppressionLogs(null, true));
+        GestionnaireReseau.INSTANCE.sendToServer(new PaquetSuppressionLogs(null, true, numeroSousMode));
         this.minecraft.player.sendSystemMessage(Component.literal("§cSuppression de tous les journaux..."));
         this.onClose();
     }
@@ -114,7 +120,7 @@ public class EcranGestionLogs extends Screen {
     private void téléchargerLogSélectionné() {
         ListeDossiersLog.EntréeDossierLog sélectionné = listeDossiers.getSelected();
         if (sélectionné != null) {
-            GestionnaireReseau.INSTANCE.sendToServer(new PaquetTelechargementLogs(sélectionné.getNomDossier(), false));
+            GestionnaireReseau.INSTANCE.sendToServer(new PaquetTelechargementLogs(sélectionné.getNomDossier(), false, numeroSousMode));
             this.minecraft.player.sendSystemMessage(Component.literal("§aTéléchargement de " + sélectionné.getNomDossier() + "..."));
         }
     }
@@ -122,7 +128,7 @@ public class EcranGestionLogs extends Screen {
     private void supprimerLogSélectionné() {
         ListeDossiersLog.EntréeDossierLog sélectionné = listeDossiers.getSelected();
         if (sélectionné != null) {
-            GestionnaireReseau.INSTANCE.sendToServer(new PaquetSuppressionLogs(sélectionné.getNomDossier(), false));
+            GestionnaireReseau.INSTANCE.sendToServer(new PaquetSuppressionLogs(sélectionné.getNomDossier(), false, numeroSousMode));
             this.minecraft.player.sendSystemMessage(Component.literal("§cSuppression de " + sélectionné.getNomDossier() + "..."));
             dossiersLog.remove(sélectionné.getNomDossier());
             listeDossiers.children().remove(sélectionné);
@@ -131,7 +137,14 @@ public class EcranGestionLogs extends Screen {
     }
 
     private void actualiserListeLogs() {
-        GestionnaireReseau.INSTANCE.sendToServer(new PaquetDemandeListeLogs());
+        // Demander la liste du bon sous-mode (le serveur rouvrira l'écran avec la liste à jour)
+        switch (numeroSousMode) {
+            case 2 -> GestionnaireReseau.INSTANCE.sendToServer(
+                new com.example.mysubmod.reseau.PaquetDemandeListeLogsSousMode2());
+            case 3 -> GestionnaireReseau.INSTANCE.sendToServer(
+                new com.example.mysubmod.sousmodes.sousmode3.reseau.PaquetDemandeListeLogsSousMode3());
+            default -> GestionnaireReseau.INSTANCE.sendToServer(new PaquetDemandeListeLogs());
+        }
     }
 
     @Override

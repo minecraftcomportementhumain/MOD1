@@ -60,22 +60,56 @@ public class GestionnaireEvenementsClient {
             if (mc.screen == null && mc.player != null) {
                 SousMode modeActuel = GestionnaireSubModeClient.obtenirModeActuel();
 
+                boolean partieSurCarte = com.example.mysubmod.sousmodes.sousmode3.client.HUDZonesSousMode3.estActif();
+
                 if (modeActuel == SousMode.SOUS_MODE_1) {
-                    // Vérifier si le jeu est terminé
-                    if (com.example.mysubmod.sousmodes.sousmode1.client.MinuterieJeuClient.partieEstTerminee()) {
+                    if (partieSurCarte) {
+                        // Partie sur carte : pas de sélection de fichier de spawn.
+                        // Admins : bouton de lancement ; joueurs : ciblage de zone (flèche).
+                        gererToucheNPartieSurCarte(mc,
+                            com.example.mysubmod.sousmodes.sousmode1.client.MinuterieJeuClient.estActif(),
+                            com.example.mysubmod.sousmodes.sousmode1.client.MinuterieJeuClient.partieEstTerminee());
+                    } else if (com.example.mysubmod.sousmodes.sousmode1.client.MinuterieJeuClient.partieEstTerminee()) {
                         mc.player.sendSystemMessage(net.minecraft.network.chat.Component.literal("§cLe menu de sélection de fichier est désactivé après la fin de la partie"));
                     } else {
                         GestionnairePaquetsClient.ouvrirEcranSelectionFichierBonbons();
                     }
                 } else if (modeActuel == SousMode.SOUS_MODE_2) {
-                    // Vérifier si le jeu est terminé
-                    if (com.example.mysubmod.sousmodes.sousmode2.client.MinuterieJeuClient.partieEstTerminee()) {
+                    if (partieSurCarte) {
+                        gererToucheNPartieSurCarte(mc,
+                            com.example.mysubmod.sousmodes.sousmode2.client.MinuterieJeuClient.estActif(),
+                            com.example.mysubmod.sousmodes.sousmode2.client.MinuterieJeuClient.partieEstTerminee());
+                    } else if (com.example.mysubmod.sousmodes.sousmode2.client.MinuterieJeuClient.partieEstTerminee()) {
                         mc.player.sendSystemMessage(net.minecraft.network.chat.Component.literal("§cLe menu de sélection de fichier est désactivé après la fin de la partie"));
                     } else {
                         com.example.mysubmod.sousmodes.sousmode2.reseau.GestionnairePaquetsClient.ouvrirEcranSelectionFichierBonbons();
                     }
+                } else if (modeActuel == SousMode.SOUS_MODE_3) {
+                    // Sous-mode 3 : pas de sélection de fichier de spawn dans le menu N.
+                    // Admins : uniquement le bouton de lancement de partie.
+                    // Joueurs : sélection d'une zone pour la flèche de navigation.
+                    gererToucheNPartieSurCarte(mc,
+                        com.example.mysubmod.sousmodes.sousmode3.client.MinuterieJeuClientSousMode3.estActif(),
+                        com.example.mysubmod.sousmodes.sousmode3.client.MinuterieJeuClientSousMode3.partieEstTerminee());
                 }
             }
+        }
+    }
+
+    /**
+     * Touche N pendant une partie sur carte (Sous-modes 1, 2 et 3) :
+     * admins avant le lancement -> bouton de lancement de partie ;
+     * joueurs pendant la partie -> ciblage d'une zone du HUD (flèche de navigation).
+     */
+    private static void gererToucheNPartieSurCarte(Minecraft mc, boolean minuterieActive, boolean partieTerminee) {
+        if (GestionnaireSubModeClient.estAdmin()) {
+            if (minuterieActive || partieTerminee) {
+                mc.player.sendSystemMessage(net.minecraft.network.chat.Component.literal("§cLa partie est déjà lancée"));
+            } else {
+                mc.setScreen(new com.example.mysubmod.sousmodes.sousmode3.client.EcranLancementPartieSousMode3());
+            }
+        } else if (com.example.mysubmod.sousmodes.sousmode3.client.HUDZonesSousMode3.estActif()) {
+            mc.setScreen(new com.example.mysubmod.sousmodes.sousmode3.client.EcranZonesSousMode3());
         }
     }
 }

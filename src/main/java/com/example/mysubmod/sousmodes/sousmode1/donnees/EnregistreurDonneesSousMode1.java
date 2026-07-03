@@ -222,6 +222,32 @@ public class EnregistreurDonneesSousMode1 {
     }
 
     /**
+     * Enregistrer la sélection de zone de départ (partie sur carte)
+     */
+    public void enregistrerSelectionZone(ServerPlayer joueur, String nomZone, String typeSelection) {
+        FileWriter enregistreur = obtenirEnregistreurJoueur(joueur);
+        if (enregistreur != null) {
+            try {
+                String horodatage = LocalDateTime.now().format(FORMAT_HORODATAGE);
+                String donneesSupplementaires = String.format(Locale.US, "zone=%s;type_selection=%s",
+                    nomZone.replace(',', ';'), typeSelection);
+                String ligneCsv = String.format(Locale.US, "%s,%s,SELECTION_ZONE,%.2f,%.2f,%.2f,%.1f,%s\n",
+                    horodatage,
+                    joueur.getName().getString(),
+                    joueur.getX(),
+                    joueur.getY(),
+                    joueur.getZ(),
+                    joueur.getHealth(),
+                    donneesSupplementaires);
+                enregistreur.write(ligneCsv);
+                enregistreur.flush();
+            } catch (IOException e) {
+                MonSubMod.JOURNALISEUR.error("Erreur lors de l'enregistrement de la sélection de zone pour le joueur {}", joueur.getName().getString(), e);
+            }
+        }
+    }
+
+    /**
      * Enregistrer les actions du joueur (événements de connexion/déconnexion)
      */
     public void enregistrerActionJoueur(ServerPlayer joueur, String action) {

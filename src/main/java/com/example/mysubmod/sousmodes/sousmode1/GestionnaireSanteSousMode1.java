@@ -89,83 +89,63 @@ public class GestionnaireSanteSousMode1 {
     private void verifierSanteJoueursDeconnectes(MinecraftServer serveur) {
         GestionnaireSousMode1 gestionnaire = GestionnaireSousMode1.getInstance();
 
-        // Obtenir un instantané des joueurs déconnectés
-        java.util.Map<String, ?> joueursDeconnectes = gestionnaire.obtenirInfoJoueursDeconnectes();
+        // Obtenir un instantané des joueurs déconnectés (accès typé)
+        java.util.Map<String, GestionnaireSousMode1.InfoDeconnexion> joueursDeconnectes =
+            gestionnaire.obtenirInfoJoueursDeconnectes();
         long tempsActuel = System.currentTimeMillis();
         long tempsDebutJeu = gestionnaire.obtenirHeureDebutPartie();
 
         if (tempsDebutJeu <= 0) return; // Le jeu n'a pas encore commencé
 
-        for (java.util.Map.Entry<String, ?> entree : joueursDeconnectes.entrySet()) {
+        for (java.util.Map.Entry<String, GestionnaireSousMode1.InfoDeconnexion> entree : joueursDeconnectes.entrySet()) {
             String nomJoueur = entree.getKey();
-            Object objetInfo = entree.getValue();
+            GestionnaireSousMode1.InfoDeconnexion info = entree.getValue();
 
-            // Utiliser la réflexion pour accéder aux champs de DisconnectInfo car il est privé
-            try {
-                java.lang.reflect.Field champUuid = objetInfo.getClass().getDeclaredField("oldUUID");
-                java.lang.reflect.Field champTempsDeconnexion = objetInfo.getClass().getDeclaredField("disconnectTime");
-                java.lang.reflect.Field champSante = objetInfo.getClass().getDeclaredField("healthAtDisconnect");
-                java.lang.reflect.Field champEstMort = objetInfo.getClass().getDeclaredField("isDead");
+            // Ignorer les joueurs déjà marqués comme morts
+            if (info.estMort) {
+                continue;
+            }
 
-                champUuid.setAccessible(true);
-                champTempsDeconnexion.setAccessible(true);
-                champSante.setAccessible(true);
-                champEstMort.setAccessible(true);
+            UUID idJoueur = info.ancienUUID;
 
-                UUID idJoueur = (UUID) champUuid.get(objetInfo);
-                long tempsDeconnexion = champTempsDeconnexion.getLong(objetInfo);
-                float santeALaDeconnexion = champSante.getFloat(objetInfo);
-                boolean estMort = champEstMort.getBoolean(objetInfo);
+            // Vérifier uniquement les joueurs encore marqués comme vivants
+            if (!gestionnaire.estJoueurVivant(idJoueur)) {
+                continue;
+            }
 
-                // Ignorer les joueurs déjà marqués comme morts
-                if (estMort) {
-                    continue;
+            // Calculer la santé basée sur le temps déconnecté
+            long tempsDeconnexionEffectif = Math.max(info.tempsDeconnexion, tempsDebutJeu);
+            long numeroTickALaDeconnexion = (tempsDeconnexionEffectif - tempsDebutJeu) / 10000;
+            long numeroTickMaintenant = (tempsActuel - tempsDebutJeu) / 10000;
+
+            int ticksSanteManques = (int) (numeroTickMaintenant - numeroTickALaDeconnexion);
+            float santeActuelle = info.santeADeconnexion - (ticksSanteManques * PERTE_SANTE_PAR_TICK);
+
+            // Le joueur est mort pendant sa déconnexion
+            if (santeActuelle <= 0.0f) {
+                MonSubMod.JOURNALISEUR.info("Le joueur déconnecté {} est mort côté serveur (santé: {} -> {}, {} ticks manqués)",
+                    nomJoueur, info.santeADeconnexion, santeActuelle, ticksSanteManques);
+
+                // Gérer la mort côté serveur
+                gestionnaire.gererMortJoueurDeconnecte(nomJoueur, idJoueur);
+
+                // Diffuser le message de mort
+                String messageMort = "§e" + nomJoueur + " §cest mort pendant sa déconnexion !";
+                for (ServerPlayer j : UtilitaireFiltreJoueurs.obtenirJoueursAuthentifies(serveur)) {
+                    j.sendSystemMessage(Component.literal(messageMort));
                 }
 
-                // Vérifier uniquement les joueurs encore marqués comme vivants
-                if (!gestionnaire.estJoueurVivant(idJoueur)) {
-                    continue;
+                // Vérifier si tous les joueurs sont morts
+                if (gestionnaire.obtenirJoueursVivants().isEmpty()) {
+                    MonSubMod.JOURNALISEUR.info("Tous les joueurs sont morts (y compris les déconnectés) - fin du jeu");
+                    serveur.execute(() -> {
+                        for (ServerPlayer j : UtilitaireFiltreJoueurs.obtenirJoueursAuthentifies(serveur)) {
+                            j.sendSystemMessage(Component.literal("§c§lTous les joueurs sont morts !"));
+                        }
+                        gestionnaire.terminerPartie(serveur);
+                    });
+                    return; // Arrêter la vérification, le jeu se termine
                 }
-
-                // Calculer la santé basée sur le temps déconnecté
-                long tempsDeconnexionEffectif = Math.max(tempsDeconnexion, tempsDebutJeu);
-                long msDepuisDebutJeuALaDeconnexion = tempsDeconnexionEffectif - tempsDebutJeu;
-                long msDepuisDebutJeuMaintenant = tempsActuel - tempsDebutJeu;
-
-                long numeroTickALaDeconnexion = msDepuisDebutJeuALaDeconnexion / 10000;
-                long numeroTickMaintenant = msDepuisDebutJeuMaintenant / 10000;
-
-                int ticksSanteManques = (int) (numeroTickMaintenant - numeroTickALaDeconnexion);
-                float santeActuelle = santeALaDeconnexion - (ticksSanteManques * PERTE_SANTE_PAR_TICK);
-
-                // Le joueur est mort pendant sa déconnexion
-                if (santeActuelle <= 0.0f) {
-                    MonSubMod.JOURNALISEUR.info("Le joueur déconnecté {} est mort côté serveur (santé: {} -> {}, {} ticks manqués)",
-                        nomJoueur, santeALaDeconnexion, santeActuelle, ticksSanteManques);
-
-                    // Gérer la mort côté serveur
-                    gestionnaire.gererMortJoueurDeconnecte(nomJoueur, idJoueur);
-
-                    // Diffuser le message de mort
-                    String messageMort = "§e" + nomJoueur + " §cest mort pendant sa déconnexion !";
-                    for (ServerPlayer j : UtilitaireFiltreJoueurs.obtenirJoueursAuthentifies(serveur)) {
-                        j.sendSystemMessage(Component.literal(messageMort));
-                    }
-
-                    // Vérifier si tous les joueurs sont morts
-                    if (gestionnaire.obtenirJoueursVivants().isEmpty()) {
-                        MonSubMod.JOURNALISEUR.info("Tous les joueurs sont morts (y compris les déconnectés) - fin du jeu");
-                        serveur.execute(() -> {
-                            for (ServerPlayer j : UtilitaireFiltreJoueurs.obtenirJoueursAuthentifies(serveur)) {
-                                j.sendSystemMessage(Component.literal("§c§lTous les joueurs sont morts !"));
-                            }
-                            gestionnaire.terminerPartie(serveur);
-                        });
-                        return; // Arrêter la vérification, le jeu se termine
-                    }
-                }
-            } catch (Exception e) {
-                MonSubMod.JOURNALISEUR.error("Erreur lors de la vérification de la santé du joueur déconnecté: {}", e.getMessage());
             }
         }
     }

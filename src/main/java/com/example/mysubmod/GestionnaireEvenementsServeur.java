@@ -25,6 +25,78 @@ public class GestionnaireEvenementsServeur {
         CommandeSousMode.register(event.getDispatcher());
     }
 
+    /**
+     * Désactiver les dégâts de chute pour les joueurs : la santé est une ressource
+     * de jeu gérée par les sous-modes (dégradation + bonbons), tomber de haut ne
+     * doit pas faire perdre de points de vie (falaises d'élévation du Sous-mode 3,
+     * téléportations, plateformes).
+     */
+    @SubscribeEvent
+    public static void onLivingFall(net.minecraftforge.event.entity.living.LivingFallEvent event) {
+        if (event.getEntity() instanceof ServerPlayer) {
+            event.setDamageMultiplier(0.0f);
+            event.setCanceled(true);
+        }
+    }
+
+    /**
+     * Désactiver les dégâts d'étouffement pour les joueurs : un bloc bonbon
+     * non-visible qui réapparaît peut emmurer un joueur (il se libère en minant),
+     * cela ne doit pas entraîner une mort vanilla hors du système de santé du mod.
+     */
+    @SubscribeEvent
+    public static void onDegatsEtouffement(net.minecraftforge.event.entity.living.LivingHurtEvent event) {
+        if (event.getEntity() instanceof ServerPlayer
+            && event.getSource().is(net.minecraft.world.damagesource.DamageTypes.IN_WALL)) {
+            event.setCanceled(true);
+        }
+    }
+
+    /**
+     * Prise en charge de la noyade : un joueur vivant qui se noie pendant une
+     * partie agit comme s'il avait perdu tous ses points de vie — fin de la
+     * partie pour lui (mort enregistrée + zone spectateur), au lieu de la mort
+     * vanilla qui casserait le déroulement.
+     */
+    @SubscribeEvent
+    public static void onDegatsNoyade(net.minecraftforge.event.entity.living.LivingHurtEvent event) {
+        if (!(event.getEntity() instanceof ServerPlayer joueur)) {
+            return;
+        }
+        if (!event.getSource().is(net.minecraft.world.damagesource.DamageTypes.DROWN)) {
+            return;
+        }
+
+        switch (GestionnaireSousModes.getInstance().obtenirModeActuel()) {
+            case SOUS_MODE_1 -> {
+                com.example.mysubmod.sousmodes.sousmode1.GestionnaireSousMode1 gestionnaire =
+                    com.example.mysubmod.sousmodes.sousmode1.GestionnaireSousMode1.getInstance();
+                if (gestionnaire.estPartieActive() && gestionnaire.estJoueurVivant(joueur.getUUID())) {
+                    event.setCanceled(true);
+                    gestionnaire.gererNoyadeJoueur(joueur);
+                }
+            }
+            case SOUS_MODE_2 -> {
+                com.example.mysubmod.sousmodes.sousmode2.GestionnaireSousMode2 gestionnaire =
+                    com.example.mysubmod.sousmodes.sousmode2.GestionnaireSousMode2.getInstance();
+                if (gestionnaire.estPartieActive() && gestionnaire.estJoueurVivant(joueur.getUUID())) {
+                    event.setCanceled(true);
+                    gestionnaire.gererNoyadeJoueur(joueur);
+                }
+            }
+            case SOUS_MODE_3 -> {
+                com.example.mysubmod.sousmodes.sousmode3.GestionnaireSousMode3 gestionnaire =
+                    com.example.mysubmod.sousmodes.sousmode3.GestionnaireSousMode3.getInstance();
+                if (gestionnaire.estPartieActive() && gestionnaire.estJoueurVivant(joueur.getUUID())) {
+                    event.setCanceled(true);
+                    gestionnaire.gererNoyadeJoueur(joueur);
+                }
+            }
+            default -> {
+            }
+        }
+    }
+
     @SubscribeEvent(priority = EventPriority.HIGHEST)
     public static void onPlayerJoin(PlayerEvent.PlayerLoggedInEvent event) {
         if (event.getEntity() instanceof ServerPlayer joueur) {
@@ -119,6 +191,13 @@ public class GestionnaireEvenementsServeur {
                     new com.example.mysubmod.sousmodes.sousmode2.reseau.PaquetMiseAJourCompteurBonbons(new java.util.HashMap<>())); // Map vide = effacer
                 GestionnaireReseau.INSTANCE.send(PacketDistributor.PLAYER.with(() -> joueur),
                     new com.example.mysubmod.sousmodes.sousmode2.reseau.PaquetSynchronisationPenalite(false, joueur.getUUID())); // false = désactiver
+
+                // Effacer la minuterie Sous-mode 3 et le HUD des zones (partagé avec les parties sur carte)
+                // pendant l'attente d'authentification — ils seront renvoyés après l'authentification
+                GestionnaireReseau.INSTANCE.send(PacketDistributor.PLAYER.with(() -> joueur),
+                    new com.example.mysubmod.sousmodes.sousmode3.reseau.PaquetMinuterieJeuSousMode3(-1)); // -1 = désactiver
+                GestionnaireReseau.INSTANCE.send(PacketDistributor.PLAYER.with(() -> joueur),
+                    com.example.mysubmod.sousmodes.sousmode3.reseau.PaquetZonesSousMode3.vide());
 
                 String type = estCandidatFile ? "Candidat file d'attente" : "Protégé/admin non authentifié";
                 MonSubMod.JOURNALISEUR.info("{} {} rendu invisible, téléporté vers la plateforme d'authentification isolée, et ajouté à la salle d'attente", type, nomJoueur);

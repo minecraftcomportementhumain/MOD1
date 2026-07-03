@@ -80,8 +80,12 @@ public class CommandeSousMode {
             case "sub2":
                 mode = SousMode.SOUS_MODE_2;
                 break;
+            case "3":
+            case "sub3":
+                mode = SousMode.SOUS_MODE_3;
+                break;
             default:
-                context.getSource().sendFailure(Component.literal("Mode invalide. Utilisez: waiting, 1, ou 2"));
+                context.getSource().sendFailure(Component.literal("Mode invalide. Utilisez: waiting, 1, 2 ou 3"));
                 return 0;
         }
 

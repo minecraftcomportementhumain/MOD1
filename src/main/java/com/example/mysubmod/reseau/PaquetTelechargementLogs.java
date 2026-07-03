@@ -11,15 +11,18 @@ import java.util.function.Supplier;
 public class PaquetTelechargementLogs {
     private final String nomDossier;
     private final boolean telechargerTout;
+    private final int numeroSousMode;
 
-    public PaquetTelechargementLogs(String nomDossier, boolean telechargerTout) {
+    public PaquetTelechargementLogs(String nomDossier, boolean telechargerTout, int numeroSousMode) {
         this.nomDossier = nomDossier;
         this.telechargerTout = telechargerTout;
+        this.numeroSousMode = numeroSousMode;
     }
 
     public PaquetTelechargementLogs(FriendlyByteBuf tampon) {
         this.telechargerTout = tampon.readBoolean();
         this.nomDossier = tampon.readBoolean() ? tampon.readUtf() : null;
+        this.numeroSousMode = tampon.readInt();
     }
 
     public void toBytes(FriendlyByteBuf tampon) {
@@ -28,6 +31,7 @@ public class PaquetTelechargementLogs {
         if (nomDossier != null) {
             tampon.writeUtf(nomDossier);
         }
+        tampon.writeInt(numeroSousMode);
     }
 
     public String obtenirNomDossier() {
@@ -43,7 +47,7 @@ public class PaquetTelechargementLogs {
         contexte.enqueueWork(() -> {
             net.minecraft.server.level.ServerPlayer joueur = contexte.getSender();
             if (joueur != null && com.example.mysubmod.sousmodes.GestionnaireSousModes.getInstance().estAdmin(joueur)) {
-                com.example.mysubmod.serveur.GestionnaireLogs.telechargerLogs(joueur, nomDossier, telechargerTout);
+                com.example.mysubmod.serveur.GestionnaireLogs.telechargerLogs(joueur, nomDossier, telechargerTout, numeroSousMode);
             }
         });
         return true;

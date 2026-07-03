@@ -592,6 +592,16 @@ public class GestionnaireAuth {
                 gestionnaireSousMode2.gererReconnexionJoueur(joueur);
                 return;
             }
+        } else if (modeActuel == com.example.mysubmod.sousmodes.SousMode.SOUS_MODE_3) {
+            com.example.mysubmod.sousmodes.sousmode3.GestionnaireSousMode3 gestionnaireSousMode3 =
+                com.example.mysubmod.sousmodes.sousmode3.GestionnaireSousMode3.getInstance();
+
+            if (gestionnaireSousMode3.etaitJoueurDeconnecte(joueur.getName().getString())) {
+                // Le joueur a été déconnecté pendant le jeu - restaurer sa position et son état
+                com.example.mysubmod.MonSubMod.JOURNALISEUR.info("Le joueur {} a été déconnecté pendant le Sous-mode 3, restauration de l'état", joueur.getName().getString());
+                gestionnaireSousMode3.gererReconnexionJoueur(joueur);
+                return;
+            }
         }
 
         // Le joueur s'authentifie pour la première fois cette session - traiter comme une nouvelle connexion
@@ -602,6 +612,10 @@ public class GestionnaireAuth {
             );
         } else if (modeActuel == com.example.mysubmod.sousmodes.SousMode.SOUS_MODE_2) {
             com.example.mysubmod.sousmodes.sousmode2.GestionnaireEvenementsSousMode2.onPlayerJoin(
+                new net.minecraftforge.event.entity.player.PlayerEvent.PlayerLoggedInEvent(joueur)
+            );
+        } else if (modeActuel == com.example.mysubmod.sousmodes.SousMode.SOUS_MODE_3) {
+            com.example.mysubmod.sousmodes.sousmode3.GestionnaireEvenementsSousMode3.onPlayerJoin(
                 new net.minecraftforge.event.entity.player.PlayerEvent.PlayerLoggedInEvent(joueur)
             );
         } else if (modeActuel == com.example.mysubmod.sousmodes.SousMode.SALLE_ATTENTE) {

@@ -40,6 +40,11 @@ public class HUDCompteurBonbons {
         specialisationJoueur = specialisation;
     }
 
+    /** Spécialisation actuelle du joueur (affichée aussi par le HUD des zones en partie sur carte) */
+    public static TypeRessource obtenirSpecialisationJoueur() {
+        return specialisationJoueur;
+    }
+
     public static boolean estActif() {
         return actif;
     }

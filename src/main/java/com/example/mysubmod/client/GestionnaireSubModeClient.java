@@ -42,6 +42,29 @@ public class GestionnaireSubModeClient {
             // Désactiver le HUD de comptage de bonbons du Sous-mode 1
             com.example.mysubmod.sousmodes.sousmode1.client.HUDCompteurBonbons.desactiver();
         }
+
+        // Note : le HUD des zones (parties sur carte) n'est PAS effacé à la sortie des
+        // Sous-modes 1/2 — le serveur envoie les paquets de zones (vidage puis liste du
+        // nouveau mode) AVANT le paquet de changement de mode ; un nettoyage ici
+        // effacerait les zones du mode suivant. Le retour en salle d'attente fait foi.
+        if (mode == SousMode.SALLE_ATTENTE) {
+            com.example.mysubmod.sousmodes.sousmode3.client.HUDZonesSousMode3.desactiver();
+        }
+
+        // Nettoyer les éléments du HUD lors de l'entrée dans le Sous-mode 3 (réinitialise la flèche)
+        if (mode == SousMode.SOUS_MODE_3) {
+            com.example.mysubmod.sousmodes.sousmode3.client.MinuterieJeuClientSousMode3.desactiver();
+            com.example.mysubmod.sousmodes.sousmode3.client.HUDZonesSousMode3.desactiver();
+        }
+
+        // Nettoyer la minuterie lors de la sortie du Sous-mode 3. Le HUD des zones n'est
+        // PAS effacé ici : lors d'un passage Sous-mode 3 -> Sous-mode 1/2 avec carte, le
+        // serveur envoie les zones du nouveau mode (vidage puis liste complète) AVANT le
+        // paquet de changement de mode — un nettoyage ici les effacerait et la touche N
+        // retomberait sur le menu de sélection de fichier.
+        if (ancienMode == SousMode.SOUS_MODE_3 && mode != SousMode.SOUS_MODE_3) {
+            com.example.mysubmod.sousmodes.sousmode3.client.MinuterieJeuClientSousMode3.desactiver();
+        }
     }
 
     public static SousMode obtenirModeActuel() {

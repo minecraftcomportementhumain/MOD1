@@ -29,7 +29,7 @@ public class GestionnaireLogs {
         List<String> dossiersLogs = obtenirDossiersLogs(numeroSubMode);
         GestionnaireReseau.INSTANCE.send(
             PacketDistributor.PLAYER.with(() -> joueur),
-            new PaquetListeLogs(dossiersLogs)
+            new PaquetListeLogs(dossiersLogs, numeroSubMode)
         );
     }
 
@@ -64,6 +64,10 @@ public class GestionnaireLogs {
     }
 
     public static void telechargerLogs(ServerPlayer joueur, String nomDossier, boolean telechargerTout) {
+        telechargerLogs(joueur, nomDossier, telechargerTout, 1); // Par défaut Sous-mode 1 pour rétrocompatibilité
+    }
+
+    public static void telechargerLogs(ServerPlayer joueur, String nomDossier, boolean telechargerTout, int numeroSubMode) {
         try {
             File repertoireBase = new File(REPERTOIRE_BASE_LOGS);
             if (!repertoireBase.exists()) {
@@ -72,7 +76,7 @@ public class GestionnaireLogs {
             }
 
             if (telechargerTout) {
-                envoyerTousLogsAuClient(joueur, repertoireBase);
+                envoyerTousLogsAuClient(joueur, repertoireBase, numeroSubMode);
             } else if (nomDossier != null) {
                 envoyerDossierUniqueAuClient(joueur, new File(repertoireBase, nomDossier));
             }
@@ -82,15 +86,16 @@ public class GestionnaireLogs {
         }
     }
 
-    private static void envoyerTousLogsAuClient(ServerPlayer joueur, File repertoireBase) throws IOException {
+    private static void envoyerTousLogsAuClient(ServerPlayer joueur, File repertoireBase, int numeroSubMode) throws IOException {
         // Créer le ZIP en mémoire
         java.io.ByteArrayOutputStream fluxSortieTableauOctets = new java.io.ByteArrayOutputStream();
+        String prefixe = "sousmode" + numeroSubMode + "_partie_";
 
         try (ZipOutputStream fluxSortieZip = new ZipOutputStream(fluxSortieTableauOctets)) {
             File[] dossiers = repertoireBase.listFiles();
             if (dossiers != null) {
                 for (File dossier : dossiers) {
-                    if (dossier.isDirectory() && dossier.getName().startsWith("sousmode1_partie_")) {
+                    if (dossier.isDirectory() && dossier.getName().startsWith(prefixe)) {
                         ajouterDossierAuZip(dossier, dossier.getName(), fluxSortieZip);
                     }
                 }
@@ -101,10 +106,11 @@ public class GestionnaireLogs {
         byte[] donneesZip = fluxSortieTableauOctets.toByteArray();
         GestionnaireReseau.INSTANCE.send(
             PacketDistributor.PLAYER.with(() -> joueur),
-            new com.example.mysubmod.reseau.PaquetDonneesLogs("tous_journaux.zip", donneesZip)
+            new com.example.mysubmod.reseau.PaquetDonneesLogs("tous_journaux_sousmode" + numeroSubMode + ".zip", donneesZip)
         );
 
-        MonSubMod.JOURNALISEUR.info("Envoi du ZIP de tous les journaux ({} octets) au client {}", donneesZip.length, joueur.getName().getString());
+        MonSubMod.JOURNALISEUR.info("Envoi du ZIP de tous les journaux du Sous-mode {} ({} octets) au client {}",
+            numeroSubMode, donneesZip.length, joueur.getName().getString());
     }
 
     private static void envoyerDossierUniqueAuClient(ServerPlayer joueur, File dossier) throws IOException {
@@ -157,6 +163,10 @@ public class GestionnaireLogs {
     }
 
     public static void supprimerLogs(ServerPlayer joueur, String nomDossier, boolean supprimerTout) {
+        supprimerLogs(joueur, nomDossier, supprimerTout, 1); // Par défaut Sous-mode 1 pour rétrocompatibilité
+    }
+
+    public static void supprimerLogs(ServerPlayer joueur, String nomDossier, boolean supprimerTout, int numeroSubMode) {
         try {
             File repertoireBase = new File(REPERTOIRE_BASE_LOGS);
             if (!repertoireBase.exists()) {
@@ -165,7 +175,7 @@ public class GestionnaireLogs {
             }
 
             if (supprimerTout) {
-                supprimerTousLogs(joueur, repertoireBase);
+                supprimerTousLogs(joueur, repertoireBase, numeroSubMode);
             } else if (nomDossier != null) {
                 supprimerDossierUnique(joueur, new File(repertoireBase, nomDossier));
             }
@@ -175,13 +185,14 @@ public class GestionnaireLogs {
         }
     }
 
-    private static void supprimerTousLogs(ServerPlayer joueur, File repertoireBase) throws IOException {
+    private static void supprimerTousLogs(ServerPlayer joueur, File repertoireBase, int numeroSubMode) throws IOException {
         int nombreSupprimes = 0;
         File[] dossiers = repertoireBase.listFiles();
+        String prefixe = "sousmode" + numeroSubMode + "_partie_";
 
         if (dossiers != null) {
             for (File dossier : dossiers) {
-                if (dossier.isDirectory() && dossier.getName().startsWith("sousmode1_partie_")) {
+                if (dossier.isDirectory() && dossier.getName().startsWith(prefixe)) {
                     supprimerRepertoire(dossier);
                     nombreSupprimes++;
                 }

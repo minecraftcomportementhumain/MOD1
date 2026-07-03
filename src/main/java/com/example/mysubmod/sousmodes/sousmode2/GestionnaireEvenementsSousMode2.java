@@ -289,6 +289,11 @@ public class GestionnaireEvenementsSousMode2 {
                     ItemEntity entiteItem = evenement.getItem();
                     if (entiteItem != null) {
                         GestionnaireBonbonsSousMode2.getInstance().quandBonbonRamasse(entiteItem);
+
+                        // Partie sur carte : compteurs de zones + réapparition selon le délai du bloc
+                        if (GestionnaireSousMode2.getInstance().modeCarteActif()) {
+                            GestionnaireSousMode2.getInstance().obtenirPartieCarte().gererRamassageBonbon(entiteItem);
+                        }
                     }
                     // Autoriser le ramassage de bonbons - ne pas annuler l'événement
                 } else {
@@ -328,10 +333,32 @@ public class GestionnaireEvenementsSousMode2 {
             if (GestionnaireSousModes.getInstance().obtenirModeActuel() == SousMode.SOUS_MODE_2) {
                 GestionnaireSousMode2 gestionnaire = GestionnaireSousMode2.getInstance();
 
+                // Partie sur carte : envoyer le HUD des zones au joueur (flèche réinitialisée)
+                if (gestionnaire.modeCarteActif()) {
+                    gestionnaire.obtenirPartieCarte().envoyerZonesCompletesAJoueur(joueur);
+                }
+
                 // Vérifier si le joueur était déconnecté pendant le jeu
                 if (gestionnaire.etaitJoueurDeconnecte(joueur.getName().getString())) {
                     // Joueur se reconnectant - restaurer son état
                     gestionnaire.gererReconnexionJoueur(joueur);
+                } else if (gestionnaire.modeCarteActif()) {
+                    // Partie sur carte : nouveaux joueurs
+                    if (GestionnaireSousModes.getInstance().estAdmin(joueur)) {
+                        gestionnaire.teleporterVersSpectateur(joueur);
+                        if (gestionnaire.estPhaseAttenteCarte()) {
+                            joueur.sendSystemMessage(net.minecraft.network.chat.Component.literal(
+                                "§6Appuyez sur N pour ouvrir le menu de lancement de partie"));
+                        }
+                    } else if (!gestionnaire.estPartieActive()) {
+                        // Avant le lancement (attente ou sélection de zone) : participant
+                        gestionnaire.ajouterJoueurEnAttenteCarte(joueur);
+                        joueur.sendSystemMessage(net.minecraft.network.chat.Component.literal(
+                            "§eVous rejoignez le jeu. En attente du lancement de la partie..."));
+                    } else {
+                        // Après le lancement : spectateur
+                        gestionnaire.teleporterVersSpectateur(joueur);
+                    }
                 } else {
                     // Nouveaux joueurs rejoignant - vérifier si nous sommes en phase de sélection de fichier
                     if (gestionnaire.estPhaseSelectionFichier()) {
@@ -455,6 +482,12 @@ public class GestionnaireEvenementsSousMode2 {
             }
         }
 
+        // Partie sur carte : vérifier la position des joueurs vivants à chaque tick (cage)
+        if (GestionnaireSousMode2.getInstance().modeCarteActif()) {
+            GestionnaireSousMode2.getInstance().obtenirPartieCarte().verifierCageJoueurs(
+                evenement.getServer(), GestionnaireSousMode2.getInstance()::estJoueurVivant);
+        }
+
         if (!GestionnaireSousMode2.getInstance().estPartieActive()) {
             return;
         }
@@ -485,16 +518,22 @@ public class GestionnaireEvenementsSousMode2 {
         if (ticsMiseAJourCompteBonbons >= INTERVALLE_MISE_A_JOUR_COMPTE_BONBONS) {
             ticsMiseAJourCompteBonbons = 0;
 
-            // Obtenir les comptes de bonbons depuis le gestionnaire (par île ET type de ressource)
-            java.util.Map<com.example.mysubmod.sousmodes.sousmode2.iles.TypeIle, java.util.Map<TypeRessource, Integer>> comptesBonbons =
-                GestionnaireBonbonsSousMode2.getInstance().obtenirBonbonsDisponiblesParIle(evenement.getServer());
+            if (GestionnaireSousMode2.getInstance().modeCarteActif()) {
+                // Partie sur carte : le HUD des zones remplace les compteurs des 4 îles
+                GestionnaireSousMode2.getInstance().obtenirPartieCarte().purgerEntitesFusionnees();
+                GestionnaireSousMode2.getInstance().obtenirPartieCarte().envoyerCompteursZones();
+            } else {
+                // Obtenir les comptes de bonbons depuis le gestionnaire (par île ET type de ressource)
+                java.util.Map<com.example.mysubmod.sousmodes.sousmode2.iles.TypeIle, java.util.Map<TypeRessource, Integer>> comptesBonbons =
+                    GestionnaireBonbonsSousMode2.getInstance().obtenirBonbonsDisponiblesParIle(evenement.getServer());
 
-            // Envoyer aux joueurs authentifiés seulement
-            com.example.mysubmod.sousmodes.sousmode2.reseau.PaquetMiseAJourCompteurBonbons paquet =
-                new com.example.mysubmod.sousmodes.sousmode2.reseau.PaquetMiseAJourCompteurBonbons(comptesBonbons);
-            for (net.minecraft.server.level.ServerPlayer joueur : com.example.mysubmod.utilitaire.UtilitaireFiltreJoueurs.obtenirJoueursAuthentifies(evenement.getServer())) {
-                com.example.mysubmod.reseau.GestionnaireReseau.INSTANCE.send(
-                    net.minecraftforge.network.PacketDistributor.PLAYER.with(() -> joueur), paquet);
+                // Envoyer aux joueurs authentifiés seulement
+                com.example.mysubmod.sousmodes.sousmode2.reseau.PaquetMiseAJourCompteurBonbons paquet =
+                    new com.example.mysubmod.sousmodes.sousmode2.reseau.PaquetMiseAJourCompteurBonbons(comptesBonbons);
+                for (net.minecraft.server.level.ServerPlayer joueur : com.example.mysubmod.utilitaire.UtilitaireFiltreJoueurs.obtenirJoueursAuthentifies(evenement.getServer())) {
+                    com.example.mysubmod.reseau.GestionnaireReseau.INSTANCE.send(
+                        net.minecraftforge.network.PacketDistributor.PLAYER.with(() -> joueur), paquet);
+                }
             }
         }
 
@@ -616,6 +655,27 @@ public class GestionnaireEvenementsSousMode2 {
     @SubscribeEvent(priority = net.minecraftforge.eventbus.api.EventPriority.HIGHEST)
     public static void onEntityJoinLevel(EntityJoinLevelEvent evenement) {
         if (GestionnaireSousModes.getInstance().obtenirModeActuel() != SousMode.SOUS_MODE_2) {
+            return;
+        }
+
+        // Partie sur carte : seuls les bonbons peuvent exister au sol dans l'aire de la carte,
+        // et les monstres y sont bloqués
+        if (GestionnaireSousMode2.getInstance().modeCarteActif()) {
+            if (evenement.getEntity() instanceof ItemEntity entiteItem) {
+                boolean estBonbon = entiteItem.getItem().is(ItemsMod.BONBON_BLEU.get())
+                    || entiteItem.getItem().is(ItemsMod.BONBON_ROUGE.get());
+                if (GestionnaireSousMode2.getInstance().obtenirPartieCarte().estDansAireCarte(entiteItem.blockPosition())
+                    && !estBonbon) {
+                    evenement.setCanceled(true);
+                }
+            } else if (evenement.getEntity() instanceof net.minecraft.world.entity.monster.Monster) {
+                BlockPos pos = evenement.getEntity().blockPosition();
+                boolean presPlateforme = Math.abs(pos.getX()) <= 20 && Math.abs(pos.getZ()) <= 20
+                    && pos.getY() >= 140;
+                if (GestionnaireSousMode2.getInstance().obtenirPartieCarte().estDansAireCarte(pos) || presPlateforme) {
+                    evenement.setCanceled(true);
+                }
+            }
             return;
         }
 

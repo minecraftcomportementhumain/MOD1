@@ -11,15 +11,18 @@ import java.util.function.Supplier;
 public class PaquetSuppressionLogs {
     private final String nomDossier;
     private final boolean supprimerTout;
+    private final int numeroSousMode;
 
-    public PaquetSuppressionLogs(String nomDossier, boolean supprimerTout) {
+    public PaquetSuppressionLogs(String nomDossier, boolean supprimerTout, int numeroSousMode) {
         this.nomDossier = nomDossier;
         this.supprimerTout = supprimerTout;
+        this.numeroSousMode = numeroSousMode;
     }
 
     public PaquetSuppressionLogs(FriendlyByteBuf tampon) {
         this.supprimerTout = tampon.readBoolean();
         this.nomDossier = tampon.readBoolean() ? tampon.readUtf() : null;
+        this.numeroSousMode = tampon.readInt();
     }
 
     public void toBytes(FriendlyByteBuf tampon) {
@@ -28,6 +31,7 @@ public class PaquetSuppressionLogs {
         if (nomDossier != null) {
             tampon.writeUtf(nomDossier);
         }
+        tampon.writeInt(numeroSousMode);
     }
 
     public String obtenirNomDossier() {
@@ -43,7 +47,7 @@ public class PaquetSuppressionLogs {
         contexte.enqueueWork(() -> {
             net.minecraft.server.level.ServerPlayer joueur = contexte.getSender();
             if (joueur != null && com.example.mysubmod.sousmodes.GestionnaireSousModes.getInstance().estAdmin(joueur)) {
-                com.example.mysubmod.serveur.GestionnaireLogs.supprimerLogs(joueur, nomDossier, supprimerTout);
+                com.example.mysubmod.serveur.GestionnaireLogs.supprimerLogs(joueur, nomDossier, supprimerTout, numeroSousMode);
             }
         });
         return true;
