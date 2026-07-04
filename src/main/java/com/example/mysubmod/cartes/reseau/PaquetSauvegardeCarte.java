@@ -46,6 +46,9 @@ public class PaquetSauvegardeCarte {
         int nombreTotalMorceaux = tampon.readInt();
         int indexMorceau = tampon.readInt();
         int longueur = tampon.readInt();
+        if (longueur < 0 || longueur > tampon.readableBytes()) {
+            throw new io.netty.handler.codec.DecoderException("Longueur de morceau invalide: " + longueur);
+        }
         byte[] donnees = new byte[longueur];
         tampon.readBytes(donnees);
         boolean ecraserConfirme = tampon.readBoolean();

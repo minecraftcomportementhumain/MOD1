@@ -60,7 +60,8 @@ public class GestionnaireReseau {
             PaquetStatutAdmin.class,
             PaquetStatutAdmin::encode,
             PaquetStatutAdmin::decode,
-            PaquetStatutAdmin::traiter
+            PaquetStatutAdmin::traiter,
+            java.util.Optional.of(NetworkDirection.PLAY_TO_CLIENT)
         );
 
         INSTANCE.registerMessage(
@@ -155,7 +156,8 @@ public class GestionnaireReseau {
             PaquetListeLogs.class,
             PaquetListeLogs::toBytes,
             PaquetListeLogs::new,
-            PaquetListeLogs::traiter
+            PaquetListeLogs::traiter,
+            java.util.Optional.of(NetworkDirection.PLAY_TO_CLIENT)
         );
 
         INSTANCE.registerMessage(
@@ -181,7 +183,8 @@ public class GestionnaireReseau {
             PaquetDonneesLogs.class,
             PaquetDonneesLogs::toBytes,
             PaquetDonneesLogs::new,
-            PaquetDonneesLogs::traiter
+            PaquetDonneesLogs::traiter,
+            java.util.Optional.of(NetworkDirection.PLAY_TO_CLIENT)
         );
 
         // Paquets d'authentification administrateur
@@ -207,7 +210,8 @@ public class GestionnaireReseau {
             com.example.mysubmod.authentification.PaquetReponseAuthAdmin.class,
             com.example.mysubmod.authentification.PaquetReponseAuthAdmin::encode,
             com.example.mysubmod.authentification.PaquetReponseAuthAdmin::decode,
-            com.example.mysubmod.authentification.PaquetReponseAuthAdmin::traiter
+            com.example.mysubmod.authentification.PaquetReponseAuthAdmin::traiter,
+            java.util.Optional.of(NetworkDirection.PLAY_TO_CLIENT)
         );
 
         INSTANCE.registerMessage(
@@ -372,7 +376,8 @@ public class GestionnaireReseau {
             com.example.mysubmod.cartes.reseau.PaquetListeCartes.class,
             com.example.mysubmod.cartes.reseau.PaquetListeCartes::encode,
             com.example.mysubmod.cartes.reseau.PaquetListeCartes::decode,
-            com.example.mysubmod.cartes.reseau.PaquetListeCartes::traiter
+            com.example.mysubmod.cartes.reseau.PaquetListeCartes::traiter,
+            java.util.Optional.of(NetworkDirection.PLAY_TO_CLIENT)
         );
 
         INSTANCE.registerMessage(
@@ -407,7 +412,8 @@ public class GestionnaireReseau {
             com.example.mysubmod.cartes.reseau.PaquetReponseEditeurCarte.class,
             com.example.mysubmod.cartes.reseau.PaquetReponseEditeurCarte::encode,
             com.example.mysubmod.cartes.reseau.PaquetReponseEditeurCarte::decode,
-            com.example.mysubmod.cartes.reseau.PaquetReponseEditeurCarte::traiter
+            com.example.mysubmod.cartes.reseau.PaquetReponseEditeurCarte::traiter,
+            java.util.Optional.of(NetworkDirection.PLAY_TO_CLIENT)
         );
 
         INSTANCE.registerMessage(
@@ -433,7 +439,8 @@ public class GestionnaireReseau {
             com.example.mysubmod.cartes.reseau.PaquetResultatSauvegardeCarte.class,
             com.example.mysubmod.cartes.reseau.PaquetResultatSauvegardeCarte::encode,
             com.example.mysubmod.cartes.reseau.PaquetResultatSauvegardeCarte::decode,
-            com.example.mysubmod.cartes.reseau.PaquetResultatSauvegardeCarte::traiter
+            com.example.mysubmod.cartes.reseau.PaquetResultatSauvegardeCarte::traiter,
+            java.util.Optional.of(NetworkDirection.PLAY_TO_CLIENT)
         );
 
         INSTANCE.registerMessage(
@@ -450,7 +457,8 @@ public class GestionnaireReseau {
             com.example.mysubmod.cartes.reseau.PaquetDonneesCarte.class,
             com.example.mysubmod.cartes.reseau.PaquetDonneesCarte::encode,
             com.example.mysubmod.cartes.reseau.PaquetDonneesCarte::decode,
-            com.example.mysubmod.cartes.reseau.PaquetDonneesCarte::traiter
+            com.example.mysubmod.cartes.reseau.PaquetDonneesCarte::traiter,
+            java.util.Optional.of(NetworkDirection.PLAY_TO_CLIENT)
         );
 
         // ==================== Paquets Sous-mode 3 ====================

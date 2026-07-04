@@ -27,7 +27,7 @@ public class PaquetDemandeEcranControleSousMode {
     public static void traiter(PaquetDemandeEcranControleSousMode paquet, Supplier<NetworkEvent.Context> ctx) {
         ctx.get().enqueueWork(() -> {
             ServerPlayer joueur = ctx.get().getSender();
-            if (joueur != null) {
+            if (joueur != null && GestionnaireSousModes.getInstance().estAdmin(joueur)) {
                 // Utiliser le même compte que TAB (filtré par MixinComptageListeJoueurs)
                 // Ceci exclut les joueurs non authentifiés et les admins authentifiés
                 int nombreJoueurs = joueur.server.getPlayerList().getPlayerCount();

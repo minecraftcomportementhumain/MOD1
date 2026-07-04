@@ -75,69 +75,70 @@ public class PaquetAuthAdmin {
                     return;
                 }
 
-                // Vérifie le mot de passe et suit les tentatives pour les joueurs protégés
-                boolean motDePasseCorrect;
+                // Vérifie le mot de passe et suit les tentatives (compte + liste noire IP+compte),
+                // pour les comptes protégés ET admin (empêche le brute-force via la voie candidat file)
+                int resultat;
                 if (estAdmin) {
-                    motDePasseCorrect = gestionnaireAuthAdmin.verifierMotDePasseSeul(nomCompteReel, paquet.motDePasse);
+                    resultat = gestionnaireAuthAdmin.tenterConnexionCandidatFileAdmin(nomCompteReel, adresseIP, paquet.motDePasse);
                 } else {
-                    // Utilise la méthode de suivi qui compte les tentatives par IP+compte
-                    int resultat = gestionnaireAuth.tenterConnexionCandidatFile(nomCompteReel, adresseIP, paquet.motDePasse);
-                    motDePasseCorrect = (resultat == 0);
+                    resultat = gestionnaireAuth.tenterConnexionCandidatFile(nomCompteReel, adresseIP, paquet.motDePasse);
+                }
+                boolean motDePasseCorrect = (resultat == 0);
 
-                    if (resultat == -1) {
-                        // Mauvais mot de passe - obtient les tentatives restantes et notifie (ne kick pas, le laisse réessayer)
-                        int restantes = gestionnaireAuth.obtenirTentativesRestantesJoueurProtege(nomCompteReel, adresseIP);
+                if (resultat == -1) {
+                    // Mauvais mot de passe - notifie (ne kick pas, le laisse réessayer)
+                    int restantes = estAdmin
+                        ? gestionnaireAuthAdmin.obtenirTentativesRestantesParNom(nomCompteReel)
+                        : gestionnaireAuth.obtenirTentativesRestantesJoueurProtege(nomCompteReel, adresseIP);
 
-                        MonSubMod.JOURNALISEUR.warn("Candidat file {} (temp: {}) a entré un mauvais mot de passe (restantes: {})",
-                            nomCompteReel, nomJoueur, restantes);
+                    MonSubMod.JOURNALISEUR.warn("Candidat file {} (temp: {}) a entré un mauvais mot de passe (restantes: {})",
+                        nomCompteReel, nomJoueur, restantes);
 
-                        // Envoie la réponse d'échec à ce candidat de file
-                        joueur.sendSystemMessage(net.minecraft.network.chat.Component.literal(
-                            "§c§lMot de passe incorrect! Tentatives restantes: " + restantes));
-                        com.example.mysubmod.reseau.GestionnaireReseau.sendToPlayer(
-                            new PaquetReponseAuthAdmin(false, restantes, "Mot de passe incorrect"), joueur);
+                    joueur.sendSystemMessage(net.minecraft.network.chat.Component.literal(
+                        "§c§lMot de passe incorrect! Tentatives restantes: " + restantes));
+                    com.example.mysubmod.reseau.GestionnaireReseau.sendToPlayer(
+                        new PaquetReponseAuthAdmin(false, restantes, "Mot de passe incorrect"), joueur);
 
-                        // Diffuse aux autres clients avec même IP+compte (incluant les non-candidats de file)
-                        java.util.List<java.util.UUID> autresJoueurs = gestionnaireSalleAttente.obtenirJoueursMemeIpEtCompte(nomCompteReel, adresseIP, joueur.getUUID());
-                        for (java.util.UUID autreUuid : autresJoueurs) {
-                            net.minecraft.server.level.ServerPlayer autreJoueur = joueur.getServer().getPlayerList().getPlayer(autreUuid);
-                            if (autreJoueur != null) {
-                                com.example.mysubmod.reseau.GestionnaireReseau.sendToPlayer(
-                                    new PaquetReponseAuthAdmin(false, restantes, ""), autreJoueur);
-                            }
+                    java.util.List<java.util.UUID> autresJoueurs = gestionnaireSalleAttente.obtenirJoueursMemeIpEtCompte(nomCompteReel, adresseIP, joueur.getUUID());
+                    for (java.util.UUID autreUuid : autresJoueurs) {
+                        net.minecraft.server.level.ServerPlayer autreJoueur = joueur.getServer().getPlayerList().getPlayer(autreUuid);
+                        if (autreJoueur != null) {
+                            com.example.mysubmod.reseau.GestionnaireReseau.sendToPlayer(
+                                new PaquetReponseAuthAdmin(false, restantes, ""), autreJoueur);
                         }
-                        return;
-                    } else if (resultat == -2) {
-                        // IP blacklistée
-                        long tempsRestant = gestionnaireAuth.obtenirTempsRestantListeNoireIpPourCompte(nomCompteReel, adresseIP);
-                        long minutes = tempsRestant / 60000;
-                        long secondes = (tempsRestant % 60000) / 1000;
-
-                        gestionnaireSalleAttente.retirerCandidatFilePublic(nomCompteReel, joueur.getUUID());
-                        gestionnaireSalleAttente.supprimerNomTemporaire(nomJoueur);
-                        MonSubMod.JOURNALISEUR.warn("Candidat file {} (temp: {}) IP blacklistée pour compte",
-                            nomCompteReel, nomJoueur);
-
-                        // Expulser tous les autres clients avec même IP+compte
-                        java.util.List<java.util.UUID> autresJoueurs = gestionnaireSalleAttente.obtenirJoueursMemeIpEtCompte(nomCompteReel, adresseIP, joueur.getUUID());
-                        for (java.util.UUID autreUuid : autresJoueurs) {
-                            net.minecraft.server.level.ServerPlayer autreJoueur = joueur.getServer().getPlayerList().getPlayer(autreUuid);
-                            if (autreJoueur != null) {
-                                final long mins = minutes;
-                                final long secs = secondes;
-                                joueur.getServer().execute(() -> {
-                                    autreJoueur.connection.disconnect(net.minecraft.network.chat.Component.literal(
-                                        "§4§lIP Bloquée\n\n§cTrop de tentatives de connexion échouées.\n§7Temps restant: §e" + mins + "m " + secs + "s"));
-                                });
-                            }
-                        }
-
-                        joueur.getServer().execute(() -> {
-                            joueur.connection.disconnect(net.minecraft.network.chat.Component.literal(
-                                "§4§lIP Bloquée\n\n§cTrop de tentatives de connexion échouées.\n§7Temps restant: §e" + minutes + "m " + secondes + "s"));
-                        });
-                        return;
                     }
+                    return;
+                } else if (resultat == -2) {
+                    // IP blacklistée pour ce compte
+                    long tempsRestant = estAdmin
+                        ? gestionnaireAuthAdmin.obtenirTempsRestantListeNoire(nomCompteReel)
+                        : gestionnaireAuth.obtenirTempsRestantListeNoireIpPourCompte(nomCompteReel, adresseIP);
+                    long minutes = tempsRestant / 60000;
+                    long secondes = (tempsRestant % 60000) / 1000;
+
+                    gestionnaireSalleAttente.retirerCandidatFilePublic(nomCompteReel, joueur.getUUID());
+                    gestionnaireSalleAttente.supprimerNomTemporaire(nomJoueur);
+                    MonSubMod.JOURNALISEUR.warn("Candidat file {} (temp: {}) IP blacklistée pour compte",
+                        nomCompteReel, nomJoueur);
+
+                    java.util.List<java.util.UUID> autresJoueurs = gestionnaireSalleAttente.obtenirJoueursMemeIpEtCompte(nomCompteReel, adresseIP, joueur.getUUID());
+                    for (java.util.UUID autreUuid : autresJoueurs) {
+                        net.minecraft.server.level.ServerPlayer autreJoueur = joueur.getServer().getPlayerList().getPlayer(autreUuid);
+                        if (autreJoueur != null) {
+                            final long mins = minutes;
+                            final long secs = secondes;
+                            joueur.getServer().execute(() -> {
+                                autreJoueur.connection.disconnect(net.minecraft.network.chat.Component.literal(
+                                    "§4§lIP Bloquée\n\n§cTrop de tentatives de connexion échouées.\n§7Temps restant: §e" + mins + "m " + secs + "s"));
+                            });
+                        }
+                    }
+
+                    joueur.getServer().execute(() -> {
+                        joueur.connection.disconnect(net.minecraft.network.chat.Component.literal(
+                            "§4§lIP Bloquée\n\n§cTrop de tentatives de connexion échouées.\n§7Temps restant: §e" + minutes + "m " + secondes + "s"));
+                    });
+                    return;
                 }
 
                 if (motDePasseCorrect) {
@@ -169,8 +170,8 @@ public class PaquetAuthAdmin {
                     // Ne nettoie pas le mappage de nom temporaire ici - il sera nettoyé dans onPlayerLogout
                     // Cela permet au gestionnaire de déconnexion d'accéder toujours au nom de compte original
 
-                    MonSubMod.JOURNALISEUR.info("Candidat file {} promu en file à position {} avec jeton {}",
-                        nomCompteReel, position, jeton);
+                    MonSubMod.JOURNALISEUR.info("Candidat file {} promu en file à position {}",
+                        nomCompteReel, position);
 
                     // Crée IMMÉDIATEMENT l'entrée whitelist - n'attend pas onPlayerLogout
                     // Cela assure que l'IP est autorisée quand le client se reconnecte
@@ -192,15 +193,11 @@ public class PaquetAuthAdmin {
                             new PaquetJetonFile(nomCompteReel, jeton, fenetreMonopole[0], fenetreMonopole[1]),
                             joueur
                         );
-                        MonSubMod.JOURNALISEUR.info("Jeton {} envoyé au client pour {}", jeton, nomCompteReel);
+                        MonSubMod.JOURNALISEUR.info("Jeton envoyé au client pour {}", nomCompteReel);
                     }
 
-                    // Délai plus long pour assurer que le paquet est envoyé avant déconnexion
-                    try {
-                        Thread.sleep(500);
-                    } catch (InterruptedException e) {
-                        // Ignorer
-                    }
+                    // Ne pas bloquer le thread serveur : la déconnexion ci-dessous passe par
+                    // server.execute() (tick suivant), donc le paquet de jeton est déjà parti.
 
                     // Expulser le joueur avec info de file (jeton déjà envoyé au client via paquet)
                     joueur.getServer().execute(() -> {

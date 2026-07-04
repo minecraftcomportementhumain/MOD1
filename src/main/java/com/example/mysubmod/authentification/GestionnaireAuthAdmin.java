@@ -352,8 +352,18 @@ public class GestionnaireAuthAdmin {
         String hachageStocke = admin.get("passwordHash").getAsString();
         String sel = admin.get("salt").getAsString();
 
-        String hachageEntree = hacherMotDePasse(motDePasse, sel);
-        return hachageStocke.equals(hachageEntree);
+        boolean correct = UtilitaireMotDePasse.verifier(motDePasse, sel, hachageStocke);
+
+        // Migration transparente d'un ancien hachage SHA-256 vers PBKDF2 à la connexion réussie
+        if (correct && UtilitaireMotDePasse.estLegacy(hachageStocke)) {
+            String nouveauSel = UtilitaireMotDePasse.genererSel();
+            admin.addProperty("salt", nouveauSel);
+            admin.addProperty("passwordHash", UtilitaireMotDePasse.hacher(motDePasse, nouveauSel));
+            StockageIdentifiants.getInstance().sauvegarder();
+            MonSubMod.JOURNALISEUR.info("Hachage de l'admin {} migré vers PBKDF2", nomJoueur);
+        }
+
+        return correct;
     }
 
     /**
@@ -362,6 +372,45 @@ public class GestionnaireAuthAdmin {
      */
     public boolean verifierMotDePasseSeul(String nomJoueur, String motDePasse) {
         return verifierMotDePasse(nomJoueur, motDePasse);
+    }
+
+    /**
+     * Vérifie le mot de passe d'un candidat en file d'attente sur un compte ADMIN,
+     * AVEC comptage des tentatives et mise sur liste noire (mais SANS authentifier).
+     * Empêche le brute-force via la voie « candidat file ».
+     * Retourne : 0 = correct, -1 = mauvais mot de passe, -2 = IP/compte sur liste noire.
+     */
+    public int tenterConnexionCandidatFileAdmin(String nomCompte, String adresseIP, String motDePasse) {
+        String nom = nomCompte.toLowerCase();
+
+        if (estIPSurListeNoire(adresseIP) || estSurListeNoire(nom)) {
+            return -2;
+        }
+
+        JsonObject blacklist = obtenirCredentiels().getAsJsonObject("blacklist");
+        int tentatives = 0;
+        if (blacklist.has(nom)) {
+            JsonObject entree = blacklist.getAsJsonObject(nom);
+            if (entree.has("currentAttempts")) {
+                tentatives = entree.get("currentAttempts").getAsInt();
+            }
+        }
+        tentatives++;
+
+        if (verifierMotDePasse(nom, motDePasse)) {
+            return 0;
+        }
+
+        MonSubMod.JOURNALISEUR.warn("Tentative candidat file admin échouée {}/{} pour {} depuis IP {}",
+            tentatives, TENTATIVES_MAX, nom, adresseIP);
+
+        if (tentatives >= TENTATIVES_MAX) {
+            mettreJoueurSurListeNoire(nom);
+            mettreIPSurListeNoire(adresseIP);
+            return -2;
+        }
+        sauvegarderTentatives(nom, tentatives);
+        return -1;
     }
 
     /**
@@ -500,28 +549,17 @@ public class GestionnaireAuthAdmin {
 
 
     /**
-     * Génère un sel aléatoire
+     * Génère un sel aléatoire (via UtilitaireMotDePasse)
      */
     private String genererSel() {
-        SecureRandom aleatoire = new SecureRandom();
-        byte[] sel = new byte[16];
-        aleatoire.nextBytes(sel);
-        return Base64.getEncoder().encodeToString(sel);
+        return UtilitaireMotDePasse.genererSel();
     }
 
     /**
-     * Hache un mot de passe avec sel en utilisant SHA-256
+     * Hache un mot de passe avec sel en utilisant PBKDF2 (via UtilitaireMotDePasse)
      */
     private String hacherMotDePasse(String motDePasse, String sel) {
-        try {
-            MessageDigest empreinte = MessageDigest.getInstance("SHA-256");
-            String motDePasseSale = motDePasse + sel;
-            byte[] hachage = empreinte.digest(motDePasseSale.getBytes(StandardCharsets.UTF_8));
-            return Base64.getEncoder().encodeToString(hachage);
-        } catch (NoSuchAlgorithmException e) {
-            MonSubMod.JOURNALISEUR.error("Algorithme SHA-256 non trouvé", e);
-            return "";
-        }
+        return UtilitaireMotDePasse.hacher(motDePasse, sel);
     }
 
     /**

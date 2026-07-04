@@ -24,6 +24,10 @@ public class CarteDonnees {
     public static final int ELEVATION_MIN = -15;
     public static final int ELEVATION_MAX = 15;
     public static final int LONGUEUR_MAX_NOM = 32;
+    /** Dimension maximale d'une carte (borne anti-DoS au décodage). */
+    public static final int DIMENSION_MAX = 512;
+    /** Nombre maximal de blocs stockés dans une carte (borne anti-DoS au décodage). */
+    public static final int BLOCS_MAX = DIMENSION_MAX * DIMENSION_MAX;
 
     public String nom = "";
     public int largeur = 1;
@@ -432,12 +436,21 @@ public class CarteDonnees {
         carte.nom = racine.get("nom").getAsString();
         carte.largeur = racine.get("largeur").getAsInt();
         carte.hauteur = racine.get("hauteur").getAsInt();
+        if (carte.largeur < 1 || carte.largeur > DIMENSION_MAX
+            || carte.hauteur < 1 || carte.hauteur > DIMENSION_MAX) {
+            throw new IllegalArgumentException(
+                "Dimensions de carte hors bornes: " + carte.largeur + "x" + carte.hauteur);
+        }
         carte.seed = racine.has("seed") ? racine.get("seed").getAsLong() : 0;
         carte.apparitionX = racine.has("apparitionX") ? racine.get("apparitionX").getAsInt() : -1;
         carte.apparitionZ = racine.has("apparitionZ") ? racine.get("apparitionZ").getAsInt() : -1;
 
         if (racine.has("blocs")) {
-            for (JsonElement element : racine.getAsJsonArray("blocs")) {
+            JsonArray blocsJson = racine.getAsJsonArray("blocs");
+            if (blocsJson.size() > BLOCS_MAX) {
+                throw new IllegalArgumentException("Trop de blocs dans la carte: " + blocsJson.size());
+            }
+            for (JsonElement element : blocsJson) {
                 JsonObject objetBloc = element.getAsJsonObject();
                 int x = objetBloc.get("x").getAsInt();
                 int z = objetBloc.get("z").getAsInt();

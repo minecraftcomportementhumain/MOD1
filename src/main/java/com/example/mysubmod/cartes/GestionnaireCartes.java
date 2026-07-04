@@ -1,6 +1,7 @@
 package com.example.mysubmod.cartes;
 
 import com.example.mysubmod.MonSubMod;
+import com.example.mysubmod.utilitaire.UtilitaireCheminSecurise;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -20,6 +21,8 @@ import java.util.stream.Collectors;
  */
 public class GestionnaireCartes {
     private static final String REPERTOIRE_CARTES = "cartes_monsubmod";
+    private static final int MAX_MORCEAUX = 1024;
+    private static final int MAX_TRANSFERTS_SIMULTANES = 16;
     private static GestionnaireCartes instance;
 
     private String carteSelectionnee = null; // Nom de la carte active (null = aucune)
@@ -74,12 +77,17 @@ public class GestionnaireCartes {
         if (nomCarte == null || nomCarte.isEmpty()) {
             return false;
         }
-        return Files.exists(Paths.get(REPERTOIRE_CARTES, nomCarte + ".json"));
+        Path fichier = UtilitaireCheminSecurise.resoudreConfine(Paths.get(REPERTOIRE_CARTES), nomCarte + ".json");
+        return fichier != null && Files.exists(fichier);
     }
 
     public CarteDonnees chargerCarte(String nomCarte) {
         try {
-            Path fichier = Paths.get(REPERTOIRE_CARTES, nomCarte + ".json");
+            Path fichier = UtilitaireCheminSecurise.resoudreConfine(Paths.get(REPERTOIRE_CARTES), nomCarte + ".json");
+            if (fichier == null) {
+                MonSubMod.JOURNALISEUR.warn("Nom de carte invalide (chargement rejeté) : {}", nomCarte);
+                return null;
+            }
             if (!Files.exists(fichier)) {
                 MonSubMod.JOURNALISEUR.warn("Carte introuvable : {}", nomCarte);
                 return null;
@@ -120,7 +128,10 @@ public class GestionnaireCartes {
             // Zones nommées automatiquement à la sauvegarde
             carte.recalculerZones();
 
-            Path fichier = Paths.get(REPERTOIRE_CARTES, carte.nom + ".json");
+            Path fichier = UtilitaireCheminSecurise.resoudreConfine(Paths.get(REPERTOIRE_CARTES), carte.nom + ".json");
+            if (fichier == null) {
+                return "Nom de carte invalide";
+            }
             Files.writeString(fichier, carte.versJson(), StandardCharsets.UTF_8);
             MonSubMod.JOURNALISEUR.info("Carte sauvegardée : {} ({}x{}, {} blocs, {} zones)",
                 carte.nom, carte.largeur, carte.hauteur, carte.blocs.size(), carte.zones.size());
@@ -133,7 +144,11 @@ public class GestionnaireCartes {
 
     public boolean supprimerCarte(String nomCarte) {
         try {
-            Path fichier = Paths.get(REPERTOIRE_CARTES, nomCarte + ".json");
+            Path fichier = UtilitaireCheminSecurise.resoudreConfine(Paths.get(REPERTOIRE_CARTES), nomCarte + ".json");
+            if (fichier == null) {
+                MonSubMod.JOURNALISEUR.warn("Nom de carte invalide (suppression rejetée) : {}", nomCarte);
+                return false;
+            }
             if (!Files.exists(fichier)) {
                 return false;
             }
@@ -206,6 +221,16 @@ public class GestionnaireCartes {
      * Retourne le JSON complet si tous les morceaux sont arrivés, sinon null.
      */
     public String gererMorceauCarte(UUID idTransfert, int indexMorceau, int nombreTotalMorceaux, byte[] donnees) {
+        if (nombreTotalMorceaux <= 0 || nombreTotalMorceaux > MAX_MORCEAUX
+            || indexMorceau < 0 || indexMorceau >= nombreTotalMorceaux) {
+            return null;
+        }
+        if (!transfertsEnCours.containsKey(idTransfert)
+            && transfertsEnCours.size() >= MAX_TRANSFERTS_SIMULTANES) {
+            MonSubMod.JOURNALISEUR.warn("Trop de transferts de carte simultanés — rejet");
+            return null;
+        }
+
         transfertsEnCours
             .computeIfAbsent(idTransfert, k -> new ConcurrentHashMap<>())
             .put(indexMorceau, donnees);

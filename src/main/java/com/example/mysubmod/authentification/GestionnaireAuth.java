@@ -178,9 +178,18 @@ public class GestionnaireAuth {
 
         String sel = donneesJoueur.get("salt").getAsString();
         String hachageStocke = donneesJoueur.get("password").getAsString();
-        String hachageFourni = hacherMotDePasse(motDePasse, sel);
+        boolean correct = UtilitaireMotDePasse.verifier(motDePasse, sel, hachageStocke);
 
-        return hachageStocke.equals(hachageFourni);
+        // Migration transparente d'un ancien hachage SHA-256 vers PBKDF2 à la connexion réussie
+        if (correct && UtilitaireMotDePasse.estLegacy(hachageStocke)) {
+            String nouveauSel = UtilitaireMotDePasse.genererSel();
+            donneesJoueur.addProperty("salt", nouveauSel);
+            donneesJoueur.addProperty("password", UtilitaireMotDePasse.hacher(motDePasse, nouveauSel));
+            StockageIdentifiants.getInstance().sauvegarder();
+            MonSubMod.JOURNALISEUR.info("Hachage du joueur protégé {} migré vers PBKDF2", nomJoueur);
+        }
+
+        return correct;
     }
 
     /**
@@ -651,24 +660,13 @@ public class GestionnaireAuth {
         // La protection doit persister même après la déconnexion pour empêcher les reconnexions rapides
     }
 
-    // Utilitaires de hachage et de sel
+    // Utilitaires de hachage et de sel (PBKDF2 via UtilitaireMotDePasse)
     private String genererSel() {
-        SecureRandom aleatoire = new SecureRandom();
-        byte[] sel = new byte[16];
-        aleatoire.nextBytes(sel);
-        return Base64.getEncoder().encodeToString(sel);
+        return UtilitaireMotDePasse.genererSel();
     }
 
     private String hacherMotDePasse(String motDePasse, String sel) {
-        try {
-            MessageDigest empreinte = MessageDigest.getInstance("SHA-256");
-            String combine = motDePasse + sel;
-            byte[] hachage = empreinte.digest(combine.getBytes(StandardCharsets.UTF_8));
-            return Base64.getEncoder().encodeToString(hachage);
-        } catch (NoSuchAlgorithmException e) {
-            MonSubMod.JOURNALISEUR.error("SHA-256 non disponible", e);
-            return "";
-        }
+        return UtilitaireMotDePasse.hacher(motDePasse, sel);
     }
 
 }

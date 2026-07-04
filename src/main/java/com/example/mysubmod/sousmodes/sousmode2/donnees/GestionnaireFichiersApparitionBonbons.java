@@ -3,6 +3,7 @@ package com.example.mysubmod.sousmodes.sousmode2.donnees;
 import com.example.mysubmod.MonSubMod;
 import com.example.mysubmod.sousmodes.sousmode2.reseau.PaquetTeleversementFichierBonbons;
 import com.example.mysubmod.sousmodes.sousmode2.TypeRessource;
+import com.example.mysubmod.utilitaire.UtilitaireCheminSecurise;
 import net.minecraft.core.BlockPos;
 
 import java.io.*;
@@ -21,6 +22,8 @@ import java.util.stream.Collectors;
  */
 public class GestionnaireFichiersApparitionBonbons {
     private static final String REPERTOIRE_APPARITION_BONBONS = "configs_apparition_bonbons_sousmode2";
+    private static final int MAX_MORCEAUX = 1024;
+    private static final int MAX_TRANSFERTS_SIMULTANES = 16;
     private static GestionnaireFichiersApparitionBonbons instance;
     private static final Map<UUID, ConcurrentHashMap<Integer, byte[]>> pendingUploads = new ConcurrentHashMap<>();
 
@@ -106,11 +109,11 @@ public class GestionnaireFichiersApparitionBonbons {
     public List<EntreeApparitionBonbon> chargerConfigApparition(String cheminOuNomFichier) {
         List<EntreeApparitionBonbon> entrees = new ArrayList<>();
 
-        Path fichierConfig;
-        if (cheminOuNomFichier.contains(File.separator) || cheminOuNomFichier.contains("/")) {
-            fichierConfig = Paths.get(cheminOuNomFichier);
-        } else {
-            fichierConfig = Paths.get(REPERTOIRE_APPARITION_BONBONS, cheminOuNomFichier);
+        Path fichierConfig = UtilitaireCheminSecurise.resoudreConfine(
+            Paths.get(REPERTOIRE_APPARITION_BONBONS), cheminOuNomFichier);
+        if (fichierConfig == null) {
+            MonSubMod.JOURNALISEUR.error("Nom de fichier de config Sous-mode 2 invalide (rejeté): {}", cheminOuNomFichier);
+            return entrees;
         }
 
         if (!Files.exists(fichierConfig)) {
@@ -280,6 +283,16 @@ public class GestionnaireFichiersApparitionBonbons {
     }
 
     public int gererMorceau(PaquetTeleversementFichierBonbons paquet) {
+        int total = paquet.obtenirNombreTotalMorceaux();
+        int index = paquet.obtenirIndexMorceau();
+        if (total <= 0 || total > MAX_MORCEAUX || index < 0 || index >= total) {
+            return -1;
+        }
+        if (!pendingUploads.containsKey(paquet.obtenirIdTransfert())
+                && pendingUploads.size() >= MAX_TRANSFERTS_SIMULTANES) {
+            MonSubMod.JOURNALISEUR.warn("Trop de transferts de fichiers bonbons Sous-mode 2 simultanés — rejet");
+            return -1;
+        }
 
         // Stocker le morceau
         pendingUploads
@@ -294,7 +307,13 @@ public class GestionnaireFichiersApparitionBonbons {
             try {
                 assurerRepertoireExiste();
                 String nomFichier = paquet.obtenirNomFichier();
-                fichierConfig = Paths.get(REPERTOIRE_APPARITION_BONBONS, nomFichier);
+                Path cible = UtilitaireCheminSecurise.resoudreConfine(Paths.get(REPERTOIRE_APPARITION_BONBONS), nomFichier);
+                if (cible == null) {
+                    MonSubMod.JOURNALISEUR.warn("Nom de fichier téléversé Sous-mode 2 invalide (rejeté): {}", nomFichier);
+                    pendingUploads.remove(paquet.obtenirIdTransfert());
+                    return -1;
+                }
+                fichierConfig = cible;
 
                 // Valider le contenu
                 String[] lignes = contenuFichier.split("\\r?\\n");
@@ -340,10 +359,14 @@ public class GestionnaireFichiersApparitionBonbons {
     private static byte[] combinerTableauxOctets(Map<Integer, byte[]> morceaux, int totalMorceaux) {
         ByteArrayOutputStream fluxSortie = new ByteArrayOutputStream();
         for (int i = 0; i < totalMorceaux; i++) {
+            byte[] morceau = morceaux.get(i);
+            if (morceau == null) {
+                continue;
+            }
             try {
-                fluxSortie.write(morceaux.get(i));
+                fluxSortie.write(morceau);
             } catch (IOException e) {
-                e.printStackTrace();
+                MonSubMod.JOURNALISEUR.error("Erreur d'assemblage des morceaux Sous-mode 2", e);
             }
         }
         return fluxSortie.toByteArray();
@@ -370,7 +393,11 @@ public class GestionnaireFichiersApparitionBonbons {
                 return false;
             }
 
-            Path fichierConfig = Paths.get(REPERTOIRE_APPARITION_BONBONS, nomFichier);
+            Path fichierConfig = UtilitaireCheminSecurise.resoudreConfine(Paths.get(REPERTOIRE_APPARITION_BONBONS), nomFichier);
+            if (fichierConfig == null) {
+                MonSubMod.JOURNALISEUR.warn("Nom de fichier invalide (suppression rejetée): {}", nomFichier);
+                return false;
+            }
             if (!Files.exists(fichierConfig)) {
                 MonSubMod.JOURNALISEUR.warn("Le fichier à supprimer n'existe pas: {}", nomFichier);
                 return false;

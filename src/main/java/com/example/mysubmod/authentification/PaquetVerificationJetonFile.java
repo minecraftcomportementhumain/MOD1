@@ -23,13 +23,13 @@ public class PaquetVerificationJetonFile {
 
     public static void encode(PaquetVerificationJetonFile paquet, FriendlyByteBuf tampon) {
         tampon.writeUtf(paquet.nomCompte, 50);
-        tampon.writeUtf(paquet.jeton, 10);
+        tampon.writeUtf(paquet.jeton, 64);
     }
 
     public static PaquetVerificationJetonFile decode(FriendlyByteBuf tampon) {
         return new PaquetVerificationJetonFile(
             tampon.readUtf(50),
-            tampon.readUtf(10)
+            tampon.readUtf(64)
         );
     }
 
@@ -41,8 +41,8 @@ public class PaquetVerificationJetonFile {
             GestionnaireSalleAttente gestionnaireSalleAttente = GestionnaireSalleAttente.getInstance();
             String nomJoueur = joueur.getName().getString();
 
-            MonSubMod.JOURNALISEUR.info("Vérification de jeton reçue de {} pour compte {} avec jeton {}",
-                nomJoueur, paquet.nomCompte, paquet.jeton);
+            MonSubMod.JOURNALISEUR.info("Vérification de jeton reçue de {} pour compte {}",
+                nomJoueur, paquet.nomCompte);
 
             // Vérifie que le joueur essaie d'accéder au bon compte
             if (!nomJoueur.equalsIgnoreCase(paquet.nomCompte)) {
@@ -102,8 +102,8 @@ public class PaquetVerificationJetonFile {
 
                 MonSubMod.JOURNALISEUR.info("Joueur {} auto-authentifié via jeton, fenêtre de monopole détruite, compte suit maintenant les règles normales", paquet.nomCompte);
             } else {
-                MonSubMod.JOURNALISEUR.warn("Vérification de jeton échouée pour {} depuis IP {} avec jeton {}",
-                    paquet.nomCompte, adresseIP, paquet.jeton);
+                MonSubMod.JOURNALISEUR.warn("Vérification de jeton échouée pour {} depuis IP {}",
+                    paquet.nomCompte, adresseIP);
 
                 // Marque ce joueur comme "échec de vérification jeton" pour que onPlayerLogout n'appelle pas autoriserProchainDansFile
                 // La fenêtre de monopole doit rester active pour le véritable détenteur du jeton

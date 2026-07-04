@@ -36,6 +36,9 @@ public class PaquetDonneesCarte {
         int nombreTotalMorceaux = tampon.readInt();
         int indexMorceau = tampon.readInt();
         int longueur = tampon.readInt();
+        if (longueur < 0 || longueur > tampon.readableBytes()) {
+            throw new io.netty.handler.codec.DecoderException("Longueur de morceau invalide: " + longueur);
+        }
         byte[] donnees = new byte[longueur];
         tampon.readBytes(donnees);
         return new PaquetDonneesCarte(idTransfert, nombreTotalMorceaux, indexMorceau, donnees);
@@ -43,8 +46,9 @@ public class PaquetDonneesCarte {
 
     public static void traiter(PaquetDonneesCarte paquet, Supplier<NetworkEvent.Context> ctx) {
         ctx.get().enqueueWork(() -> {
-            com.example.mysubmod.cartes.client.GestionnairePaquetsCartes.gererMorceauDonneesCarte(
-                paquet.idTransfert, paquet.nombreTotalMorceaux, paquet.indexMorceau, paquet.donneesMorceau);
+            net.minecraftforge.fml.DistExecutor.unsafeRunWhenOn(net.minecraftforge.api.distmarker.Dist.CLIENT, () -> () ->
+                com.example.mysubmod.cartes.client.GestionnairePaquetsCartes.gererMorceauDonneesCarte(
+                    paquet.idTransfert, paquet.nombreTotalMorceaux, paquet.indexMorceau, paquet.donneesMorceau));
         });
         ctx.get().setPacketHandled(true);
     }

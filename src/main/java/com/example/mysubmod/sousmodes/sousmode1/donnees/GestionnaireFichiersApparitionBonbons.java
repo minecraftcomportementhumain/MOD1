@@ -2,6 +2,7 @@ package com.example.mysubmod.sousmodes.sousmode1.donnees;
 
 import com.example.mysubmod.MonSubMod;
 import com.example.mysubmod.sousmodes.sousmode1.reseau.PaquetTeleversementFichierBonbons;
+import com.example.mysubmod.utilitaire.UtilitaireCheminSecurise;
 import net.minecraft.core.BlockPos;
 
 import java.io.*;
@@ -15,6 +16,8 @@ import java.util.stream.Collectors;
 
 public class GestionnaireFichiersApparitionBonbons {
     private static final String REPERTOIRE_CONFIG_BONBONS = "configs_apparition_bonbons";
+    private static final int MAX_MORCEAUX = 1024;
+    private static final int MAX_TRANSFERTS_SIMULTANES = 16;
     private static GestionnaireFichiersApparitionBonbons instance;
     private static final Map<UUID, ConcurrentHashMap<Integer, byte[]>> telechargementsPendants = new ConcurrentHashMap<>();
 
@@ -97,14 +100,12 @@ public class GestionnaireFichiersApparitionBonbons {
     public List<EntreeApparitionBonbon> chargerConfigApparition(String cheminOuNomFichier) {
         List<EntreeApparitionBonbon> entrees = new ArrayList<>();
 
-        // Supporter à la fois le nom de fichier et le chemin complet
-        Path fichierConfig;
-        if (cheminOuNomFichier.contains(File.separator) || cheminOuNomFichier.contains("/")) {
-            // Chemin complet fourni
-            fichierConfig = Paths.get(cheminOuNomFichier);
-        } else {
-            // Juste le nom de fichier fourni
-            fichierConfig = Paths.get(REPERTOIRE_CONFIG_BONBONS, cheminOuNomFichier);
+        // Seuls des noms de fichiers simples sont acceptés (confinés au répertoire de config)
+        Path fichierConfig = UtilitaireCheminSecurise.resoudreConfine(
+            Paths.get(REPERTOIRE_CONFIG_BONBONS), cheminOuNomFichier);
+        if (fichierConfig == null) {
+            MonSubMod.JOURNALISEUR.error("Nom de fichier de configuration invalide (rejeté) : {}", cheminOuNomFichier);
+            return entrees;
         }
 
         if (!Files.exists(fichierConfig)) {
@@ -240,6 +241,16 @@ public class GestionnaireFichiersApparitionBonbons {
     }
 
     public int gererMorceau(PaquetTeleversementFichierBonbons paquet) {
+        int total = paquet.obtenirNombreTotalMorceaux();
+        int index = paquet.obtenirIndexMorceau();
+        if (total <= 0 || total > MAX_MORCEAUX || index < 0 || index >= total) {
+            return -1;
+        }
+        if (!telechargementsPendants.containsKey(paquet.obtenirIdTransfert())
+                && telechargementsPendants.size() >= MAX_TRANSFERTS_SIMULTANES) {
+            MonSubMod.JOURNALISEUR.warn("Trop de transferts de fichiers bonbons simultanés — rejet");
+            return -1;
+        }
 
         // Stocker le fragment
         telechargementsPendants
@@ -254,7 +265,13 @@ public class GestionnaireFichiersApparitionBonbons {
             try {
             assurerRepertoireExiste();
             String nomFichier = paquet.obtenirNomFichier();
-            fichierConfig = Paths.get(REPERTOIRE_CONFIG_BONBONS, nomFichier);
+            Path cible = UtilitaireCheminSecurise.resoudreConfine(Paths.get(REPERTOIRE_CONFIG_BONBONS), nomFichier);
+            if (cible == null) {
+                MonSubMod.JOURNALISEUR.warn("Nom de fichier téléversé invalide (rejeté) : {}", nomFichier);
+                telechargementsPendants.remove(paquet.obtenirIdTransfert());
+                return -1;
+            }
+            fichierConfig = cible;
 
             // Valider le contenu en essayant de l'analyser
             String[] lignes = contenuFichier.split("\\r?\\n");
@@ -300,10 +317,14 @@ public class GestionnaireFichiersApparitionBonbons {
     private static byte[] combinerTableauxOctets(Map<Integer, byte[]> fragments, int totalFragments) {
         ByteArrayOutputStream fluxSortie = new ByteArrayOutputStream();
         for (int i = 0; i < totalFragments; i++) {
+            byte[] fragment = fragments.get(i);
+            if (fragment == null) {
+                continue;
+            }
             try {
-                fluxSortie.write(fragments.get(i));
+                fluxSortie.write(fragment);
             } catch (IOException e) {
-                e.printStackTrace();
+                MonSubMod.JOURNALISEUR.error("Erreur d'assemblage des morceaux", e);
             }
         }
         return fluxSortie.toByteArray();
@@ -333,7 +354,11 @@ public class GestionnaireFichiersApparitionBonbons {
                 return false;
             }
 
-            Path fichierConfig = Paths.get(REPERTOIRE_CONFIG_BONBONS, nomFichier);
+            Path fichierConfig = UtilitaireCheminSecurise.resoudreConfine(Paths.get(REPERTOIRE_CONFIG_BONBONS), nomFichier);
+            if (fichierConfig == null) {
+                MonSubMod.JOURNALISEUR.warn("Nom de fichier invalide (suppression rejetée) : {}", nomFichier);
+                return false;
+            }
             if (!Files.exists(fichierConfig)) {
                 MonSubMod.JOURNALISEUR.warn("Le fichier à supprimer n'existe pas : {}", nomFichier);
                 return false;

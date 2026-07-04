@@ -3,6 +3,7 @@ package com.example.mysubmod.serveur;
 import com.example.mysubmod.MonSubMod;
 import com.example.mysubmod.reseau.PaquetListeLogs;
 import com.example.mysubmod.reseau.GestionnaireReseau;
+import com.example.mysubmod.utilitaire.UtilitaireCheminSecurise;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraftforge.network.PacketDistributor;
 
@@ -78,7 +79,13 @@ public class GestionnaireLogs {
             if (telechargerTout) {
                 envoyerTousLogsAuClient(joueur, repertoireBase, numeroSubMode);
             } else if (nomDossier != null) {
-                envoyerDossierUniqueAuClient(joueur, new File(repertoireBase, nomDossier));
+                File dossier = new File(repertoireBase, nomDossier);
+                if (!UtilitaireCheminSecurise.nomFichierSur(nomDossier)
+                    || !UtilitaireCheminSecurise.estConfine(repertoireBase, dossier)) {
+                    joueur.sendSystemMessage(net.minecraft.network.chat.Component.literal("§cNom de dossier invalide"));
+                    return;
+                }
+                envoyerDossierUniqueAuClient(joueur, dossier);
             }
         } catch (Exception e) {
             MonSubMod.JOURNALISEUR.error("Erreur lors du téléchargement des journaux", e);
@@ -177,7 +184,13 @@ public class GestionnaireLogs {
             if (supprimerTout) {
                 supprimerTousLogs(joueur, repertoireBase, numeroSubMode);
             } else if (nomDossier != null) {
-                supprimerDossierUnique(joueur, new File(repertoireBase, nomDossier));
+                File dossier = new File(repertoireBase, nomDossier);
+                if (!UtilitaireCheminSecurise.nomFichierSur(nomDossier)
+                    || !UtilitaireCheminSecurise.estConfine(repertoireBase, dossier)) {
+                    joueur.sendSystemMessage(net.minecraft.network.chat.Component.literal("§cNom de dossier invalide"));
+                    return;
+                }
+                supprimerDossierUnique(joueur, dossier);
             }
         } catch (Exception e) {
             MonSubMod.JOURNALISEUR.error("Erreur lors de la suppression des journaux", e);

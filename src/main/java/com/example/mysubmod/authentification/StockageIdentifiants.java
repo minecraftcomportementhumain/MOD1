@@ -99,6 +99,22 @@ public class StockageIdentifiants {
         } catch (IOException e) {
             MonSubMod.JOURNALISEUR.error("Échec de la sauvegarde des identifiants", e);
         }
+        restreindrePermissions();
+    }
+
+    /**
+     * Restreint l'accès au fichier d'identifiants au seul propriétaire (best-effort,
+     * multiplateforme). Contient des hachages de mots de passe et des adresses IP.
+     */
+    private void restreindrePermissions() {
+        try {
+            fichierIdentifiants.setReadable(false, false);
+            fichierIdentifiants.setReadable(true, true);
+            fichierIdentifiants.setWritable(false, false);
+            fichierIdentifiants.setWritable(true, true);
+        } catch (SecurityException e) {
+            // Best-effort : ignorer si le gestionnaire de sécurité l'interdit
+        }
     }
 
     /**

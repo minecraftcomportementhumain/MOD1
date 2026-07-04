@@ -20,6 +20,9 @@ public class PaquetDonneesLogs {
     public PaquetDonneesLogs(FriendlyByteBuf tampon) {
         this.nomFichier = tampon.readUtf();
         int longueurDonnees = tampon.readInt();
+        if (longueurDonnees < 0 || longueurDonnees > tampon.readableBytes()) {
+            throw new io.netty.handler.codec.DecoderException("Longueur de données invalide: " + longueurDonnees);
+        }
         this.donnees = new byte[longueurDonnees];
         tampon.readBytes(this.donnees);
     }

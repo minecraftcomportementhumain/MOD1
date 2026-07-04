@@ -105,13 +105,14 @@ public class GestionnaireSalleAttente {
             return System.currentTimeMillis() - horodatage > EXPIRATION_ENTREE_FILE_MS;
         }
 
+        private static final java.security.SecureRandom ALEATOIRE_JETON = new java.security.SecureRandom();
+
         private static String genererJeton() {
-            // Générer un jeton alphanumérique de 6 caractères
-            String caracteres = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
-            Random aleatoire = new Random();
-            StringBuilder jeton = new StringBuilder(6);
-            for (int i = 0; i < 6; i++) {
-                jeton.append(caracteres.charAt(aleatoire.nextInt(caracteres.length())));
+            // Jeton non prévisible d'entropie élevée (SecureRandom, 24 caractères base62 ≈ 142 bits)
+            String caracteres = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
+            StringBuilder jeton = new StringBuilder(24);
+            for (int i = 0; i < 24; i++) {
+                jeton.append(caracteres.charAt(ALEATOIRE_JETON.nextInt(caracteres.length())));
             }
             return jeton.toString();
         }
@@ -564,8 +565,8 @@ public class GestionnaireSalleAttente {
         file.add(nouvelleEntree);
         int position = file.size();
 
-        MonSubMod.JOURNALISEUR.info("IP {} ajoutée à la file pour {} à la position {} avec fenêtre de monopole IMMÉDIATE (commence MAINTENANT, se termine dans 45s, jeton : {})",
-            ipSeule, nomCompte, position, nouvelleEntree.jeton);
+        MonSubMod.JOURNALISEUR.info("IP {} ajoutée à la file pour {} à la position {} avec fenêtre de monopole IMMÉDIATE (commence MAINTENANT, se termine dans 45s)",
+            ipSeule, nomCompte, position);
 
         return position;
     }
@@ -1005,9 +1006,11 @@ public class GestionnaireSalleAttente {
 
         // Ensuite vérifier le jeton
         String jetonAttendu = jetonsActifs.get(nomCompte);
-        if (jetonAttendu == null || !jetonAttendu.equals(jeton)) {
-            MonSubMod.JOURNALISEUR.warn("Jeton incompatible pour {} - attendu : {}, reçu : {}",
-                nomCompte, jetonAttendu, jeton);
+        if (jetonAttendu == null || jeton == null
+            || !java.security.MessageDigest.isEqual(
+                jetonAttendu.getBytes(java.nio.charset.StandardCharsets.UTF_8),
+                jeton.getBytes(java.nio.charset.StandardCharsets.UTF_8))) {
+            MonSubMod.JOURNALISEUR.warn("Jeton incompatible pour {}", nomCompte);
             return false;
         }
 
@@ -1113,8 +1116,8 @@ public class GestionnaireSalleAttente {
         // Effacer la file - le candidat a été promu et autorisé
         filesAttente.remove(nomCompte);
 
-        MonSubMod.JOURNALISEUR.info("IP {} immédiatement autorisée pour le compte {} avec jeton {} (fenêtre jusqu'à {}). File effacée.",
-            ipSeule, nomCompte, entree.jeton, entree.monopoleFinMs);
+        MonSubMod.JOURNALISEUR.info("IP {} immédiatement autorisée pour le compte {} (fenêtre jusqu'à {}). File effacée.",
+            ipSeule, nomCompte, entree.monopoleFinMs);
     }
 
     /**

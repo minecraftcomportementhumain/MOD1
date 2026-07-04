@@ -41,6 +41,9 @@ public class PaquetTeleversementFichierBonbons {
         int nombreTotalMorceaux = tampon.readInt();
         int indexMorceau = tampon.readInt();
         int longueur = tampon.readInt();
+        if (longueur < 0 || longueur > tampon.readableBytes()) {
+            throw new io.netty.handler.codec.DecoderException("Longueur de morceau invalide: " + longueur);
+        }
         byte[] donneesMorceau = new byte[longueur];
         tampon.readBytes(donneesMorceau);
         return new PaquetTeleversementFichierBonbons(idTransfert, nomFichier, nombreTotalMorceaux, indexMorceau, donneesMorceau);

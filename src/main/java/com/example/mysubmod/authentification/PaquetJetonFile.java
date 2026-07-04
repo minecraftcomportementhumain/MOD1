@@ -25,7 +25,7 @@ public class PaquetJetonFile {
 
     public static void encode(PaquetJetonFile paquet, FriendlyByteBuf tampon) {
         tampon.writeUtf(paquet.nomCompte, 50);
-        tampon.writeUtf(paquet.jeton, 10);
+        tampon.writeUtf(paquet.jeton, 64);
         tampon.writeLong(paquet.monopoleDebutMs);
         tampon.writeLong(paquet.monopoleFinMs);
     }
@@ -33,7 +33,7 @@ public class PaquetJetonFile {
     public static PaquetJetonFile decode(FriendlyByteBuf tampon) {
         return new PaquetJetonFile(
             tampon.readUtf(50),
-            tampon.readUtf(10),
+            tampon.readUtf(64),
             tampon.readLong(),
             tampon.readLong()
         );
@@ -48,7 +48,7 @@ public class PaquetJetonFile {
             } else {
                 // Stocke le jeton côté client
                 StockageJetonsFile.stockerJeton(paquet.nomCompte, paquet.jeton, paquet.monopoleDebutMs, paquet.monopoleFinMs);
-                MonSubMod.JOURNALISEUR.info("Jeton de file reçu et stocké pour {}: {}", paquet.nomCompte, paquet.jeton);
+                MonSubMod.JOURNALISEUR.info("Jeton de file reçu et stocké pour {}", paquet.nomCompte);
             }
         });
         ctx.get().setPacketHandled(true);

@@ -42,8 +42,8 @@ public class StockageJetonsFile {
      */
     public static void stockerJeton(String nomCompte, String jeton, long monopoleDebutMs, long monopoleFinMs) {
         jetons.put(nomCompte.toLowerCase(), new DonneesJeton(jeton, monopoleDebutMs, monopoleFinMs));
-        MonSubMod.JOURNALISEUR.info("Jeton stocké pour {}: {} (valide de {} à {})",
-            nomCompte, jeton, monopoleDebutMs, monopoleFinMs);
+        MonSubMod.JOURNALISEUR.info("Jeton stocké pour {} (valide de {} à {})",
+            nomCompte, monopoleDebutMs, monopoleFinMs);
     }
 
     /**
