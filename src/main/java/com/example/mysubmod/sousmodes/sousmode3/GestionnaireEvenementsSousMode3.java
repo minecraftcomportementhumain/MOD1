@@ -582,8 +582,8 @@ public class GestionnaireEvenementsSousMode3 {
             return;
         }
 
-        // Bloquer les monstres dans l'aire de la carte et près de la plateforme
-        if (event.getEntity() instanceof net.minecraft.world.entity.monster.Monster) {
+        // Bloquer les créatures (monstres, animaux...) dans l'aire de la carte et près de la plateforme
+        if (event.getEntity() instanceof net.minecraft.world.entity.Mob) {
             BlockPos pos = event.getEntity().blockPosition();
             BlockPos plateforme = gestionnaire.obtenirPlateformeSpectateur();
             boolean presPlateforme = Math.abs(pos.getX() - plateforme.getX()) <= 20

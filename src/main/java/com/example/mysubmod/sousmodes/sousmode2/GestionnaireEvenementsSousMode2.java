@@ -668,7 +668,7 @@ public class GestionnaireEvenementsSousMode2 {
                     && !estBonbon) {
                     evenement.setCanceled(true);
                 }
-            } else if (evenement.getEntity() instanceof net.minecraft.world.entity.monster.Monster) {
+            } else if (evenement.getEntity() instanceof net.minecraft.world.entity.Mob) {
                 BlockPos pos = evenement.getEntity().blockPosition();
                 boolean presPlateforme = Math.abs(pos.getX()) <= 20 && Math.abs(pos.getZ()) <= 20
                     && pos.getY() >= 140;
@@ -695,12 +695,13 @@ public class GestionnaireEvenementsSousMode2 {
             }
         }
 
-        // Bloquer les mobs hostiles près des îles
-        if (evenement.getEntity() instanceof net.minecraft.world.entity.monster.Monster) {
+        // Bloquer les créatures (monstres, animaux...) près des îles et des chemins
+        if (evenement.getEntity() instanceof net.minecraft.world.entity.Mob) {
             BlockPos posApparition = evenement.getEntity().blockPosition();
 
-            // Vérifier si l'apparition est près d'une île
-            if (estPresIle(posApparition)) {
+            // Vérifier si l'apparition est près d'une île ou d'un chemin
+            if (estPresIle(posApparition)
+                || GestionnaireSousMode2.getInstance().estProcheIleOuChemin(posApparition)) {
                 evenement.setCanceled(true);
             }
         }

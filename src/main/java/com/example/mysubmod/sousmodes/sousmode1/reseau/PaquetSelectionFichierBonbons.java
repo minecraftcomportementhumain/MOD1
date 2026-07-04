@@ -36,14 +36,10 @@ public class PaquetSelectionFichierBonbons {
                         return;
                     }
 
-                    // Vérifier s'il y a au moins un joueur authentifié non-admin connecté
-                    java.util.List<ServerPlayer> joueursAuthentifies = com.example.mysubmod.utilitaire.UtilitaireFiltreJoueurs.obtenirJoueursAuthentifies(joueur.getServer());
-                    boolean auMoinsUnJoueurNonAdmin = joueursAuthentifies.stream()
-                        .anyMatch(j -> !GestionnaireSousModes.getInstance().estAdmin(j));
-
-                    if (!auMoinsUnJoueurNonAdmin) {
+                    // Vérifier s'il y a au moins un joueur (protégé ou libre) connecté
+                    if (!com.example.mysubmod.utilitaire.UtilitaireFiltreJoueurs.aParticipantConnecte(joueur.getServer())) {
                         joueur.sendSystemMessage(net.minecraft.network.chat.Component.literal(
-                            "§cImpossible de démarrer la partie - Aucun joueur authentifié connecté!"));
+                            "§cImpossible de lancer la partie - Aucun joueur (protégé ou libre) connecté!"));
                         return;
                     }
 

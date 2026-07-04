@@ -209,6 +209,13 @@ public class GestionnaireSousMode1 {
             MonSubMod.JOURNALISEUR.error("Erreur lors du nettoyage des hologrammes orphelins", e);
         }
 
+        // Retirer les créatures (animaux, monstres...) déjà présentes sur les îles et chemins
+        try {
+            retirerCreaturesPresIles(serveur.getLevel(ServerLevel.OVERWORLD));
+        } catch (Exception e) {
+            MonSubMod.JOURNALISEUR.error("Erreur lors du retrait des créatures sur les îles", e);
+        }
+
         // L'enregistreur de données sera initialisé quand le fichier sera sélectionné (dans demarrerSelectionIle)
 
         // Téléporter les admins sur la plateforme spectateur
@@ -309,6 +316,12 @@ public class GestionnaireSousMode1 {
         if (!modeCarteActif() || !phaseAttenteCarte || partieActive || phaseSelection) {
             if (admin != null) {
                 admin.sendSystemMessage(Component.literal("§cLa partie est déjà lancée"));
+            }
+            return false;
+        }
+        if (!UtilitaireFiltreJoueurs.aParticipantConnecte(serveur)) {
+            if (admin != null) {
+                admin.sendSystemMessage(Component.literal("§cImpossible de lancer la partie - Aucun joueur (protégé ou libre) connecté!"));
             }
             return false;
         }
@@ -1612,6 +1625,19 @@ public class GestionnaireSousMode1 {
     }
 
     public void demarrerSelectionIle(MinecraftServer serveur) {
+        // Refuser le lancement si aucun participant (protégé ou libre) n'est connecté
+        // (couvre aussi les replis qui appellent cette méthode sans passer par PaquetSelectionFichierBonbons)
+        if (!UtilitaireFiltreJoueurs.aParticipantConnecte(serveur)) {
+            MonSubMod.JOURNALISEUR.warn("Lancement de la partie refusé (Sous-mode 1) : aucun joueur (protégé ou libre) connecté");
+            for (ServerPlayer joueur : serveur.getPlayerList().getPlayers()) {
+                if (GestionnaireSousModes.getInstance().estAdmin(joueur)) {
+                    joueur.sendSystemMessage(Component.literal("§cImpossible de lancer la partie - Aucun joueur (protégé ou libre) connecté!"));
+                    joueur.sendSystemMessage(Component.literal("§7Quand un joueur sera connecté, resélectionnez un fichier (touche N) ou réactivez le sous-mode."));
+                }
+            }
+            return;
+        }
+
         phaseSelectionFichier = false; // Sélection de fichier terminée
         phaseSelection = true;
         heureDebutSelection = System.currentTimeMillis(); // Enregistrer quand la sélection a commencé
@@ -1805,6 +1831,27 @@ public class GestionnaireSousMode1 {
         diffuserMessage(serveur, "§aLa partie commence ! Survivez " + TEMPS_PARTIE_MINUTES + " minutes !");
     }
 
+
+    /** Retire les créatures (animaux, monstres...) présentes sur les îles et chemins */
+    private void retirerCreaturesPresIles(net.minecraft.server.level.ServerLevel niveau) {
+        if (niveau == null) {
+            return;
+        }
+        // Collecter d'abord, puis retirer : discard() pendant l'itération de getAllEntities()
+        // peut faire sauter des entités (vue directe sur la table interne)
+        java.util.List<net.minecraft.world.entity.Entity> aRetirer = new java.util.ArrayList<>();
+        for (net.minecraft.world.entity.Entity entite : niveau.getAllEntities()) {
+            if (entite instanceof net.minecraft.world.entity.Mob && estProcheIleOuChemin(entite.blockPosition())) {
+                aRetirer.add(entite);
+            }
+        }
+        for (net.minecraft.world.entity.Entity entite : aRetirer) {
+            entite.discard();
+        }
+        if (!aRetirer.isEmpty()) {
+            MonSubMod.JOURNALISEUR.info("{} créatures retirées des îles", aRetirer.size());
+        }
+    }
 
     private void retirerItemsPissenlit(net.minecraft.server.level.ServerLevel niveau) {
         int nombreRetires = 0;

@@ -210,6 +210,12 @@ public class GestionnaireSousMode3 {
             }
             return false;
         }
+        if (!UtilitaireFiltreJoueurs.aParticipantConnecte(serveur)) {
+            if (admin != null) {
+                admin.sendSystemMessage(Component.literal("§cImpossible de lancer la partie - Aucun joueur (protégé ou libre) connecté!"));
+            }
+            return false;
+        }
 
         decompteEnCours = true;
         MonSubMod.JOURNALISEUR.info("Lancement de la partie Sous-mode 3 par {} (décompte de {} secondes)",
@@ -257,6 +263,12 @@ public class GestionnaireSousMode3 {
 
     private void demarrerPartie(MinecraftServer serveur) {
         if (partieActive || !phaseAttente) {
+            return;
+        }
+        // Revérifier à la fin du décompte : le dernier participant a pu se déconnecter entre-temps
+        if (!UtilitaireFiltreJoueurs.aParticipantConnecte(serveur)) {
+            MonSubMod.JOURNALISEUR.warn("Démarrage de la partie annulé (Sous-mode 3) : aucun joueur (protégé ou libre) connecté à la fin du décompte");
+            diffuserMessage(serveur, "§cLancement annulé - Aucun joueur (protégé ou libre) connecté!");
             return;
         }
         phaseAttente = false;
@@ -407,7 +419,7 @@ public class GestionnaireSousMode3 {
         }
     }
 
-    /** Retire les items au sol et les entités hostiles dans la cage (avant effacement) */
+    /** Retire les items au sol et les créatures (monstres, animaux...) dans la cage (avant effacement) */
     private void retirerItemsDansCage(ServerLevel monde) {
         if (generation == null || carte == null) {
             return;
@@ -422,9 +434,9 @@ public class GestionnaireSousMode3 {
             item.discard();
             retires++;
         }
-        for (net.minecraft.world.entity.monster.Monster monstre :
-            monde.getEntitiesOfClass(net.minecraft.world.entity.monster.Monster.class, boite)) {
-            monstre.discard();
+        for (net.minecraft.world.entity.Mob creature :
+            monde.getEntitiesOfClass(net.minecraft.world.entity.Mob.class, boite)) {
+            creature.discard();
             retires++;
         }
         MonSubMod.JOURNALISEUR.info("{} entités/items retirés de la cage du Sous-mode 3", retires);

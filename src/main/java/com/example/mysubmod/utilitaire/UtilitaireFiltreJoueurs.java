@@ -3,6 +3,7 @@ package com.example.mysubmod.utilitaire;
 import com.example.mysubmod.authentification.GestionnaireAuthAdmin;
 import com.example.mysubmod.authentification.GestionnaireAuth;
 import com.example.mysubmod.authentification.GestionnaireSalleAttente;
+import com.example.mysubmod.sousmodes.GestionnaireSousModes;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerPlayer;
 
@@ -35,6 +36,20 @@ public class UtilitaireFiltreJoueurs {
         }
 
         return joueursAuthentifies;
+    }
+
+    /**
+     * Vérifier qu'au moins un participant est connecté : un joueur protégé authentifié
+     * ou un joueur libre (donc non-admin). Utilisé pour refuser le lancement d'une
+     * partie alors qu'aucun joueur ne pourrait y participer.
+     */
+    public static boolean aParticipantConnecte(MinecraftServer serveur) {
+        for (ServerPlayer joueur : obtenirJoueursAuthentifies(serveur)) {
+            if (!GestionnaireSousModes.getInstance().estAdmin(joueur)) {
+                return true;
+            }
+        }
+        return false;
     }
 
     /**

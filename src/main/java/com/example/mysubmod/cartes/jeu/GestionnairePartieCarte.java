@@ -292,9 +292,9 @@ public class GestionnairePartieCarte {
             item.discard();
             retires++;
         }
-        for (net.minecraft.world.entity.monster.Monster monstre :
-            monde.getEntitiesOfClass(net.minecraft.world.entity.monster.Monster.class, boite)) {
-            monstre.discard();
+        for (net.minecraft.world.entity.Mob creature :
+            monde.getEntitiesOfClass(net.minecraft.world.entity.Mob.class, boite)) {
+            creature.discard();
             retires++;
         }
         if (retires > 0) {

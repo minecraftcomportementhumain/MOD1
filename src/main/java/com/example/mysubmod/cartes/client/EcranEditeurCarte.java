@@ -194,6 +194,10 @@ public class EcranEditeurCarte extends Screen {
 
         // ----- Palette (panneau latéral gauche) -----
         int yPalette = HAUT_GRILLE + 14;
+        // Compacter la palette sur les écrans courts : 9 rangées (7 outils + Sélection + Annuler/Rétablir)
+        // doivent tenir entre le haut de la palette et le bas de l'écran
+        int pasPalette = Math.max(18, Math.min(22, (this.height - yPalette - 6) / 9));
+        int hauteurBoutonPalette = pasPalette - 2;
         for (OutilPalette outil : OutilPalette.values()) {
             final OutilPalette outilFinal = outil;
             String etiquette = switch (outil) {
@@ -203,51 +207,51 @@ public class EcranEditeurCarte extends Screen {
                 default -> outil.nomAffichage;
             };
             Button bouton = Button.builder(Component.literal(etiquette), b -> selectionnerOutil(outilFinal))
-                .bounds(4, yPalette, LARGEUR_PALETTE - 8, 20)
+                .bounds(4, yPalette, LARGEUR_PALETTE - 8, hauteurBoutonPalette)
                 .tooltip(net.minecraft.client.gui.components.Tooltip.create(Component.literal(outil.nomAffichage)))
                 .build();
             boutonsPalette.put(outil, bouton);
             addRenderableWidget(bouton);
-            yPalette += 22;
+            yPalette += pasPalette;
         }
 
         // Mode sélection (distinct du mode palette) + annuler / rétablir
         yPalette += 2;
         boutonSelection = Button.builder(Component.literal("Sélection"), b -> basculerModeSelection())
-            .bounds(4, yPalette, LARGEUR_PALETTE - 8, 20)
+            .bounds(4, yPalette, LARGEUR_PALETTE - 8, hauteurBoutonPalette)
             .tooltip(net.minecraft.client.gui.components.Tooltip.create(
                 Component.literal("Mode sélection : tracer un rectangle pour sélectionner les blocs contenant des bonbons")))
             .build();
         addRenderableWidget(boutonSelection);
-        yPalette += 22;
+        yPalette += pasPalette;
 
         addRenderableWidget(Button.builder(Component.literal("↶"), b -> annuler())
-            .bounds(4, yPalette, (LARGEUR_PALETTE - 12) / 2, 20)
+            .bounds(4, yPalette, (LARGEUR_PALETTE - 12) / 2, hauteurBoutonPalette)
             .tooltip(net.minecraft.client.gui.components.Tooltip.create(Component.literal("Annuler (Ctrl+Z)")))
             .build());
 
         addRenderableWidget(Button.builder(Component.literal("↷"), b -> retablir())
-            .bounds(4 + (LARGEUR_PALETTE - 12) / 2 + 4, yPalette, (LARGEUR_PALETTE - 12) / 2, 20)
+            .bounds(4 + (LARGEUR_PALETTE - 12) / 2 + 4, yPalette, (LARGEUR_PALETTE - 12) / 2, hauteurBoutonPalette)
             .tooltip(net.minecraft.client.gui.components.Tooltip.create(Component.literal("Rétablir (Ctrl+Y)")))
             .build());
 
         // ----- Panneau latéral droit : délais de réapparition -----
         int xDroit = this.width - LARGEUR_PANNEAU_DROIT + 8;
-        champDelaiVisible = new EditBox(this.font, xDroit, HAUT_GRILLE + 30, LARGEUR_PANNEAU_DROIT - 20, 18,
+        champDelaiVisible = new EditBox(this.font, xDroit, HAUT_GRILLE + 28, LARGEUR_PANNEAU_DROIT - 20, 18,
             Component.literal("Délai bonbon visible (s)"));
         champDelaiVisible.setMaxLength(8);
         champDelaiVisible.setValue(texteDelaiVisible);
         champDelaiVisible.setResponder(texte -> texteDelaiVisible = texte);
         addRenderableWidget(champDelaiVisible);
 
-        champDelaiNonVisible = new EditBox(this.font, xDroit, HAUT_GRILLE + 74, LARGEUR_PANNEAU_DROIT - 20, 18,
+        champDelaiNonVisible = new EditBox(this.font, xDroit, HAUT_GRILLE + 58, LARGEUR_PANNEAU_DROIT - 20, 18,
             Component.literal("Délai bonbon non-visible (s)"));
         champDelaiNonVisible.setMaxLength(8);
         champDelaiNonVisible.setValue(texteDelaiNonVisible);
         champDelaiNonVisible.setResponder(texte -> texteDelaiNonVisible = texte);
         addRenderableWidget(champDelaiNonVisible);
 
-        champApparitionInitiale = new EditBox(this.font, xDroit, HAUT_GRILLE + 118, LARGEUR_PANNEAU_DROIT - 20, 18,
+        champApparitionInitiale = new EditBox(this.font, xDroit, HAUT_GRILLE + 88, LARGEUR_PANNEAU_DROIT - 20, 18,
             Component.literal("Apparition initiale visible (s)"));
         champApparitionInitiale.setMaxLength(8);
         champApparitionInitiale.setValue(texteApparitionInitiale);
@@ -256,7 +260,7 @@ public class EcranEditeurCarte extends Screen {
             "Secondes après le début de partie avant l'apparition du bonbon visible (0 = dès le début)")));
         addRenderableWidget(champApparitionInitiale);
 
-        champApparitionInitialeNonVisible = new EditBox(this.font, xDroit, HAUT_GRILLE + 162, LARGEUR_PANNEAU_DROIT - 20, 18,
+        champApparitionInitialeNonVisible = new EditBox(this.font, xDroit, HAUT_GRILLE + 118, LARGEUR_PANNEAU_DROIT - 20, 18,
             Component.literal("Apparition initiale non-visible (s)"));
         champApparitionInitialeNonVisible.setMaxLength(8);
         champApparitionInitialeNonVisible.setValue(texteApparitionInitialeNonVisible);
@@ -266,14 +270,14 @@ public class EcranEditeurCarte extends Screen {
         addRenderableWidget(champApparitionInitialeNonVisible);
 
         boutonTypeBonbon = Button.builder(Component.literal("Type : (inchangé)"), b -> cyclerTypeBonbon())
-            .bounds(xDroit, HAUT_GRILLE + 186, LARGEUR_PANNEAU_DROIT - 20, 20)
+            .bounds(xDroit, HAUT_GRILLE + 140, LARGEUR_PANNEAU_DROIT - 20, 20)
             .tooltip(net.minecraft.client.gui.components.Tooltip.create(Component.literal(
                 "Type des bonbons visibles sélectionnés : Standard (Sous-modes 1 et 3) ou Bleu / Rouge (Sous-mode 2)")))
             .build();
         addRenderableWidget(boutonTypeBonbon);
 
         boutonAppliquerDelais = Button.builder(Component.literal("Appliquer"), b -> appliquerDelais())
-            .bounds(xDroit, HAUT_GRILLE + 212, LARGEUR_PANNEAU_DROIT - 20, 20).build();
+            .bounds(xDroit, HAUT_GRILLE + 164, LARGEUR_PANNEAU_DROIT - 20, 20).build();
         addRenderableWidget(boutonAppliquerDelais);
 
         mettreAJourPanneauDelais();
@@ -1792,24 +1796,22 @@ public class EcranEditeurCarte extends Screen {
     private void dessinerPanneauDelais(GuiGraphics guiGraphics) {
         int xPanneau = this.width - LARGEUR_PANNEAU_DROIT;
         guiGraphics.fill(xPanneau, HAUT_GRILLE, this.width, this.height, 0xE0181818);
-        guiGraphics.drawString(this.font, "§6Bonbons sélectionnés", xPanneau + 8, HAUT_GRILLE + 6, 0xFFFFFF);
+        int nombreSelection = cellulesSelectionnees.size();
+        guiGraphics.drawString(this.font, "§6Sélection : §7" + nombreSelection + " bloc(s)",
+            xPanneau + 8, HAUT_GRILLE + 6, 0xFFFFFF);
 
         if (champDelaiVisible.visible) {
-            guiGraphics.drawString(this.font, "Délai bonbon visible (s)", xPanneau + 8, HAUT_GRILLE + 20, 0xFFC81E);
+            guiGraphics.drawString(this.font, "Délai bonbon visible (s)", xPanneau + 8, HAUT_GRILLE + 18, 0xFFC81E);
         }
         if (champDelaiNonVisible.visible) {
-            guiGraphics.drawString(this.font, "Délai bonbon non-vis. (s)", xPanneau + 8, HAUT_GRILLE + 64, 0xC896FF);
+            guiGraphics.drawString(this.font, "Délai bonbon non-vis. (s)", xPanneau + 8, HAUT_GRILLE + 48, 0xC896FF);
         }
         if (champApparitionInitiale.visible) {
-            guiGraphics.drawString(this.font, "Apparition init. vis. (s)", xPanneau + 8, HAUT_GRILLE + 108, 0x9FD3FF);
+            guiGraphics.drawString(this.font, "Apparition init. vis. (s)", xPanneau + 8, HAUT_GRILLE + 78, 0x9FD3FF);
         }
         if (champApparitionInitialeNonVisible.visible) {
-            guiGraphics.drawString(this.font, "Apparition init. non-vis. (s)", xPanneau + 8, HAUT_GRILLE + 152, 0x9FD3FF);
+            guiGraphics.drawString(this.font, "Apparition init. non-vis. (s)", xPanneau + 8, HAUT_GRILLE + 108, 0x9FD3FF);
         }
-
-        int nombreSelection = cellulesSelectionnees.size();
-        guiGraphics.drawString(this.font, "§7" + nombreSelection + " bloc(s) sélectionné(s)",
-            xPanneau + 8, HAUT_GRILLE + 238, 0xFFFFFF);
     }
 
     // ==================== Fenêtre modale ====================

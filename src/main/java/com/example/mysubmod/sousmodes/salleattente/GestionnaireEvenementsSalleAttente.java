@@ -230,8 +230,8 @@ public class GestionnaireEvenementsSalleAttente {
             return;
         }
 
-        // Bloquer les monstres hostiles près de la plateforme de la salle d'attente
-        if (event.getEntity() instanceof net.minecraft.world.entity.monster.Monster) {
+        // Bloquer les créatures (monstres, animaux...) près de la plateforme de la salle d'attente
+        if (event.getEntity() instanceof net.minecraft.world.entity.Mob) {
             BlockPos positionApparition = event.getEntity().blockPosition();
 
             // Vérifier si l'apparition est près de la plateforme de la salle d'attente
