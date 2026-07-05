@@ -220,44 +220,18 @@ public class GestionnaireMiseAJour {
         lancerUpdaterEtArreter(config, jarActuel, cible, dossierMaj, idAsset);
     }
 
-    // ==================== Application (script externe + arrêt) ====================
+    // ==================== Application (arrêt ; l'échange du jar est fait par run.bat) ====================
 
     private void lancerUpdaterEtArreter(ConfigMiseAJour config, Path jarActuel, Path staging,
                                         Path dossierMaj, String idAsset) throws Exception {
-        Path backupDir = dossierMaj.resolve("backup");
-        Files.createDirectories(backupDir);
-        Path backup = backupDir.resolve(jarActuel.getFileName().toString() + ".bak");
-        Path drapeauBoot = dossierMaj.resolve("boot-ok.flag");
-        Path mauvaisMarker = dossierMaj.resolve("mauvais-" + idAsset + ".marker");
-        Path bat = dossierMaj.resolve("updater.bat");
-        Path swapLock = dossierMaj.resolve("swap.lock");
-        Path journal = dossierMaj.resolve("updater.log");
-        String dossierServeur = System.getProperty("user.dir");
+        // L'échange du jar et le redémarrage sont réalisés par run.bat (boucle) DANS SA PROPRE
+        // fenêtre : le mod se contente de poser le verrou swap.lock puis d'arrêter le serveur.
+        // Aucun processus externe -> pas de 2e fenêtre, et double-lancement impossible
+        // (seul run.bat lance Java). pending.txt (déjà écrit) permet le rollback côté run.bat.
+        Files.writeString(dossierMaj.resolve("swap.lock"), idAsset, StandardCharsets.UTF_8);
 
-        // Poser le verrou AVANT l'arrêt : la boucle run.bat saura qu'une mise à jour est en
-        // cours et attendra l'échange du jar au lieu de relancer l'ancien immédiatement.
-        Files.writeString(swapLock, idAsset, StandardCharsets.UTF_8);
+        MonSubMod.JOURNALISEUR.warn("Mise à jour : nouveau build en staging. Arrêt du serveur — run.bat va installer le nouveau jar et redémarrer.");
 
-        String contenuBat = genererBat(jarActuel, staging, backup, drapeauBoot, mauvaisMarker,
-            swapLock, journal, dossierServeur, config.commandeRelance);
-        Files.writeString(bat, contenuBat, StandardCharsets.UTF_8);
-
-        MonSubMod.JOURNALISEUR.warn("Mise à jour : nouveau build prêt (jar en staging). Lancement du script de remplacement (journal : {}) et arrêt du serveur…",
-            journal.toAbsolutePath());
-
-        // Exécuter le .bat en FENÊTRE CACHÉE (aucune 2e fenêtre visible) tout en restant un
-        // processus détaché qui survit à l'arrêt de la JVM : un lanceur VBScript exécute le
-        // .bat avec le style de fenêtre « masqué » (0). Le suivi se fait via updater.log.
-        Path vbs = dossierMaj.resolve("updater-lanceur.vbs");
-        String contenuVbs = "CreateObject(\"WScript.Shell\").Run Chr(34) & \""
-            + bat.toAbsolutePath() + "\" & Chr(34), 0, False\r\n";
-        Files.writeString(vbs, contenuVbs, StandardCharsets.UTF_8);
-
-        new ProcessBuilder("wscript.exe", vbs.toAbsolutePath().toString())
-            .directory(new java.io.File(dossierServeur))
-            .start();
-
-        // Arrêter proprement le serveur sur le thread serveur
         if (serveur != null) {
             serveur.execute(() -> serveur.halt(false));
         }
