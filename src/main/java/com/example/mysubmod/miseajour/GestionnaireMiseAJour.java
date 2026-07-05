@@ -360,17 +360,37 @@ public class GestionnaireMiseAJour {
 
     /** Emplacement du .jar chargé, ou null si le mod ne tourne pas depuis un .jar. */
     private Path localiserJarActuel() {
+        // Méthode fiable sous Forge : le chemin du fichier du mod via ModList
+        // (CodeSource.getLocation() n'est pas fiable avec le classloader modulaire de Forge).
+        try {
+            net.minecraftforge.forgespi.language.IModFileInfo info =
+                net.minecraftforge.fml.ModList.get().getModFileById(MonSubMod.ID_MOD);
+            if (info != null && info.getFile() != null) {
+                Path chemin = info.getFile().getFilePath();
+                if (estJarExistant(chemin)) {
+                    return chemin;
+                }
+            }
+        } catch (Throwable t) {
+            MonSubMod.JOURNALISEUR.warn("Mise à jour : ModList indisponible ({}), repli sur CodeSource", t.toString());
+        }
+        // Repli : emplacement de la classe (utile hors du classloader modulaire).
         try {
             URI uri = GestionnaireMiseAJour.class.getProtectionDomain().getCodeSource().getLocation().toURI();
             Path chemin = Path.of(uri);
-            if (chemin.getFileName() != null
-                && chemin.getFileName().toString().toLowerCase().endsWith(".jar")
-                && Files.exists(chemin)) {
+            if (estJarExistant(chemin)) {
                 return chemin;
             }
         } catch (Exception e) {
             MonSubMod.JOURNALISEUR.warn("Mise à jour : localisation du jar impossible : {}", e.toString());
         }
         return null;
+    }
+
+    private static boolean estJarExistant(Path chemin) {
+        return chemin != null
+            && chemin.getFileName() != null
+            && chemin.getFileName().toString().toLowerCase().endsWith(".jar")
+            && Files.exists(chemin);
     }
 }
