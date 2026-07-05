@@ -5,8 +5,9 @@ license="MIT"
 [[mods]]
 modId="mysubmod"
 version="${mod_version}"
-# MATCH_VERSION (défaut) : un client dont la version diffère de celle du serveur est refusé.
-displayTest="MATCH_VERSION"
+# IGNORE_ALL_VERSION : on n'utilise PAS l'écran d'incompatibilité générique de Forge ;
+# le refus des mauvaises versions (avec message français) est géré par GestionnaireVersionClient.
+displayTest="IGNORE_ALL_VERSION"
 authors="Olivier Lafontaine"
 description='''Mon mod test pour Forge 1.20.1'''
 
