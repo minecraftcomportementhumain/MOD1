@@ -78,6 +78,7 @@ public class GestionnaireMiseAJour {
         if (jar != null) {
             confirmerMiseAJourEnAttente(jar);
             ecrireDrapeauDemarrage(jar);
+            supprimerVerrouSwap(jar); // nettoyer un verrou resté d'une MAJ précédente
         }
 
         ConfigMiseAJour config = ConfigMiseAJour.charger();
@@ -229,10 +230,15 @@ public class GestionnaireMiseAJour {
         Path drapeauBoot = dossierMaj.resolve("boot-ok.flag");
         Path mauvaisMarker = dossierMaj.resolve("mauvais-" + idAsset + ".marker");
         Path bat = dossierMaj.resolve("updater.bat");
+        Path swapLock = dossierMaj.resolve("swap.lock");
         String dossierServeur = System.getProperty("user.dir");
 
+        // Poser le verrou AVANT l'arrêt : la boucle run.bat saura qu'une mise à jour est en
+        // cours et attendra l'échange du jar au lieu de relancer l'ancien immédiatement.
+        Files.writeString(swapLock, idAsset, StandardCharsets.UTF_8);
+
         String contenuBat = genererBat(jarActuel, staging, backup, drapeauBoot, mauvaisMarker,
-            dossierServeur, config.commandeRelance);
+            swapLock, dossierServeur, config.commandeRelance);
         Files.writeString(bat, contenuBat, StandardCharsets.UTF_8);
 
         MonSubMod.JOURNALISEUR.warn("Mise à jour : nouveau build prêt. Lancement du script de remplacement et arrêt du serveur pour appliquer…");
@@ -250,8 +256,11 @@ public class GestionnaireMiseAJour {
     }
 
     private static String genererBat(Path oldJar, Path newJar, Path backup, Path drapeauBoot,
-                                     Path mauvaisMarker, String dossierServeur, String commandeRelance) {
-        // Chemins entre guillemets ; %% échappé pour le fichier .bat final.
+                                     Path mauvaisMarker, Path swapLock, String dossierServeur,
+                                     String commandeRelance) {
+        // La boucle de run.bat (verrou swap.lock) redémarre le serveur dans SA propre fenêtre :
+        // ce script se contente d'échanger le jar pendant que la JVM est morte, puis de retirer
+        // le verrou. Relance de secours si le run.bat n'a pas la boucle. Rollback si échec de boot.
         return "@echo off\r\n"
             + "setlocal\r\n"
             + "set \"OLD=" + oldJar.toAbsolutePath() + "\"\r\n"
@@ -259,20 +268,32 @@ public class GestionnaireMiseAJour {
             + "set \"BACKUP=" + backup.toAbsolutePath() + "\"\r\n"
             + "set \"BOOT=" + drapeauBoot.toAbsolutePath() + "\"\r\n"
             + "set \"BADMARK=" + mauvaisMarker.toAbsolutePath() + "\"\r\n"
+            + "set \"SWAP=" + swapLock.toAbsolutePath() + "\"\r\n"
             + "set \"SRV=" + dossierServeur + "\"\r\n"
             + "echo [MAJ] Attente de la fermeture du serveur (liberation du jar)...\r\n"
             + ":waitlock\r\n"
             + "( call ) 1>>\"%OLD%\" 2>nul && goto libre || ( ping -n 3 127.0.0.1 >nul & goto waitlock )\r\n"
             + ":libre\r\n"
-            + "echo [MAJ] Sauvegarde de l'ancien jar...\r\n"
+            + "echo [MAJ] Sauvegarde et remplacement du jar...\r\n"
             + "copy /y \"%OLD%\" \"%BACKUP%\" >nul\r\n"
-            + "echo [MAJ] Remplacement par le nouveau build...\r\n"
             + "move /y \"%NEW%\" \"%OLD%\" >nul\r\n"
             + "if errorlevel 1 ( echo [MAJ] Echec du remplacement, restauration. & copy /y \"%BACKUP%\" \"%OLD%\" >nul )\r\n"
             + "del \"%BOOT%\" >nul 2>&1\r\n"
-            + "echo [MAJ] Relance du serveur...\r\n"
+            + "rem Liberer le verrou : la boucle run.bat redemarre le serveur dans SA fenetre\r\n"
+            + "del \"%SWAP%\" >nul 2>&1\r\n"
+            + "rem Secours : si rien ne redemarre (run.bat sans boucle), relancer explicitement\r\n"
+            + "set /a r=0\r\n"
+            + ":checkrelance\r\n"
+            + "ping -n 3 127.0.0.1 >nul\r\n"
+            + "( call ) 1>>\"%OLD%\" 2>nul && goto encorelibre\r\n"
+            + "goto attendreboot\r\n"
+            + ":encorelibre\r\n"
+            + "set /a r+=1\r\n"
+            + "if %r% lss 7 goto checkrelance\r\n"
+            + "echo [MAJ] Relance de secours du serveur...\r\n"
             + "cd /d \"%SRV%\"\r\n"
             + "start \"\" " + commandeRelance + "\r\n"
+            + ":attendreboot\r\n"
             + "echo [MAJ] Attente de la confirmation de demarrage (max 5 min)...\r\n"
             + "set /a n=0\r\n"
             + ":waitboot\r\n"
@@ -283,8 +304,8 @@ public class GestionnaireMiseAJour {
             + "echo [MAJ] Pas de confirmation - rollback vers l'ancien jar.\r\n"
             + "set /a m=0\r\n"
             + ":waitlock2\r\n"
-            + "( call ) 1>>\"%OLD%\" 2>nul && goto rollback || ( ping -n 3 127.0.0.1 >nul & set /a m+=1 & if %m% lss 40 goto waitlock2 )\r\n"
-            + "echo [MAJ] Verrou toujours actif : le serveur tourne probablement, rollback annule.\r\n"
+            + "( call ) 1>>\"%OLD%\" 2>nul && goto rollback || ( ping -n 3 127.0.0.1 >nul & set /a m+=1 & if %m% lss 60 goto waitlock2 )\r\n"
+            + "echo [MAJ] Serveur toujours actif, rollback annule.\r\n"
             + "goto fin\r\n"
             + ":rollback\r\n"
             + "copy /y \"%BACKUP%\" \"%OLD%\" >nul\r\n"
@@ -356,6 +377,13 @@ public class GestionnaireMiseAJour {
 
     private static Path dossierMaj(Path jarActuel) {
         return jarActuel.getParent().resolve(".updates");
+    }
+
+    private void supprimerVerrouSwap(Path jarActuel) {
+        try {
+            Files.deleteIfExists(dossierMaj(jarActuel).resolve("swap.lock"));
+        } catch (Exception ignore) {
+        }
     }
 
     /** Emplacement du .jar chargé, ou null si le mod ne tourne pas depuis un .jar. */
