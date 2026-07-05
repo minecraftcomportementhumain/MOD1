@@ -10,7 +10,9 @@ import net.minecraftforge.network.simple.SimpleChannel;
  * Gestionnaire de réseau pour l'enregistrement de tous les paquets du mod
  */
 public class GestionnaireReseau {
-    private static final String VERSION_PROTOCOLE = "1";
+    // Incrémenter à chaque changement de format de paquet pour refuser proprement
+    // (dès la connexion) les clients dont le jar n'est pas à jour.
+    private static final String VERSION_PROTOCOLE = "2";
     public static final SimpleChannel INSTANCE = NetworkRegistry.newSimpleChannel(
         ResourceLocation.fromNamespaceAndPath(MonSubMod.MOD_ID, "main"),
         () -> VERSION_PROTOCOLE,

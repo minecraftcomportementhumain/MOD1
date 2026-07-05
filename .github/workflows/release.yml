@@ -1,0 +1,42 @@
+name: Build et publier le dernier build
+
+# Construit le mod et publie le .jar sur la release « latest » à chaque push sur main.
+# Le mod (système de mise à jour) détecte ce nouvel asset et se met à jour tout seul.
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build-publier:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Récupérer le code
+        uses: actions/checkout@v4
+
+      - name: Installer Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Rendre gradlew exécutable
+        run: chmod +x ./gradlew
+
+      - name: Compiler et packager
+        run: ./gradlew build --no-daemon
+
+      - name: Publier sur la release « latest »
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # Recrée la release/tag « latest » avec le jar fraîchement construit
+          gh release delete latest --yes --cleanup-tag || true
+          gh release create latest ./build/libs/*.jar \
+            --title "Dernier build" \
+            --notes "Build automatique du commit ${{ github.sha }}" \
+            --latest
