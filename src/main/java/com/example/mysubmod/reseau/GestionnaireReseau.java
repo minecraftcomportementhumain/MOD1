@@ -10,19 +10,36 @@ import net.minecraftforge.network.simple.SimpleChannel;
  * Gestionnaire de réseau pour l'enregistrement de tous les paquets du mod
  */
 public class GestionnaireReseau {
-    // Incrémenter à chaque changement de format de paquet pour refuser proprement
-    // (dès la connexion) les clients dont le jar n'est pas à jour.
-    private static final String VERSION_PROTOCOLE = "2";
-    public static final SimpleChannel INSTANCE = NetworkRegistry.newSimpleChannel(
-        ResourceLocation.fromNamespaceAndPath(MonSubMod.MOD_ID, "main"),
-        () -> VERSION_PROTOCOLE,
-        VERSION_PROTOCOLE::equals,
-        VERSION_PROTOCOLE::equals
-    );
+    // Version du protocole réseau = version exacte du build (mods.toml). Le canal exige
+    // que le client ait EXACTEMENT la même version que le serveur, sinon la connexion est
+    // refusée dès le handshake FML -> un client d'une version différente ne peut pas entrer.
+    private static String VERSION_PROTOCOLE = "1";
+    public static SimpleChannel INSTANCE;
 
     private static int idPaquet = 0;
 
+    /** Version du mod (unique par build) utilisée comme version du protocole réseau. */
+    private static String versionMod() {
+        try {
+            return net.minecraftforge.fml.ModList.get()
+                .getModContainerById(MonSubMod.ID_MOD)
+                .map(c -> c.getModInfo().getVersion().toString())
+                .orElse("1");
+        } catch (Throwable t) {
+            return "1";
+        }
+    }
+
     public static void init() {
+        VERSION_PROTOCOLE = versionMod();
+        INSTANCE = NetworkRegistry.newSimpleChannel(
+            ResourceLocation.fromNamespaceAndPath(MonSubMod.MOD_ID, "main"),
+            () -> VERSION_PROTOCOLE,
+            VERSION_PROTOCOLE::equals,
+            VERSION_PROTOCOLE::equals
+        );
+        MonSubMod.JOURNALISEUR.info("Canal réseau initialisé (version protocole = {})", VERSION_PROTOCOLE);
+
         INSTANCE.registerMessage(
             idPaquet++,
             PaquetChangementSousMode.class,

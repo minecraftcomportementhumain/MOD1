@@ -285,9 +285,8 @@ public class GestionnaireMiseAJour {
 
     /** Titre/sous-titre rouge de mise à jour affiché à tous les joueurs connectés. */
     private void afficherDecompte(MinecraftServer serveur, int secondes) {
-        Component titre = Component.literal("§c§lMise à jour du serveur");
-        Component sousTitre = Component.literal("§cRedémarrage dans " + secondes + " seconde"
-            + (secondes > 1 ? "s" : "") + "…");
+        Component titre = Component.literal("§c§lMISE À JOUR");
+        Component sousTitre = Component.literal("§cRedémarrage dans " + secondes + " s");
         for (ServerPlayer joueur : serveur.getPlayerList().getPlayers()) {
             // fadeIn=0 (pas de scintillement à chaque mise à jour), stay=25 ticks, fadeOut=10
             joueur.connection.send(new ClientboundSetTitlesAnimationPacket(0, 25, 10));

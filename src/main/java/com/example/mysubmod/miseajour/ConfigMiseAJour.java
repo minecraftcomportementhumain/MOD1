@@ -29,7 +29,7 @@ public class ConfigMiseAJour {
     /** Tag de la release à suivre (mobile, réutilisé à chaque build). */
     public String tag = "latest";
     /** Intervalle de sondage en minutes. */
-    public int intervalleMinutes = 5;
+    public int intervalleMinutes = 2;
     /**
      * Commande qui relance le serveur après remplacement du jar (exécutée depuis
      * le dossier du serveur). Exemple Windows : « run.bat ». Vide = pas de relance.
