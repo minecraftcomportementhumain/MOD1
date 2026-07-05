@@ -14,6 +14,7 @@ public class GestionnaireEvenementsMiseAJour {
 
     @SubscribeEvent
     public static void onServeurDemarre(ServerStartedEvent event) {
+        MonSubMod.JOURNALISEUR.info("[MonSubMod] === Build de test #1 charge (verification mise a jour auto) ===");
         GestionnaireMiseAJour.getInstance().auDemarrage(event.getServer());
     }
 
