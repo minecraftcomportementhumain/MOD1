@@ -245,11 +245,15 @@ public class GestionnaireMiseAJour {
         MonSubMod.JOURNALISEUR.warn("Mise à jour : nouveau build prêt (jar en staging). Lancement du script de remplacement (journal : {}) et arrêt du serveur…",
             journal.toAbsolutePath());
 
-        // Lancer le .bat détaché dans une console minimisée (survit à l'arrêt de la JVM).
-        // Forme « start "" /min "<bat>" » : le titre vide évite que le chemin (avec espaces)
-        // soit pris pour un titre, et on n'utilise PAS de « cmd /c <chemin> » imbriqué
-        // (dont les règles de guillemets cassent avec les espaces).
-        new ProcessBuilder("cmd", "/c", "start", "", "/min", bat.toAbsolutePath().toString())
+        // Exécuter le .bat en FENÊTRE CACHÉE (aucune 2e fenêtre visible) tout en restant un
+        // processus détaché qui survit à l'arrêt de la JVM : un lanceur VBScript exécute le
+        // .bat avec le style de fenêtre « masqué » (0). Le suivi se fait via updater.log.
+        Path vbs = dossierMaj.resolve("updater-lanceur.vbs");
+        String contenuVbs = "CreateObject(\"WScript.Shell\").Run Chr(34) & \""
+            + bat.toAbsolutePath() + "\" & Chr(34), 0, False\r\n";
+        Files.writeString(vbs, contenuVbs, StandardCharsets.UTF_8);
+
+        new ProcessBuilder("wscript.exe", vbs.toAbsolutePath().toString())
             .directory(new java.io.File(dossierServeur))
             .start();
 
