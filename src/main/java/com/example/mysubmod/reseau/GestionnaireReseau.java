@@ -37,14 +37,13 @@ public class GestionnaireReseau {
 
     public static void init() {
         VERSION_PROTOCOLE = versionMod();
-        // Le canal advertise la version du serveur mais accepte la connexion au niveau réseau :
-        // le refus des clients de version différente est fait par GestionnaireVersionClient
-        // (PlayerNegotiationEvent) avec un message français, au lieu de l'écran générique de Forge.
+        // Version du protocole = version exacte du build. Le canal exige que le client ait
+        // EXACTEMENT la même version, sinon la connexion est refusée dès le handshake FML.
         INSTANCE = NetworkRegistry.newSimpleChannel(
             ResourceLocation.fromNamespaceAndPath(MonSubMod.MOD_ID, "main"),
             () -> VERSION_PROTOCOLE,
-            remote -> true,
-            remote -> true
+            VERSION_PROTOCOLE::equals,
+            VERSION_PROTOCOLE::equals
         );
         MonSubMod.JOURNALISEUR.info("Canal réseau initialisé (version protocole = {})", VERSION_PROTOCOLE);
 
