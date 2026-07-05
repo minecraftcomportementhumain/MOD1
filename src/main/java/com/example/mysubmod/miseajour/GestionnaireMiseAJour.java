@@ -231,6 +231,7 @@ public class GestionnaireMiseAJour {
         Path mauvaisMarker = dossierMaj.resolve("mauvais-" + idAsset + ".marker");
         Path bat = dossierMaj.resolve("updater.bat");
         Path swapLock = dossierMaj.resolve("swap.lock");
+        Path journal = dossierMaj.resolve("updater.log");
         String dossierServeur = System.getProperty("user.dir");
 
         // Poser le verrou AVANT l'arrêt : la boucle run.bat saura qu'une mise à jour est en
@@ -238,14 +239,17 @@ public class GestionnaireMiseAJour {
         Files.writeString(swapLock, idAsset, StandardCharsets.UTF_8);
 
         String contenuBat = genererBat(jarActuel, staging, backup, drapeauBoot, mauvaisMarker,
-            swapLock, dossierServeur, config.commandeRelance);
+            swapLock, journal, dossierServeur, config.commandeRelance);
         Files.writeString(bat, contenuBat, StandardCharsets.UTF_8);
 
-        MonSubMod.JOURNALISEUR.warn("Mise à jour : nouveau build prêt. Lancement du script de remplacement et arrêt du serveur pour appliquer…");
+        MonSubMod.JOURNALISEUR.warn("Mise à jour : nouveau build prêt (jar en staging). Lancement du script de remplacement (journal : {}) et arrêt du serveur…",
+            journal.toAbsolutePath());
 
-        // Lancer le .bat dans une nouvelle console indépendante (survit à l'arrêt de la JVM)
-        new ProcessBuilder("cmd", "/c", "start", "\"MAJ MonSubMod\"", "/min",
-            "cmd", "/c", bat.toAbsolutePath().toString())
+        // Lancer le .bat détaché dans une console minimisée (survit à l'arrêt de la JVM).
+        // Forme « start "" /min "<bat>" » : le titre vide évite que le chemin (avec espaces)
+        // soit pris pour un titre, et on n'utilise PAS de « cmd /c <chemin> » imbriqué
+        // (dont les règles de guillemets cassent avec les espaces).
+        new ProcessBuilder("cmd", "/c", "start", "", "/min", bat.toAbsolutePath().toString())
             .directory(new java.io.File(dossierServeur))
             .start();
 
@@ -256,11 +260,11 @@ public class GestionnaireMiseAJour {
     }
 
     private static String genererBat(Path oldJar, Path newJar, Path backup, Path drapeauBoot,
-                                     Path mauvaisMarker, Path swapLock, String dossierServeur,
-                                     String commandeRelance) {
+                                     Path mauvaisMarker, Path swapLock, Path journal,
+                                     String dossierServeur, String commandeRelance) {
         // La boucle de run.bat (verrou swap.lock) redémarre le serveur dans SA propre fenêtre :
-        // ce script se contente d'échanger le jar pendant que la JVM est morte, puis de retirer
-        // le verrou. Relance de secours si le run.bat n'a pas la boucle. Rollback si échec de boot.
+        // ce script échange le jar pendant que la JVM est morte, retire le verrou, puis vérifie
+        // le démarrage (rollback sinon). Toutes les étapes sont journalisées dans updater.log.
         return "@echo off\r\n"
             + "setlocal\r\n"
             + "set \"OLD=" + oldJar.toAbsolutePath() + "\"\r\n"
@@ -269,54 +273,61 @@ public class GestionnaireMiseAJour {
             + "set \"BOOT=" + drapeauBoot.toAbsolutePath() + "\"\r\n"
             + "set \"BADMARK=" + mauvaisMarker.toAbsolutePath() + "\"\r\n"
             + "set \"SWAP=" + swapLock.toAbsolutePath() + "\"\r\n"
+            + "set \"LOG=" + journal.toAbsolutePath() + "\"\r\n"
             + "set \"SRV=" + dossierServeur + "\"\r\n"
-            + "echo [MAJ] Attente de la fermeture du serveur (liberation du jar)...\r\n"
+            + "echo ===== %date% %time% updater demarre ===== >>\"%LOG%\"\r\n"
+            + "echo OLD=%OLD% >>\"%LOG%\"\r\n"
+            + "echo NEW=%NEW% >>\"%LOG%\"\r\n"
+            + "if not exist \"%NEW%\" ( echo ERREUR: jar staging introuvable >>\"%LOG%\" & goto fin )\r\n"
+            + "if not exist \"%OLD%\" ( echo ATTENTION: OLD introuvable au demarrage >>\"%LOG%\" )\r\n"
+            + "echo Attente de la liberation du jar par le serveur... >>\"%LOG%\"\r\n"
             + ":waitlock\r\n"
             + "( call ) 1>>\"%OLD%\" 2>nul && goto libre || ( ping -n 3 127.0.0.1 >nul & goto waitlock )\r\n"
             + ":libre\r\n"
-            + "echo [MAJ] Sauvegarde et remplacement du jar...\r\n"
-            + "copy /y \"%OLD%\" \"%BACKUP%\" >nul\r\n"
-            + "move /y \"%NEW%\" \"%OLD%\" >nul\r\n"
-            + "if errorlevel 1 ( echo [MAJ] Echec du remplacement, restauration. & copy /y \"%BACKUP%\" \"%OLD%\" >nul )\r\n"
+            + "echo Jar libere. Sauvegarde puis remplacement... >>\"%LOG%\"\r\n"
+            + "copy /y \"%OLD%\" \"%BACKUP%\" >>\"%LOG%\" 2>&1\r\n"
+            + "move /y \"%NEW%\" \"%OLD%\" >>\"%LOG%\" 2>&1\r\n"
+            + "if errorlevel 1 ( echo ECHEC du remplacement, restauration >>\"%LOG%\" & copy /y \"%BACKUP%\" \"%OLD%\" >nul )\r\n"
+            + "echo Remplacement effectue. >>\"%LOG%\"\r\n"
             + "del \"%BOOT%\" >nul 2>&1\r\n"
-            + "rem Liberer le verrou : la boucle run.bat redemarre le serveur dans SA fenetre\r\n"
             + "del \"%SWAP%\" >nul 2>&1\r\n"
-            + "rem Secours : si rien ne redemarre (run.bat sans boucle), relancer explicitement\r\n"
+            + "echo Verrou retire, attente du redemarrage du serveur... >>\"%LOG%\"\r\n"
             + "set /a r=0\r\n"
             + ":checkrelance\r\n"
             + "ping -n 3 127.0.0.1 >nul\r\n"
             + "( call ) 1>>\"%OLD%\" 2>nul && goto encorelibre\r\n"
+            + "echo Serveur redemarre par la boucle run.bat. >>\"%LOG%\"\r\n"
             + "goto attendreboot\r\n"
             + ":encorelibre\r\n"
             + "set /a r+=1\r\n"
             + "if %r% lss 7 goto checkrelance\r\n"
-            + "echo [MAJ] Relance de secours du serveur...\r\n"
+            + "echo Relance de secours (run.bat sans boucle). >>\"%LOG%\"\r\n"
             + "cd /d \"%SRV%\"\r\n"
             + "start \"\" " + commandeRelance + "\r\n"
             + ":attendreboot\r\n"
-            + "echo [MAJ] Attente de la confirmation de demarrage (max 5 min)...\r\n"
             + "set /a n=0\r\n"
             + ":waitboot\r\n"
             + "if exist \"%BOOT%\" goto ok\r\n"
             + "timeout /t 5 /nobreak >nul\r\n"
             + "set /a n+=1\r\n"
             + "if %n% lss 60 goto waitboot\r\n"
-            + "echo [MAJ] Pas de confirmation - rollback vers l'ancien jar.\r\n"
+            + "echo Pas de confirmation de demarrage - rollback. >>\"%LOG%\"\r\n"
             + "set /a m=0\r\n"
             + ":waitlock2\r\n"
             + "( call ) 1>>\"%OLD%\" 2>nul && goto rollback || ( ping -n 3 127.0.0.1 >nul & set /a m+=1 & if %m% lss 60 goto waitlock2 )\r\n"
-            + "echo [MAJ] Serveur toujours actif, rollback annule.\r\n"
+            + "echo Serveur toujours actif, rollback annule. >>\"%LOG%\"\r\n"
             + "goto fin\r\n"
             + ":rollback\r\n"
-            + "copy /y \"%BACKUP%\" \"%OLD%\" >nul\r\n"
+            + "copy /y \"%BACKUP%\" \"%OLD%\" >>\"%LOG%\" 2>&1\r\n"
             + "echo mauvais> \"%BADMARK%\"\r\n"
             + "cd /d \"%SRV%\"\r\n"
             + "start \"\" " + commandeRelance + "\r\n"
-            + "echo [MAJ] Ancien jar restaure et serveur relance.\r\n"
+            + "echo Ancien jar restaure et serveur relance. >>\"%LOG%\"\r\n"
             + "goto fin\r\n"
             + ":ok\r\n"
-            + "echo [MAJ] Mise a jour appliquee avec succes.\r\n"
+            + "echo Mise a jour appliquee avec succes. >>\"%LOG%\"\r\n"
             + ":fin\r\n"
+            + "echo ===== updater termine ===== >>\"%LOG%\"\r\n"
             + "endlocal\r\n";
     }
 
