@@ -14,6 +14,8 @@ public class GestionnaireEvenementsMiseAJour {
 
     @SubscribeEvent
     public static void onServeurDemarre(ServerStartedEvent event) {
+        MonSubMod.JOURNALISEUR.info("[MonSubMod] Version chargée : {}",
+            com.example.mysubmod.reseau.GestionnaireReseau.versionProtocole());
         GestionnaireMiseAJour.getInstance().auDemarrage(event.getServer());
     }
 
