@@ -4,7 +4,12 @@ import com.example.mysubmod.MonSubMod;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
+import net.minecraft.network.chat.Component;
+import net.minecraft.network.protocol.game.ClientboundSetSubtitleTextPacket;
+import net.minecraft.network.protocol.game.ClientboundSetTitleTextPacket;
+import net.minecraft.network.protocol.game.ClientboundSetTitlesAnimationPacket;
 import net.minecraft.server.MinecraftServer;
+import net.minecraft.server.level.ServerPlayer;
 
 import java.net.URI;
 import java.net.http.HttpClient;
@@ -24,9 +29,10 @@ import java.util.concurrent.TimeUnit;
  *
  * Toutes les {@code intervalleMinutes} minutes, interroge l'API GitHub pour la release
  * suivie. Si l'asset .jar a changé (identifiant différent de celui déjà appliqué), il est
- * téléchargé dans un dossier de staging, puis un script « updater.bat » est lancé de façon
- * détachée et le serveur s'arrête. Le script attend la fermeture de la JVM (libération du
- * verrou de fichier), sauvegarde l'ancien jar, met le nouveau en place et relance le serveur.
+ * téléchargé dans un dossier de staging, un verrou swap.lock est posé, un décompte de
+ * {@link #DECOMPTE_SECONDES} s est affiché aux joueurs, puis le serveur s'arrête. C'est
+ * run.bat (boucle) qui installe alors le nouveau jar (avec sauvegarde + rollback) et
+ * redémarre dans sa propre fenêtre — aucun processus externe, une seule fenêtre.
  *
  * Garde-fou : le mod écrit un drapeau {@code boot-ok.flag} au démarrage réussi. Le script
  * attend ce drapeau ; s'il n'apparaît pas dans le délai imparti (nouveau jar défaillant),
@@ -51,6 +57,10 @@ public class GestionnaireMiseAJour {
     private MinecraftServer serveur;
     private boolean demarre = false;
     private boolean avertissementConfigEmis = false;
+    private volatile boolean arretEnCours = false;
+
+    /** Durée du décompte affiché aux joueurs avant l'arrêt pour mise à jour. */
+    private static final int DECOMPTE_SECONDES = 10;
 
     private GestionnaireMiseAJour() {
     }
@@ -230,97 +240,63 @@ public class GestionnaireMiseAJour {
         // (seul run.bat lance Java). pending.txt (déjà écrit) permet le rollback côté run.bat.
         Files.writeString(dossierMaj.resolve("swap.lock"), idAsset, StandardCharsets.UTF_8);
 
-        MonSubMod.JOURNALISEUR.warn("Mise à jour : nouveau build en staging. Arrêt du serveur — run.bat va installer le nouveau jar et redémarrer.");
+        MonSubMod.JOURNALISEUR.warn("Mise à jour : nouveau build en staging. Décompte de {} s puis arrêt (run.bat installera le jar et redémarrera).", DECOMPTE_SECONDES);
 
         if (serveur != null) {
-            serveur.execute(() -> serveur.halt(false));
+            demarrerDecompteEtArreter(serveur);
         }
     }
 
-    private static String genererBat(Path oldJar, Path newJar, Path backup, Path drapeauBoot,
-                                     Path mauvaisMarker, Path swapLock, Path journal,
-                                     String dossierServeur, String commandeRelance) {
-        // La boucle de run.bat (verrou swap.lock) redémarre le serveur dans SA propre fenêtre :
-        // ce script échange le jar pendant que la JVM est morte, retire le verrou, puis vérifie
-        // le démarrage (rollback sinon). Toutes les étapes sont journalisées dans updater.log.
-        return "@echo off\r\n"
-            + "setlocal\r\n"
-            + "set \"OLD=" + oldJar.toAbsolutePath() + "\"\r\n"
-            + "set \"NEW=" + newJar.toAbsolutePath() + "\"\r\n"
-            + "set \"BACKUP=" + backup.toAbsolutePath() + "\"\r\n"
-            + "set \"BOOT=" + drapeauBoot.toAbsolutePath() + "\"\r\n"
-            + "set \"BADMARK=" + mauvaisMarker.toAbsolutePath() + "\"\r\n"
-            + "set \"SWAP=" + swapLock.toAbsolutePath() + "\"\r\n"
-            + "set \"LOG=" + journal.toAbsolutePath() + "\"\r\n"
-            + "set \"SRV=" + dossierServeur + "\"\r\n"
-            + "echo ===== %date% %time% updater demarre ===== >>\"%LOG%\"\r\n"
-            + "echo OLD=%OLD% >>\"%LOG%\"\r\n"
-            + "echo NEW=%NEW% >>\"%LOG%\"\r\n"
-            + "if not exist \"%NEW%\" ( echo ERREUR: jar staging introuvable >>\"%LOG%\" & goto fin )\r\n"
-            + "echo Sauvegarde de l'ancien jar... >>\"%LOG%\"\r\n"
-            + "copy /y \"%OLD%\" \"%BACKUP%\" >>\"%LOG%\" 2>&1\r\n"
-            + "rem Le MOVE lui-meme est le vrai test : il echoue tant que la JVM n'a pas relache le jar\r\n"
-            + "echo Attente que le serveur libere le jar (remplacement)... >>\"%LOG%\"\r\n"
-            + "set /a w=0\r\n"
-            + ":waitswap\r\n"
-            + "move /y \"%NEW%\" \"%OLD%\" >nul 2>>\"%LOG%\"\r\n"
-            + "if not errorlevel 1 goto swapok\r\n"
-            + "set /a w+=1\r\n"
-            + "if %w% geq 100 goto abandon\r\n"
-            + "ping -n 4 127.0.0.1 >nul\r\n"
-            + "goto waitswap\r\n"
-            + ":swapok\r\n"
-            + "echo Nouveau jar mis en place. >>\"%LOG%\"\r\n"
-            + "del \"%BOOT%\" >nul 2>&1\r\n"
-            + "del \"%SWAP%\" >nul 2>&1\r\n"
-            + "echo Attente du redemarrage... >>\"%LOG%\"\r\n"
-            + "set /a n=0\r\n"
-            + ":waitboot\r\n"
-            + "if exist \"%BOOT%\" goto ok\r\n"
-            + "timeout /t 3 /nobreak >nul\r\n"
-            + "set /a n+=1\r\n"
-            + "if %n% lss 12 goto waitboot\r\n"
-            + "rem 36s sans boot-ok : le serveur a-t-il deja redemarre ? (jar verrouille = non deplacable)\r\n"
-            + "move /y \"%OLD%\" \"%OLD%.lck\" >nul 2>nul\r\n"
-            + "if errorlevel 1 goto serveurenmarche\r\n"
-            + "move /y \"%OLD%.lck\" \"%OLD%\" >nul 2>nul\r\n"
-            + "echo Aucun serveur detecte, relance de secours... >>\"%LOG%\"\r\n"
-            + "cd /d \"%SRV%\"\r\n"
-            + "start \"\" " + commandeRelance + "\r\n"
-            + "goto attentefinale\r\n"
-            + ":serveurenmarche\r\n"
-            + "echo Serveur deja en cours de demarrage (jar verrouille), on patiente (pas de 2e lancement). >>\"%LOG%\"\r\n"
-            + ":attentefinale\r\n"
-            + "if exist \"%BOOT%\" goto ok\r\n"
-            + "timeout /t 5 /nobreak >nul\r\n"
-            + "set /a n+=1\r\n"
-            + "if %n% lss 120 goto attentefinale\r\n"
-            + "echo Pas de confirmation apres delai etendu - rollback. >>\"%LOG%\"\r\n"
-            + "set /a rb=0\r\n"
-            + ":waitrb\r\n"
-            + "move /y \"%BACKUP%\" \"%OLD%\" >nul 2>>\"%LOG%\"\r\n"
-            + "if not errorlevel 1 goto rbok\r\n"
-            + "set /a rb+=1\r\n"
-            + "if %rb% geq 60 ( echo ABANDON rollback: jar verrouille >>\"%LOG%\" & goto fin )\r\n"
-            + "ping -n 4 127.0.0.1 >nul\r\n"
-            + "goto waitrb\r\n"
-            + ":rbok\r\n"
-            + "echo Ancien jar restaure. >>\"%LOG%\"\r\n"
-            + "echo mauvais> \"%BADMARK%\"\r\n"
-            + "cd /d \"%SRV%\"\r\n"
-            + "start \"\" " + commandeRelance + "\r\n"
-            + "goto fin\r\n"
-            + ":abandon\r\n"
-            + "echo ABANDON: jar toujours verrouille apres ~7 min, relance de l'ancien serveur. >>\"%LOG%\"\r\n"
-            + "del \"%SWAP%\" >nul 2>&1\r\n"
-            + "cd /d \"%SRV%\"\r\n"
-            + "start \"\" " + commandeRelance + "\r\n"
-            + "goto fin\r\n"
-            + ":ok\r\n"
-            + "echo Mise a jour appliquee avec succes. >>\"%LOG%\"\r\n"
-            + ":fin\r\n"
-            + "echo ===== updater termine ===== >>\"%LOG%\"\r\n"
-            + "endlocal\r\n";
+    /**
+     * Affiche un décompte rouge de {@link #DECOMPTE_SECONDES} secondes à tous les joueurs
+     * connectés (titre à l'écran + message chat), puis arrête le serveur pour appliquer la
+     * mise à jour. Le décompte tourne via un minuteur ; chaque tick est exécuté sur le thread
+     * serveur.
+     */
+    private void demarrerDecompteEtArreter(MinecraftServer serveur) {
+        if (arretEnCours) {
+            return;
+        }
+        arretEnCours = true;
+        java.util.Timer minuteur = new java.util.Timer("MonSubMod-DecompteMAJ", true);
+        minuteur.scheduleAtFixedRate(new java.util.TimerTask() {
+            private int restant = DECOMPTE_SECONDES;
+
+            @Override
+            public void run() {
+                final int s = restant;
+                restant--;
+                serveur.execute(() -> {
+                    if (serveur.isStopped()) {
+                        minuteur.cancel();
+                        return;
+                    }
+                    if (s > 0) {
+                        afficherDecompte(serveur, s);
+                    } else {
+                        minuteur.cancel();
+                        serveur.halt(false);
+                    }
+                });
+            }
+        }, 0L, 1000L);
+    }
+
+    /** Titre/sous-titre rouge de mise à jour affiché à tous les joueurs connectés. */
+    private void afficherDecompte(MinecraftServer serveur, int secondes) {
+        Component titre = Component.literal("§c§lMise à jour du serveur");
+        Component sousTitre = Component.literal("§cRedémarrage dans " + secondes + " seconde"
+            + (secondes > 1 ? "s" : "") + "…");
+        for (ServerPlayer joueur : serveur.getPlayerList().getPlayers()) {
+            // fadeIn=0 (pas de scintillement à chaque mise à jour), stay=25 ticks, fadeOut=10
+            joueur.connection.send(new ClientboundSetTitlesAnimationPacket(0, 25, 10));
+            joueur.connection.send(new ClientboundSetSubtitleTextPacket(sousTitre));
+            joueur.connection.send(new ClientboundSetTitleTextPacket(titre));
+            if (secondes == DECOMPTE_SECONDES) {
+                joueur.sendSystemMessage(Component.literal(
+                    "§c§lMise à jour du serveur : redémarrage dans " + secondes + " secondes."));
+            }
+        }
     }
 
     // ==================== État / drapeaux ====================
