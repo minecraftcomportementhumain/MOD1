@@ -4,7 +4,9 @@ license="MIT"
 
 [[mods]]
 modId="mysubmod"
-version="1.0.0"
+version="${mod_version}"
+# MATCH_VERSION (défaut) : un client dont la version diffère de celle du serveur est refusé.
+displayTest="MATCH_VERSION"
 authors="Olivier Lafontaine"
 description='''Mon mod test pour Forge 1.20.1'''
 

@@ -28,7 +28,7 @@ jobs:
         run: chmod +x ./gradlew
 
       - name: Compiler et packager
-        run: ./gradlew build --no-daemon
+        run: ./gradlew build --no-daemon -PmodVersion=1.0.0-b${{ github.run_number }}
 
       - name: Publier sur la release « latest »
         env:

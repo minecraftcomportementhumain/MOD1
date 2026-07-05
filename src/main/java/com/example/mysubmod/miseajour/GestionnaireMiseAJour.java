@@ -275,6 +275,7 @@ public class GestionnaireMiseAJour {
                         afficherDecompte(serveur, s);
                     } else {
                         minuteur.cancel();
+                        deconnecterTousPourMaj(serveur);
                         serveur.halt(false);
                     }
                 });
@@ -296,6 +297,18 @@ public class GestionnaireMiseAJour {
                 joueur.sendSystemMessage(Component.literal(
                     "§c§lMise à jour du serveur : redémarrage dans " + secondes + " secondes."));
             }
+        }
+    }
+
+    /** Déconnecte tous les joueurs avec un message les invitant à mettre à jour leur client. */
+    private void deconnecterTousPourMaj(MinecraftServer serveur) {
+        Component message = Component.literal(
+            "§c§lMise à jour du serveur\n\n"
+            + "§eUne nouvelle version du mod vient d'être installée sur le serveur.\n"
+            + "§fRedémarrez votre client Minecraft avec la dernière version du mod,\n"
+            + "§fpuis reconnectez-vous.");
+        for (ServerPlayer joueur : new java.util.ArrayList<>(serveur.getPlayerList().getPlayers())) {
+            joueur.connection.disconnect(message);
         }
     }
 

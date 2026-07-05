@@ -9,6 +9,12 @@ version = '1.0.0'
 group = 'com.example'
 archivesBaseName = 'mysubmod'
 
+// Version interne du mod, unique par build (le CI passe -PmodVersion=...).
+// Le nom du jar reste mysubmod-1.0.0.jar (via 'version' ci-dessus) ; seule la version
+// declaree dans mods.toml change -> force les clients a avoir EXACTEMENT la meme version
+// que le serveur (MATCH_VERSION), donc les clients plus anciens sont refuses.
+def modVersion = (findProperty('modVersion') ?: '1.0.0').toString()
+
 java.toolchain.languageVersion = JavaLanguageVersion.of(17)
 
 minecraft {
@@ -55,4 +61,13 @@ mixin {
 
 tasks.withType(JavaCompile).configureEach {
     options.encoding = 'UTF-8'
+}
+
+// Injecte la version du mod dans mods.toml au moment du build (remplace ${mod_version}).
+processResources {
+    var props = [mod_version: modVersion]
+    inputs.properties props
+    filesMatching('META-INF/mods.toml') {
+        expand props
+    }
 }
