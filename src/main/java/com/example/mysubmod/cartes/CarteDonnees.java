@@ -297,7 +297,7 @@ public class CarteDonnees {
                     continue;
                 }
 
-                // Remplissage de la zone connexe du même type (4-adjacence)
+                // Remplissage de la zone connexe du même type (8-adjacence : les diagonales comptent)
                 TypeElementCarte typeZone = bloc.type;
                 ZoneCarte zone = new ZoneCarte();
                 zone.type = typeZone;
@@ -309,7 +309,10 @@ public class CarteDonnees {
                     int cx = cleX(courant);
                     int cz = cleZ(courant);
                     zone.cellules.add(new int[]{cx, cz});
-                    long[] voisins = {cle(cx + 1, cz), cle(cx - 1, cz), cle(cx, cz + 1), cle(cx, cz - 1)};
+                    long[] voisins = {
+                        cle(cx + 1, cz), cle(cx - 1, cz), cle(cx, cz + 1), cle(cx, cz - 1),
+                        cle(cx + 1, cz + 1), cle(cx + 1, cz - 1), cle(cx - 1, cz + 1), cle(cx - 1, cz - 1)
+                    };
                     for (long voisin : voisins) {
                         if (visites.contains(voisin)) {
                             continue;
