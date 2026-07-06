@@ -325,8 +325,10 @@ public class GestionnaireEvenementsSousMode1 {
             if (GestionnaireSousModes.getInstance().obtenirModeActuel() == SousMode.SOUS_MODE_1) {
                 GestionnaireSousMode1 gestionnaire = GestionnaireSousMode1.getInstance();
 
-                // Partie sur carte : envoyer le HUD des zones au joueur (flèche réinitialisée)
-                if (gestionnaire.modeCarteActif()) {
+                // Partie sur carte : envoyer le HUD des zones au joueur (flèche réinitialisée).
+                // Seulement une fois la partie lancée : avant, les compteurs de zones ne sont
+                // pas encore initialisés (le lancement fait de toute façon un envoi à tous).
+                if (gestionnaire.modeCarteActif() && gestionnaire.estPartieActive()) {
                     gestionnaire.obtenirPartieCarte().envoyerZonesCompletesAJoueur(joueur);
                 }
 

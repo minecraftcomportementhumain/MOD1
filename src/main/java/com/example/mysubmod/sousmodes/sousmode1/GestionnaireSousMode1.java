@@ -2379,8 +2379,9 @@ public class GestionnaireSousMode1 {
         } // Fin du bloc synchronisé - libérer le verrou AVANT de téléporter
 
         // Restaurer le HUD des zones (partie sur carte) — nécessaire quand la reconnexion passe
-        // par l'authentification (le onPlayerJoin du sous-mode est ignoré pour les joueurs restreints)
-        if (modeCarteActif()) {
+        // par l'authentification (le onPlayerJoin du sous-mode est ignoré pour les joueurs restreints).
+        // Seulement une fois la partie lancée : avant, les compteurs ne sont pas initialisés.
+        if (modeCarteActif() && estPartieActive()) {
             partieCarte.envoyerZonesCompletesAJoueur(joueur);
         }
 
