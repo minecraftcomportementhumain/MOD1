@@ -59,6 +59,10 @@ public class GestionnaireMiseAJour {
     private boolean avertissementConfigEmis = false;
     private volatile boolean arretEnCours = false;
 
+    // Suivi des échecs consécutifs (lu/écrit uniquement par le thread de l'ordonnanceur)
+    private int echecsConsecutifs = 0;
+    private long premierEchecMillis = 0;
+
     /** Durée du décompte affiché aux joueurs avant l'arrêt pour mise à jour. */
     private static final int DECOMPTE_SECONDES = 10;
 
@@ -116,11 +120,52 @@ public class GestionnaireMiseAJour {
     }
 
     private void verifierSansThrow() {
+        long debut = System.currentTimeMillis();
         try {
             verifier();
+            if (echecsConsecutifs > 0) {
+                MonSubMod.JOURNALISEUR.info(
+                    "Vérification de mise à jour rétablie après {} échec(s) consécutif(s) ({} min d'indisponibilité)",
+                    echecsConsecutifs, (debut - premierEchecMillis) / 60000);
+                echecsConsecutifs = 0;
+            }
         } catch (Exception e) {
-            MonSubMod.JOURNALISEUR.warn("Échec de la vérification de mise à jour : {}", e.toString());
+            if (echecsConsecutifs == 0) {
+                premierEchecMillis = debut;
+            }
+            echecsConsecutifs++;
+            MonSubMod.JOURNALISEUR.warn("Échec de la vérification de mise à jour (échec consécutif n°{}, tentative de {} ms) : {}",
+                echecsConsecutifs, System.currentTimeMillis() - debut, decrireErreur(e));
         }
+    }
+
+    /** Chaîne de causes complète de l'exception, avec un diagnostic lisible pour les pannes réseau courantes. */
+    private static String decrireErreur(Throwable e) {
+        StringBuilder chaine = new StringBuilder();
+        int profondeur = 0;
+        for (Throwable t = e; t != null && profondeur < 8; t = t.getCause(), profondeur++) {
+            if (chaine.length() > 0) {
+                chaine.append(" <- ");
+            }
+            chaine.append(t.getClass().getName());
+            if (t.getMessage() != null && !t.getMessage().isBlank()) {
+                chaine.append(": ").append(t.getMessage());
+            }
+            if (t.getCause() == t) {
+                break;
+            }
+        }
+        String s = chaine.toString();
+        if (s.contains("UnresolvedAddressException") || s.contains("UnknownHostException")) {
+            s += " [diagnostic : résolution DNS impossible — le DNS de la machine ne répond pas ou est bloqué]";
+        } else if (s.contains("Connection refused") || s.contains("Connexion refusée")) {
+            s += " [diagnostic : connexion refusée — un pare-feu ou un proxy rejette la connexion]";
+        } else if (s.contains("HttpConnectTimeoutException") || s.contains("connect timed out")) {
+            s += " [diagnostic : délai de connexion dépassé — paquets perdus en route (réseau/routeur)]";
+        } else if (s.contains("Network is unreachable") || s.contains("réseau est inaccessible")) {
+            s += " [diagnostic : réseau inaccessible — pas de route (câble/Wi-Fi/adaptateur)]";
+        }
+        return s;
     }
 
     // ==================== Vérification / téléchargement ====================
