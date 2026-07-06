@@ -822,8 +822,9 @@ public class GestionnaireSousMode3 {
         }
 
         // Restaurer le HUD des zones — nécessaire quand la reconnexion passe par
-        // l'authentification (le onPlayerJoin du sous-mode est ignoré pour les joueurs restreints)
-        if (partieActive || phaseAttente) {
+        // l'authentification (le onPlayerJoin du sous-mode est ignoré pour les joueurs restreints).
+        // Seulement une fois la partie lancée : avant, les compteurs ne reflètent rien.
+        if (partieActive) {
             GestionnaireBonbonsSousMode3.obtenirInstance().envoyerZonesCompletesAJoueur(joueur, true);
         }
 

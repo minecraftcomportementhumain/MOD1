@@ -330,6 +330,19 @@ public class GestionnaireEvenementsSousMode1 {
                 // pas encore initialisés (le lancement fait de toute façon un envoi à tous).
                 if (gestionnaire.modeCarteActif() && gestionnaire.estPartieActive()) {
                     gestionnaire.obtenirPartieCarte().envoyerZonesCompletesAJoueur(joueur);
+                } else if (!gestionnaire.estPartieActive()) {
+                    // Avant le lancement : effacer les HUD résiduels d'une partie précédente
+                    // (l'état du HUD côté client survit à une déconnexion/reconnexion, et le
+                    // nettoyage du handler Sous-mode 3 s'abstient quand une carte est active ici)
+                    com.example.mysubmod.reseau.GestionnaireReseau.INSTANCE.send(
+                        net.minecraftforge.network.PacketDistributor.PLAYER.with(() -> joueur),
+                        com.example.mysubmod.sousmodes.sousmode3.reseau.PaquetZonesSousMode3.vide());
+                    com.example.mysubmod.reseau.GestionnaireReseau.INSTANCE.send(
+                        net.minecraftforge.network.PacketDistributor.PLAYER.with(() -> joueur),
+                        new com.example.mysubmod.sousmodes.sousmode1.reseau.PaquetMiseAJourCompteurBonbons(new java.util.HashMap<>()));
+                    com.example.mysubmod.reseau.GestionnaireReseau.INSTANCE.send(
+                        net.minecraftforge.network.PacketDistributor.PLAYER.with(() -> joueur),
+                        new com.example.mysubmod.sousmodes.sousmode1.reseau.PaquetMinuterieJeu(-1));
                 }
 
                 // Vérifier si le joueur a été déconnecté pendant le jeu

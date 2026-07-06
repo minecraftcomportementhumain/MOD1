@@ -406,9 +406,20 @@ public class GestionnaireEvenementsSousMode3 {
 
             GestionnaireSousMode3 gestionnaire = GestionnaireSousMode3.getInstance();
 
-            // Envoyer les zones actuelles au joueur (HUD) — flèche réinitialisée à la reconnexion
-            if (gestionnaire.estPartieActive() || gestionnaire.estPhaseAttente()) {
+            // Envoyer les zones actuelles au joueur (HUD) — flèche réinitialisée à la reconnexion.
+            // Seulement une fois la partie lancée : avant, les compteurs ne reflètent rien et
+            // les joueurs déjà connectés n'ont pas ce HUD (le lancement l'envoie à tous).
+            if (gestionnaire.estPartieActive()) {
                 GestionnaireBonbonsSousMode3.obtenirInstance().envoyerZonesCompletesAJoueur(joueur, true);
+            } else {
+                // Avant le lancement : effacer les HUD résiduels d'une partie précédente
+                // (l'état du HUD côté client survit à une déconnexion/reconnexion)
+                com.example.mysubmod.reseau.GestionnaireReseau.INSTANCE.send(
+                    net.minecraftforge.network.PacketDistributor.PLAYER.with(() -> joueur),
+                    com.example.mysubmod.sousmodes.sousmode3.reseau.PaquetZonesSousMode3.vide());
+                com.example.mysubmod.reseau.GestionnaireReseau.INSTANCE.send(
+                    net.minecraftforge.network.PacketDistributor.PLAYER.with(() -> joueur),
+                    new com.example.mysubmod.sousmodes.sousmode3.reseau.PaquetMinuterieJeuSousMode3(-1));
             }
 
             if (gestionnaire.etaitJoueurDeconnecte(joueur.getName().getString())) {
