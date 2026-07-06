@@ -291,8 +291,12 @@ public class EcranEditeurCarte extends Screen {
         } else {
             outilActif = outil;
         }
+        // Sortie du mode sélection : même nettoyage que basculerModeSelection, sinon les
+        // champs/boutons du panneau de droite et la surbrillance resteraient affichés
         modeSelection = false;
         tracageSelection = false;
+        cellulesSelectionnees.clear();
+        mettreAJourPanneauDelais();
     }
 
     private void basculerModeSelection() {
@@ -1807,10 +1811,10 @@ public class EcranEditeurCarte extends Screen {
             guiGraphics.drawString(this.font, "Délai bonbon non-vis. (s)", xPanneau + 8, HAUT_GRILLE + 48, 0xC896FF);
         }
         if (champApparitionInitiale.visible) {
-            guiGraphics.drawString(this.font, "Apparition init. vis. (s)", xPanneau + 8, HAUT_GRILLE + 78, 0x9FD3FF);
+            guiGraphics.drawString(this.font, "Apparition init. vis. (s)", xPanneau + 8, HAUT_GRILLE + 78, 0xFFC81E);
         }
         if (champApparitionInitialeNonVisible.visible) {
-            guiGraphics.drawString(this.font, "Apparition init. non-vis. (s)", xPanneau + 8, HAUT_GRILLE + 108, 0x9FD3FF);
+            guiGraphics.drawString(this.font, "Apparition init. non-vis. (s)", xPanneau + 8, HAUT_GRILLE + 108, 0xC896FF);
         }
     }
 
