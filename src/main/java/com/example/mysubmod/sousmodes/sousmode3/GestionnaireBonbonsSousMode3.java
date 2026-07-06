@@ -150,7 +150,7 @@ public class GestionnaireBonbonsSousMode3 {
                             GenerateurCarteSousMode3.ResultatGeneration generation) {
         arreter();
         this.serveurJeu = serveur;
-        this.minuterieReapparition = new Timer("SousMode3-ReapparitionBonbons");
+        this.minuterieReapparition = new Timer("SousMode3-ReapparitionBonbons", true);
 
         // Zones nommées de la carte -> coordonnées monde
         Map<Long, String> zoneParCellule = new HashMap<>();

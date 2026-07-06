@@ -350,7 +350,7 @@ public class GestionnaireSousMode1 {
             }
         }
 
-        minuteurSelection = new Timer();
+        minuteurSelection = new Timer(true);
         minuteurSelection.schedule(new TimerTask() {
             @Override
             public void run() {
@@ -1686,7 +1686,7 @@ public class GestionnaireSousMode1 {
         }
 
         // Démarrer le minuteur de 30 secondes
-        minuteurSelection = new Timer();
+        minuteurSelection = new Timer(true);
         minuteurSelection.schedule(new TimerTask() {
             @Override
             public void run() {
@@ -2067,7 +2067,7 @@ public class GestionnaireSousMode1 {
         afficherFelicitations(serveur);
 
         // Changer vers la salle d'attente et désactiver après un court délai
-        Timer minuteurDelai = new Timer("SousMode1-FinPartie-minuterie");
+        Timer minuteurDelai = new Timer("SousMode1-FinPartie-minuterie", true);
         minuteurDelai.schedule(new TimerTask() {
             @Override
             public void run() {
@@ -2574,7 +2574,7 @@ public class GestionnaireSousMode1 {
                 if (tempsRestant > 0) {
                     // Planifier l'envoi du paquet après 10 ticks (0.5 secondes) pour s'assurer que le client est prêt
                     final int tempsAEnvoyer = tempsRestant;
-                    java.util.Timer minuterie = new java.util.Timer();
+                    java.util.Timer minuterie = new java.util.Timer(true);
                     minuterie.schedule(new java.util.TimerTask() {
                         @Override
                         public void run() {

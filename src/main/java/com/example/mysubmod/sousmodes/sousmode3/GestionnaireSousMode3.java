@@ -221,7 +221,7 @@ public class GestionnaireSousMode3 {
         MonSubMod.JOURNALISEUR.info("Lancement de la partie Sous-mode 3 par {} (décompte de {} secondes)",
             admin != null ? admin.getName().getString() : "SERVEUR", DECOMPTE_LANCEMENT_SECONDES);
 
-        minuteurDecompte = new Timer("SousMode3-Decompte");
+        minuteurDecompte = new Timer("SousMode3-Decompte", true);
         minuteurDecompte.scheduleAtFixedRate(new TimerTask() {
             private int secondesRestantes = DECOMPTE_LANCEMENT_SECONDES;
 
@@ -470,7 +470,7 @@ public class GestionnaireSousMode3 {
         afficherClassement(serveur);
         afficherFelicitations(serveur);
 
-        Timer minuteurDelai = new Timer("SousMode3-FinPartie-minuterie");
+        Timer minuteurDelai = new Timer("SousMode3-FinPartie-minuterie", true);
         minuteurDelai.schedule(new TimerTask() {
             @Override
             public void run() {

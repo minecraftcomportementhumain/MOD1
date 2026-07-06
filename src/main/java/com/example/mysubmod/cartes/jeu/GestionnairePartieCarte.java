@@ -137,7 +137,7 @@ public class GestionnairePartieCarte {
         }
 
         this.serveurJeu = serveur;
-        this.minuterieBonbons = new Timer("SousMode" + numeroSousMode + "-BonbonsCarte");
+        this.minuterieBonbons = new Timer("SousMode" + numeroSousMode + "-BonbonsCarte", true);
 
         // Les bonbons non-visibles sont ignorés aux Sous-modes 1 et 2 (pas de minage)
         int bonbonsIgnores = carte.compterBonbonsNonVisiblesInterieur();

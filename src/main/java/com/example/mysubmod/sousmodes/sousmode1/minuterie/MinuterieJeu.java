@@ -25,7 +25,7 @@ public class MinuterieJeu {
     }
 
     public void demarrer() {
-        minuteur = new Timer();
+        minuteur = new Timer(true);
         minuteur.scheduleAtFixedRate(new TimerTask() {
             @Override
             public void run() {

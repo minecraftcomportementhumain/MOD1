@@ -56,7 +56,7 @@ public class GestionnaireBonbonsSousMode1 {
     }
 
     private void planifierApparitionsBonbonsDepuisConfig(MinecraftServer serveur, List<EntreeApparitionBonbon> configApparition) {
-        minuterieApparitionBonbons = new Timer();
+        minuterieApparitionBonbons = new Timer(true);
 
         for (EntreeApparitionBonbon entree : configApparition) {
             minuterieApparitionBonbons.schedule(new TimerTask() {

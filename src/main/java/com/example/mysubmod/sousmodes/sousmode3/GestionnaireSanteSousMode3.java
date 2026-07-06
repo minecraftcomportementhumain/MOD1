@@ -35,7 +35,7 @@ public class GestionnaireSanteSousMode3 {
     public void demarrerDegradationSante(MinecraftServer serveur) {
         MonSubMod.JOURNALISEUR.info("Démarrage de la dégradation de santé pour Sous-mode 3");
 
-        minuterieSante = new Timer("SousMode3-Sante");
+        minuterieSante = new Timer("SousMode3-Sante", true);
         minuterieSante.scheduleAtFixedRate(new TimerTask() {
             @Override
             public void run() {

@@ -31,6 +31,12 @@ public class ConfigMiseAJour {
     /** Intervalle de sondage en minutes. */
     public int intervalleMinutes = 2;
     /**
+     * Délai (en secondes) après la fin du décompte au-delà duquel la JVM est arrêtée de force
+     * si l'arrêt normal ne se termine pas (sauvegarde bloquée, thread récalcitrant) : run.bat
+     * peut alors appliquer la mise à jour et redémarrer au lieu d'attendre indéfiniment.
+     */
+    public int delaiArretForceSecondes = 180;
+    /**
      * Commande qui relance le serveur après remplacement du jar (exécutée depuis
      * le dossier du serveur). Exemple Windows : « run.bat ». Vide = pas de relance.
      */
@@ -58,6 +64,7 @@ public class ConfigMiseAJour {
                 if (racine.has("depot")) config.depot = racine.get("depot").getAsString();
                 if (racine.has("tag")) config.tag = racine.get("tag").getAsString();
                 if (racine.has("intervalleMinutes")) config.intervalleMinutes = Math.max(1, racine.get("intervalleMinutes").getAsInt());
+                if (racine.has("delaiArretForceSecondes")) config.delaiArretForceSecondes = Math.max(30, racine.get("delaiArretForceSecondes").getAsInt());
                 if (racine.has("commandeRelance")) config.commandeRelance = racine.get("commandeRelance").getAsString();
             }
             return config;

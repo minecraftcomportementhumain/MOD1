@@ -288,7 +288,7 @@ public class GestionnaireMiseAJour {
         MonSubMod.JOURNALISEUR.warn("Mise à jour : nouveau build en staging. Décompte de {} s puis arrêt (run.bat installera le jar et redémarrera).", DECOMPTE_SECONDES);
 
         if (serveur != null) {
-            demarrerDecompteEtArreter(serveur);
+            demarrerDecompteEtArreter(serveur, config.delaiArretForceSecondes);
         }
     }
 
@@ -298,11 +298,12 @@ public class GestionnaireMiseAJour {
      * mise à jour. Le décompte tourne via un minuteur ; chaque tick est exécuté sur le thread
      * serveur.
      */
-    private void demarrerDecompteEtArreter(MinecraftServer serveur) {
+    private void demarrerDecompteEtArreter(MinecraftServer serveur, int delaiArretForceSecondes) {
         if (arretEnCours) {
             return;
         }
         arretEnCours = true;
+        demarrerGardeFouArretForce(delaiArretForceSecondes);
         java.util.Timer minuteur = new java.util.Timer("MonSubMod-DecompteMAJ", true);
         minuteur.scheduleAtFixedRate(new java.util.TimerTask() {
             private int restant = DECOMPTE_SECONDES;
@@ -326,6 +327,32 @@ public class GestionnaireMiseAJour {
                 });
             }
         }, 0L, 1000L);
+    }
+
+    /**
+     * Filet de sécurité : si la JVM n'est pas morte {@code delaiSecondes} s après la fin du
+     * décompte (arrêt bloqué par une sauvegarde interminable ou un thread non-daemon), on la
+     * tue de force. run.bat reprend alors la main : échange du jar puis redémarrage. Sans ce
+     * garde-fou, le serveur peut se fermer pour les joueurs sans jamais se relancer.
+     */
+    private void demarrerGardeFouArretForce(int delaiSecondes) {
+        Thread gardeFou = new Thread(() -> {
+            try {
+                Thread.sleep((DECOMPTE_SECONDES + delaiSecondes) * 1000L);
+            } catch (InterruptedException e) {
+                return;
+            }
+            MonSubMod.JOURNALISEUR.error(
+                "Mise à jour : l'arrêt n'est toujours pas terminé {} s après la fin du décompte — arrêt forcé de la JVM (run.bat va appliquer la mise à jour et redémarrer).",
+                delaiSecondes);
+            try {
+                Thread.sleep(1000); // laisser la ligne de log s'écrire
+            } catch (InterruptedException ignore) {
+            }
+            Runtime.getRuntime().halt(2);
+        }, "MonSubMod-GardeFouArret");
+        gardeFou.setDaemon(true);
+        gardeFou.start();
     }
 
     /** Titre/sous-titre rouge de mise à jour affiché à tous les joueurs connectés. */

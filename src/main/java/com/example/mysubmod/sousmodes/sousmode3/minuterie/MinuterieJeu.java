@@ -26,7 +26,7 @@ public class MinuterieJeu {
     }
 
     public void demarrer() {
-        minuteur = new Timer("SousMode3-MinuterieJeu");
+        minuteur = new Timer("SousMode3-MinuterieJeu", true);
         minuteur.scheduleAtFixedRate(new TimerTask() {
             @Override
             public void run() {

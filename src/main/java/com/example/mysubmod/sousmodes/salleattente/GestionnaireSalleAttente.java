@@ -176,7 +176,7 @@ public class GestionnaireSalleAttente {
     }
 
     private void demarrerMessagesRappel(MinecraftServer serveur) {
-        minuterieRappel = new Timer();
+        minuterieRappel = new Timer(true);
         minuterieRappel.scheduleAtFixedRate(new TimerTask() {
             @Override
             public void run() {

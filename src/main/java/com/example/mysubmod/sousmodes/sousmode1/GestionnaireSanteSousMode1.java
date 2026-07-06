@@ -28,7 +28,7 @@ public class GestionnaireSanteSousMode1 {
     public void demarrerDegradationSante(MinecraftServer serveur) {
         MonSubMod.JOURNALISEUR.info("Démarrage de la dégradation de santé pour Sous-mode 1");
 
-        minuterieSante = new Timer();
+        minuterieSante = new Timer(true);
         minuterieSante.scheduleAtFixedRate(new TimerTask() {
             @Override
             public void run() {
