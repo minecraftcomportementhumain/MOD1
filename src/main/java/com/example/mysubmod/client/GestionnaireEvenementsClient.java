@@ -58,6 +58,15 @@ public class GestionnaireEvenementsClient {
         // Touche N - Ouvrir l'écran de sélection de fichier de bonbons (Sous-mode 1 et Sous-mode 2)
         if (event.getKey() == GLFW.GLFW_KEY_N && event.getAction() == GLFW.GLFW_PRESS) {
             if (mc.screen == null && mc.player != null) {
+                // Carte en cours de génération (SM1/2/3) : N bloqué (ni lancement, ni sélection
+                // de fichier). Le HUD des zones n'est pas encore actif, sinon SM1/SM2 ouvriraient
+                // par erreur l'écran de sélection de fichier d'apparition.
+                if (com.example.mysubmod.cartes.client.ChargementCarteClient.estActif()) {
+                    mc.player.sendSystemMessage(net.minecraft.network.chat.Component.literal(
+                        "§cLa carte est en cours de génération, veuillez patienter..."));
+                    return;
+                }
+
                 SousMode modeActuel = GestionnaireSubModeClient.obtenirModeActuel();
 
                 boolean partieSurCarte = com.example.mysubmod.sousmodes.sousmode3.client.HUDZonesSousMode3.estActif();
