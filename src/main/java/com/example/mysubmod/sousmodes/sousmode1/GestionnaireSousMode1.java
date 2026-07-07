@@ -1,8 +1,10 @@
 package com.example.mysubmod.sousmodes.sousmode1;
 
 import com.example.mysubmod.MonSubMod;
+import com.example.mysubmod.cartes.jeu.PiloteChargementCarte;
 import com.example.mysubmod.reseau.GestionnaireReseau;
 import com.example.mysubmod.sousmodes.GestionnaireSousModes;
+import com.example.mysubmod.sousmodes.sousmode3.GenerateurCarteSousMode3;
 import com.example.mysubmod.utilitaire.UtilitaireFiltreJoueurs;
 import com.example.mysubmod.sousmodes.sousmode1.donnees.EntreeApparitionBonbon;
 import com.example.mysubmod.sousmodes.sousmode1.donnees.GestionnaireFichiersApparitionBonbons;
@@ -239,7 +241,9 @@ public class GestionnaireSousMode1 {
     // ==================== Partie sur carte (système de cartes) ====================
 
     public boolean modeCarteActif() {
-        return partieCarte.estActif();
+        // Inclut la fenêtre de génération étalée : les joueurs qui rejoignent/reconnectent
+        // pendant le chargement doivent être traités comme une partie sur carte (plateforme).
+        return partieCarte.estActif() || partieCarte.estGenerationEnCours();
     }
 
     public com.example.mysubmod.cartes.jeu.GestionnairePartieCarte obtenirPartieCarte() {
@@ -257,11 +261,14 @@ public class GestionnaireSousMode1 {
      */
     private void activerModeCarte(MinecraftServer serveur) {
         ServerLevel monde = serveur.getLevel(ServerLevel.OVERWORLD);
-        if (monde == null || !partieCarte.activer(serveur)) {
+        GenerateurCarteSousMode3.Tache tacheGeneration = monde != null ? partieCarte.activerDebut(serveur) : null;
+        if (tacheGeneration == null) {
             diffuserMessage(serveur, "§cImpossible de charger la carte sélectionnée.");
             return;
         }
 
+        // Plateforme spectateur + téléportation AVANT la génération : les joueurs y patientent
+        // et voient la carte se construire avec la barre de progression.
         genererPlateformeSpectateur(monde);
         monde.setDayTime(6000);
 
@@ -276,14 +283,23 @@ public class GestionnaireSousMode1 {
         for (ServerPlayer joueur : UtilitaireFiltreJoueurs.obtenirJoueursAuthentifies(serveur)) {
             if (GestionnaireSousModes.getInstance().estAdmin(joueur)) {
                 teleporterVersSpectateur(joueur);
-                joueur.sendSystemMessage(Component.literal("§6Appuyez sur N pour ouvrir le menu de lancement de partie"));
             } else {
                 ajouterJoueurEnAttenteCarte(joueur);
             }
         }
 
-        diffuserMessage(serveur, "§eCarte « " + partieCarte.obtenirNomCarte()
-            + " » chargée. En attente du lancement de la partie...");
+        // Génération étalée (multi-ticks) avec barre de progression. La suite (zones,
+        // bonbons, message d'attente, invite « N ») s'exécute dans le callback à 100 %.
+        PiloteChargementCarte.demarrer(serveur, tacheGeneration, partieCarte.obtenirNomCarte(), () -> {
+            partieCarte.terminerActivation(serveur);
+            diffuserMessage(serveur, "§eCarte « " + partieCarte.obtenirNomCarte()
+                + " » chargée. En attente du lancement de la partie...");
+            for (ServerPlayer joueur : UtilitaireFiltreJoueurs.obtenirJoueursAuthentifies(serveur)) {
+                if (GestionnaireSousModes.getInstance().estAdmin(joueur)) {
+                    joueur.sendSystemMessage(Component.literal("§6Appuyez sur N pour ouvrir le menu de lancement de partie"));
+                }
+            }
+        });
     }
 
     /** Ajoute un joueur à la phase d'attente d'une partie sur carte (plateforme spectateur) */
@@ -313,6 +329,12 @@ public class GestionnaireSousMode1 {
      * aucune zone de type Île.
      */
     public boolean lancerPartieCarte(MinecraftServer serveur, ServerPlayer admin) {
+        if (partieCarte.estGenerationEnCours()) {
+            if (admin != null) {
+                admin.sendSystemMessage(Component.literal("§cLa carte est encore en cours de génération, veuillez patienter..."));
+            }
+            return false;
+        }
         if (!modeCarteActif() || !phaseAttenteCarte || partieActive || phaseSelection) {
             if (admin != null) {
                 admin.sendSystemMessage(Component.literal("§cLa partie est déjà lancée"));
@@ -679,8 +701,10 @@ public class GestionnaireSousMode1 {
             }
 
             // Partie sur carte : supprimer le monde généré, les bonbons et la plateforme
+            // (inclut une génération étalée encore en cours : nettoyer() l'annule et efface
+            // les blocs déjà posés).
             try {
-                if (partieCarte.estActif()) {
+                if (partieCarte.estActif() || partieCarte.estGenerationEnCours()) {
                     partieCarte.nettoyer(serveur);
                     ServerLevel monde = serveur.getLevel(ServerLevel.OVERWORLD);
                     if (monde != null && plateformeSpectateur != null) {

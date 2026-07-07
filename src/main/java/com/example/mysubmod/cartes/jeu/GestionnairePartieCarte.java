@@ -79,6 +79,7 @@ public class GestionnairePartieCarte {
     private final Supplier<Boolean> partieActive;
 
     private boolean actif = false;
+    private boolean generationEnCours = false; // Carte en cours de génération étalée (barre de chargement)
     private CarteDonnees carte;
     private GenerateurCarteSousMode3.ResultatGeneration generation;
 
@@ -108,6 +109,11 @@ public class GestionnairePartieCarte {
         return actif;
     }
 
+    /** Vrai tant que la carte est en cours de génération étalée (avant que la partie soit prête). */
+    public boolean estGenerationEnCours() {
+        return generationEnCours;
+    }
+
     public CarteDonnees obtenirCarte() {
         return carte;
     }
@@ -124,24 +130,57 @@ public class GestionnairePartieCarte {
      * des bonbons visibles. Les objets bonbons apparaissent au début de la partie.
      */
     public boolean activer(MinecraftServer serveur) {
+        // Chemin synchrone (compat) : exécute la génération étalée jusqu'au bout en un appel.
+        GenerateurCarteSousMode3.Tache tache = activerDebut(serveur);
+        if (tache == null) {
+            return false;
+        }
+        while (!tache.avancer(Long.MAX_VALUE)) {
+            // boucle jusqu'à l'achèvement
+        }
+        terminerActivation(serveur);
+        return true;
+    }
+
+    /**
+     * Première phase de l'activation : charge la carte et prépare la tâche de génération
+     * étalée (sans blocs bonbons non-visibles — ignorés sans minage). Retourne la tâche à
+     * piloter, ou null si la carte est introuvable. La seconde phase (zones, bonbons,
+     * point d'apparition) s'effectue dans {@link #terminerActivation} une fois la carte posée.
+     */
+    public GenerateurCarteSousMode3.Tache activerDebut(MinecraftServer serveur) {
         String nomCarte = GestionnaireCartes.getInstance().obtenirCarteSelectionnee();
         carte = nomCarte != null ? GestionnaireCartes.getInstance().chargerCarte(nomCarte) : null;
         if (carte == null) {
             MonSubMod.JOURNALISEUR.error("Sous-mode {} : carte sélectionnée introuvable", numeroSousMode);
-            return false;
+            return null;
         }
 
         ServerLevel monde = serveur.getLevel(ServerLevel.OVERWORLD);
         if (monde == null) {
-            return false;
+            return null;
         }
 
         this.serveurJeu = serveur;
         this.minuterieBonbons = new Timer("SousMode" + numeroSousMode + "-BonbonsCarte", true);
 
-        // Les bonbons non-visibles sont ignorés aux Sous-modes 1 et 2 (pas de minage)
-        int bonbonsIgnores = carte.compterBonbonsNonVisiblesInterieur();
-        generation = GenerateurCarteSousMode3.generer(monde, carte, false);
+        GenerateurCarteSousMode3.Tache tache = new GenerateurCarteSousMode3.Tache(monde, carte, false);
+        generation = tache.resultat(); // suivi immédiat (nettoyable même si interrompu)
+        generationEnCours = true;
+        return tache;
+    }
+
+    /**
+     * Seconde phase de l'activation, exécutée une fois la carte entièrement générée :
+     * zones nommées, points d'apparition, inventaire des bonbons visibles, HUD des zones.
+     */
+    public void terminerActivation(MinecraftServer serveur) {
+        ServerLevel monde = serveur != null ? serveur.getLevel(ServerLevel.OVERWORLD) : null;
+        if (carte == null || generation == null || monde == null) {
+            MonSubMod.JOURNALISEUR.warn("Sous-mode {} : terminerActivation ignoré (état invalide)", numeroSousMode);
+            generationEnCours = false;
+            return;
+        }
 
         initialiserZonesEtBonbons();
 
@@ -151,6 +190,8 @@ public class GestionnairePartieCarte {
         // HUD des zones pour tous les joueurs (flèche réinitialisée)
         envoyerZonesCompletesATous();
 
+        // Les bonbons non-visibles sont ignorés aux Sous-modes 1 et 2 (pas de minage)
+        int bonbonsIgnores = carte.compterBonbonsNonVisiblesInterieur();
         if (bonbonsIgnores > 0) {
             for (ServerPlayer joueur : UtilitaireFiltreJoueurs.obtenirJoueursAuthentifies(serveur)) {
                 joueur.sendSystemMessage(net.minecraft.network.chat.Component.literal(
@@ -159,10 +200,10 @@ public class GestionnairePartieCarte {
             }
         }
 
+        generationEnCours = false;
         actif = true;
         MonSubMod.JOURNALISEUR.info("Sous-mode {} : carte « {} » générée ({} zones, {} zones Île sélectionnables)",
             numeroSousMode, carte.nom, zones.size(), zonesIle.size());
-        return true;
     }
 
     private void initialiserZonesEtBonbons() {
@@ -615,6 +656,10 @@ public class GestionnairePartieCarte {
 
     /** Supprime le monde généré, les objets bonbons suivis et réinitialise l'état */
     public void nettoyer(MinecraftServer serveur) {
+        // Stopper une génération étalée encore en cours (les blocs déjà posés sont suivis
+        // dans generation.blocsPlaces et effacés plus bas).
+        PiloteChargementCarte.annuler();
+
         if (minuterieBonbons != null) {
             minuterieBonbons.cancel();
             minuterieBonbons = null;
@@ -645,6 +690,7 @@ public class GestionnairePartieCarte {
         }
 
         actif = false;
+        generationEnCours = false;
         carte = null;
         generation = null;
         cellulesVisibles.clear();
