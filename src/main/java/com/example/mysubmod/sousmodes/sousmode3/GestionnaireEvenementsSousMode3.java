@@ -77,6 +77,14 @@ public class GestionnaireEvenementsSousMode3 {
 
         GestionnaireSousMode3 gestionnaire = GestionnaireSousMode3.getInstance();
 
+        // Pendant la génération de la carte, personne (admins inclus) ne peut modifier de
+        // bloc : protège la plateforme spectateur tant que la carte n'est pas chargée.
+        if (gestionnaire.estGenerationEnCours()) {
+            event.setCanceled(true);
+            joueur.sendSystemMessage(Component.literal("§cLa carte est en cours de génération, veuillez patienter..."));
+            return;
+        }
+
         // Admins : mêmes restrictions que les spectateurs sur la plateforme
         if (GestionnaireSousModes.getInstance().estAdmin(joueur)) {
             if (gestionnaire.estJoueurSpectateur(joueur.getUUID())) {
@@ -155,6 +163,12 @@ public class GestionnaireEvenementsSousMode3 {
         }
 
         GestionnaireSousMode3 gestionnaire = GestionnaireSousMode3.getInstance();
+
+        // Pendant la génération de la carte, aucun placement de bloc (admins inclus).
+        if (gestionnaire.estGenerationEnCours()) {
+            event.setCanceled(true);
+            return;
+        }
 
         if (GestionnaireSousModes.getInstance().estAdmin(joueur)) {
             if (gestionnaire.estJoueurSpectateur(joueur.getUUID())) {

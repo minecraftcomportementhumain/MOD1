@@ -146,6 +146,14 @@ public class GestionnaireEvenementsSousMode2 {
                 return;
             }
 
+            // Pendant la génération de la carte (partie sur carte), personne (admins inclus)
+            // ne peut modifier de bloc : protège la plateforme spectateur avant le chargement.
+            if (GestionnaireSousMode2.getInstance().obtenirPartieCarte().estGenerationEnCours()) {
+                evenement.setCanceled(true);
+                joueur.sendSystemMessage(Component.literal("§cLa carte est en cours de génération, veuillez patienter..."));
+                return;
+            }
+
             net.minecraft.world.level.block.Block bloc = evenement.getState().getBlock();
 
             // Journaliser TOUTES les tentatives de casser des blocs
@@ -192,6 +200,12 @@ public class GestionnaireEvenementsSousMode2 {
         if (evenement.getEntity() instanceof ServerPlayer joueur) {
             // Ignorer les comptes candidats temporaires de file d'attente
             if (UtilitaireFiltreJoueurs.estJoueurRestreint(joueur)) {
+                evenement.setCanceled(true);
+                return;
+            }
+
+            // Pendant la génération de la carte (partie sur carte), aucun placement (admins inclus).
+            if (GestionnaireSousMode2.getInstance().obtenirPartieCarte().estGenerationEnCours()) {
                 evenement.setCanceled(true);
                 return;
             }
