@@ -3,6 +3,7 @@ package com.example.mysubmod.sousmodes.sousmode3;
 import com.example.mysubmod.MonSubMod;
 import com.example.mysubmod.cartes.CarteDonnees;
 import com.example.mysubmod.cartes.GestionnaireCartes;
+import com.example.mysubmod.cartes.jeu.PiloteChargementCarte;
 import com.example.mysubmod.reseau.GestionnaireReseau;
 import com.example.mysubmod.sousmodes.GestionnaireSousModes;
 import com.example.mysubmod.sousmodes.sousmode3.donnees.EnregistreurDonneesSousMode3;
@@ -91,6 +92,7 @@ public class GestionnaireSousMode3 {
     private boolean decompteEnCours = false;
     private boolean finPartieEnCours = false;
     private boolean carteGeneree = false;
+    private boolean generationEnCours = false; // Carte en cours de génération étalée (barre de chargement)
     private long heureDebutPartie;
 
     private CarteDonnees carte;
@@ -146,12 +148,44 @@ public class GestionnaireSousMode3 {
             MonSubMod.JOURNALISEUR.error("Erreur lors du nettoyage des bonbons résiduels", e);
         }
 
-        // La carte sélectionnée est générée dans le monde au moment du lancement du sous-mode
-        generation = GenerateurCarteSousMode3.generer(monde, carte);
-        carteGeneree = true;
-
-        // Générer la plateforme spectateur (seul élément généré « à l'ancienne »)
+        // Générer la plateforme spectateur AVANT la carte : les joueurs y patientent et
+        // voient la carte se construire sous eux, barre de progression à l'appui.
         genererPlateformeSpectateur(monde);
+
+        // Téléporter tous les joueurs sur la plateforme spectateur immédiatement.
+        // La génération de la carte s'étale ensuite sur plusieurs ticks (pas de gel serveur).
+        phaseAttente = true;
+        generationEnCours = true;
+        for (ServerPlayer joueur : UtilitaireFiltreJoueurs.obtenirJoueursAuthentifies(serveur)) {
+            if (GestionnaireSousModes.getInstance().estAdmin(joueur)) {
+                teleporterVersSpectateur(joueur);
+            } else {
+                stockerInventaireJoueur(joueur);
+                viderInventaireJoueur(joueur);
+                joueursEnAttente.add(joueur.getUUID());
+                nomsJoueurs.put(joueur.getUUID(), joueur.getName().getString());
+                teleporterVersPlateforme(joueur);
+            }
+        }
+
+        // Lancer la génération étalée. La suite (bonbons, zones, journalisation, message
+        // « En attente du lancement ») s'exécute dans terminerActivation() une fois la carte posée.
+        GenerateurCarteSousMode3.Tache tacheGeneration = new GenerateurCarteSousMode3.Tache(monde, carte, true);
+        generation = tacheGeneration.resultat(); // suivi immédiat : nettoyable même si interrompu
+        PiloteChargementCarte.demarrer(serveur, tacheGeneration, carte.nom, () -> terminerActivation(serveur));
+    }
+
+    /**
+     * Suite de l'activation, exécutée sur le thread serveur une fois la carte entièrement
+     * générée (callback de {@link PiloteChargementCarte}).
+     */
+    private void terminerActivation(MinecraftServer serveur) {
+        ServerLevel monde = serveur.getLevel(ServerLevel.OVERWORLD);
+        if (monde == null || carte == null || generation == null) {
+            MonSubMod.JOURNALISEUR.warn("terminerActivation ignoré (état invalide après génération)");
+            return;
+        }
+        carteGeneree = true;
 
         // Retirer les résidus de la destruction du terrain principal (items et
         // entités apparus pendant la génération) avant de placer les bonbons
@@ -169,19 +203,7 @@ public class GestionnaireSousMode3 {
         enregistreurDonnees.demarrerNouvellePartie();
         traiterEvenementsJournalisationEnAttente();
 
-        // Téléporter tous les joueurs sur la plateforme spectateur
-        phaseAttente = true;
-        for (ServerPlayer joueur : UtilitaireFiltreJoueurs.obtenirJoueursAuthentifies(serveur)) {
-            if (GestionnaireSousModes.getInstance().estAdmin(joueur)) {
-                teleporterVersSpectateur(joueur);
-            } else {
-                stockerInventaireJoueur(joueur);
-                viderInventaireJoueur(joueur);
-                joueursEnAttente.add(joueur.getUUID());
-                nomsJoueurs.put(joueur.getUUID(), joueur.getName().getString());
-                teleporterVersPlateforme(joueur);
-            }
-        }
+        generationEnCours = false;
 
         diffuserMessage(serveur, "§eCarte « " + carte.nom + " » chargée. En attente du lancement de la partie...");
         for (ServerPlayer joueur : UtilitaireFiltreJoueurs.obtenirJoueursAuthentifies(serveur)) {
@@ -198,6 +220,12 @@ public class GestionnaireSousMode3 {
      * joueurs sont téléportés vers le point d'apparition défini dans la carte.
      */
     public boolean lancerPartie(MinecraftServer serveur, ServerPlayer admin) {
+        if (generationEnCours) {
+            if (admin != null) {
+                admin.sendSystemMessage(Component.literal("§cLa carte est encore en cours de génération, veuillez patienter..."));
+            }
+            return false;
+        }
         if (!phaseAttente || partieActive) {
             if (admin != null) {
                 admin.sendSystemMessage(Component.literal("§cLa partie est déjà lancée"));
@@ -320,6 +348,10 @@ public class GestionnaireSousMode3 {
     public void deactivate(MinecraftServer serveur) {
         MonSubMod.JOURNALISEUR.info("Désactivation du SousMode3");
 
+        // Stopper une génération étalée encore en cours (les blocs déjà posés sont suivis
+        // dans generation.blocsPlaces et effacés plus bas).
+        PiloteChargementCarte.annuler();
+
         try {
             try {
                 for (ServerPlayer joueur : UtilitaireFiltreJoueurs.obtenirJoueursAuthentifies(serveur)) {
@@ -401,6 +433,7 @@ public class GestionnaireSousMode3 {
             decompteEnCours = false;
             finPartieEnCours = false;
             carteGeneree = false;
+            generationEnCours = false;
             carte = null;
             generation = null;
             heureDebutPartie = 0;
@@ -1135,6 +1168,10 @@ public class GestionnaireSousMode3 {
 
     public boolean estCarteGeneree() {
         return carteGeneree;
+    }
+
+    public boolean estGenerationEnCours() {
+        return generationEnCours;
     }
 
     public long obtenirHeureDebutPartie() {

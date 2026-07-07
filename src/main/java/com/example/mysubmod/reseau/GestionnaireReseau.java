@@ -555,6 +555,16 @@ public class GestionnaireReseau {
             com.example.mysubmod.cartes.reseau.PaquetRefusLancement::decode,
             com.example.mysubmod.cartes.reseau.PaquetRefusLancement::traiter
         );
+
+        // Progression de la génération de carte (barre de chargement) — serveur -> client
+        INSTANCE.registerMessage(
+            idPaquet++,
+            com.example.mysubmod.cartes.reseau.PaquetProgressionChargement.class,
+            com.example.mysubmod.cartes.reseau.PaquetProgressionChargement::encode,
+            com.example.mysubmod.cartes.reseau.PaquetProgressionChargement::decode,
+            com.example.mysubmod.cartes.reseau.PaquetProgressionChargement::traiter,
+            java.util.Optional.of(NetworkDirection.PLAY_TO_CLIENT)
+        );
     }
 
     /**
