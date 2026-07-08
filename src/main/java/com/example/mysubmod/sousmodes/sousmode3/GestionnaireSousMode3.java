@@ -980,6 +980,22 @@ public class GestionnaireSousMode3 {
     }
 
     /**
+     * Tailles des zones Île en blocs (nombre de cellules de surface), dans le même ordre
+     * que {@link #obtenirZonesIle()} — affichées sur l'écran de sélection de zone.
+     */
+    private List<Integer> obtenirTaillesZonesIle() {
+        List<Integer> tailles = new ArrayList<>();
+        if (carte != null) {
+            for (ZoneCarte zone : carte.zones) {
+                if (zone.type == TypeElementCarte.ILE) {
+                    tailles.add(zone.cellules.size());
+                }
+            }
+        }
+        return tailles;
+    }
+
+    /**
      * Point de départ d'une zone : surface de la cellule la plus proche du centre géométrique
      * (même règle que les parties sur carte des Sous-modes 1 et 2). Null si zone inconnue.
      */
@@ -1020,11 +1036,12 @@ public class GestionnaireSousMode3 {
         heureDebutSelectionZones = System.currentTimeMillis();
 
         List<String> zonesIle = obtenirZonesIle();
+        List<Integer> taillesIle = obtenirTaillesZonesIle();
         for (ServerPlayer joueur : UtilitaireFiltreJoueurs.obtenirJoueursAuthentifies(serveur)) {
             if (!GestionnaireSousModes.getInstance().estAdmin(joueur)) {
                 GestionnaireReseau.INSTANCE.send(PacketDistributor.PLAYER.with(() -> joueur),
                     new com.example.mysubmod.cartes.reseau.PaquetSelectionZoneDepart(
-                        zonesIle, TEMPS_SELECTION_ZONES_SECONDES));
+                        zonesIle, taillesIle, TEMPS_SELECTION_ZONES_SECONDES));
             }
         }
 
@@ -1068,7 +1085,8 @@ public class GestionnaireSousMode3 {
         int restant = obtenirTempsSelectionZonesRestant();
         if (restant > 0) {
             GestionnaireReseau.INSTANCE.send(PacketDistributor.PLAYER.with(() -> joueur),
-                new com.example.mysubmod.cartes.reseau.PaquetSelectionZoneDepart(obtenirZonesIle(), restant));
+                new com.example.mysubmod.cartes.reseau.PaquetSelectionZoneDepart(
+                    obtenirZonesIle(), obtenirTaillesZonesIle(), restant));
         }
     }
 

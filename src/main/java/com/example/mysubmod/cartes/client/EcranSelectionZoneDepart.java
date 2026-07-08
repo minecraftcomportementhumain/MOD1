@@ -23,12 +23,14 @@ public class EcranSelectionZoneDepart extends Screen {
     private static final int ESPACEMENT_BOUTON = 24;
 
     private final List<String> zones;
+    private final List<Integer> tailles; // en blocs ; -1 = non communiquée (affichage du nom seul)
     private int tempsRestant;
     private int compteurTicks = 0;
 
-    public EcranSelectionZoneDepart(List<String> zones, int tempsInitial) {
+    public EcranSelectionZoneDepart(List<String> zones, List<Integer> tailles, int tempsInitial) {
         super(Component.literal("Sélection de la zone de départ"));
         this.zones = zones;
+        this.tailles = tailles;
         this.tempsRestant = tempsInitial;
     }
 
@@ -39,10 +41,13 @@ public class EcranSelectionZoneDepart extends Screen {
         int centreX = this.width / 2;
         int debutY = Math.max(55, this.height / 2 - (zones.size() * ESPACEMENT_BOUTON) / 2);
 
-        for (String zone : zones) {
-            final String nomZone = zone;
+        for (int i = 0; i < zones.size(); i++) {
+            final String nomZone = zones.get(i);
+            int taille = (tailles != null && i < tailles.size()) ? tailles.get(i) : -1;
+            // Le libellé peut inclure la taille de l'île ; le serveur ne reçoit que le nom brut
+            String libelle = taille > 0 ? nomZone + " §7— " + taille + " blocs" : nomZone;
             addRenderableWidget(Button.builder(
-                Component.literal(nomZone),
+                Component.literal(libelle),
                 bouton -> selectionnerZone(nomZone)
             ).bounds(centreX - LARGEUR_BOUTON / 2, debutY, LARGEUR_BOUTON, HAUTEUR_BOUTON).build());
             debutY += ESPACEMENT_BOUTON;

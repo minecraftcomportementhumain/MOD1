@@ -52,9 +52,9 @@ public class GestionnairePaquetsCartes {
         }
     }
 
-    /** Ouvre l'écran de sélection de la zone de départ (parties sur carte des Sous-modes 1 et 2) */
-    public static void ouvrirSelectionZoneDepart(List<String> zones, int secondesRestantes) {
-        Minecraft.getInstance().setScreen(new EcranSelectionZoneDepart(zones, secondesRestantes));
+    /** Ouvre l'écran de sélection de la zone de départ (parties sur carte des Sous-modes 1, 2 et 3) */
+    public static void ouvrirSelectionZoneDepart(List<String> zones, List<Integer> tailles, int secondesRestantes) {
+        Minecraft.getInstance().setScreen(new EcranSelectionZoneDepart(zones, tailles, secondesRestantes));
     }
 
     /** Affiche la fenêtre modale de refus de lancement d'un sous-mode */
