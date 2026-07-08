@@ -237,24 +237,27 @@ public class EcranEditeurCarte extends Screen {
             .tooltip(net.minecraft.client.gui.components.Tooltip.create(Component.literal("Rétablir (Ctrl+Y)")))
             .build());
 
-        // ----- Panneau latéral droit : délais de réapparition (rangées compactes pour
-        // laisser place aux deux boutons de type sous la hauteur GUI minimale) -----
+        // ----- Panneau latéral droit : délais de réapparition. Chaque champ a son libellé
+        // dessiné 10 px au-dessus (voir dessinerPanneauDelais) ; le pas de 28 px évite que le
+        // libellé de la rangée suivante mord sur le champ précédent, tout en tenant les deux
+        // boutons de type + Appliquer sous la hauteur GUI minimale (240 px). -----
         int xDroit = this.width - LARGEUR_PANNEAU_DROIT + 8;
-        champDelaiVisible = new EditBox(this.font, xDroit, HAUT_GRILLE + 26, LARGEUR_PANNEAU_DROIT - 20, 18,
+        int largeurChamp = LARGEUR_PANNEAU_DROIT - 20;
+        champDelaiVisible = new EditBox(this.font, xDroit, HAUT_GRILLE + 26, largeurChamp, 16,
             Component.literal("Délai bonbon visible (s)"));
         champDelaiVisible.setMaxLength(8);
         champDelaiVisible.setValue(texteDelaiVisible);
         champDelaiVisible.setResponder(texte -> texteDelaiVisible = texte);
         addRenderableWidget(champDelaiVisible);
 
-        champDelaiNonVisible = new EditBox(this.font, xDroit, HAUT_GRILLE + 52, LARGEUR_PANNEAU_DROIT - 20, 18,
+        champDelaiNonVisible = new EditBox(this.font, xDroit, HAUT_GRILLE + 54, largeurChamp, 16,
             Component.literal("Délai bonbon non-visible (s)"));
         champDelaiNonVisible.setMaxLength(8);
         champDelaiNonVisible.setValue(texteDelaiNonVisible);
         champDelaiNonVisible.setResponder(texte -> texteDelaiNonVisible = texte);
         addRenderableWidget(champDelaiNonVisible);
 
-        champApparitionInitiale = new EditBox(this.font, xDroit, HAUT_GRILLE + 78, LARGEUR_PANNEAU_DROIT - 20, 18,
+        champApparitionInitiale = new EditBox(this.font, xDroit, HAUT_GRILLE + 82, largeurChamp, 16,
             Component.literal("Apparition initiale visible (s)"));
         champApparitionInitiale.setMaxLength(8);
         champApparitionInitiale.setValue(texteApparitionInitiale);
@@ -263,7 +266,7 @@ public class EcranEditeurCarte extends Screen {
             "Secondes après le début de partie avant l'apparition du bonbon visible (0 = dès le début)")));
         addRenderableWidget(champApparitionInitiale);
 
-        champApparitionInitialeNonVisible = new EditBox(this.font, xDroit, HAUT_GRILLE + 104, LARGEUR_PANNEAU_DROIT - 20, 18,
+        champApparitionInitialeNonVisible = new EditBox(this.font, xDroit, HAUT_GRILLE + 110, largeurChamp, 16,
             Component.literal("Apparition initiale non-visible (s)"));
         champApparitionInitialeNonVisible.setMaxLength(8);
         champApparitionInitialeNonVisible.setValue(texteApparitionInitialeNonVisible);
@@ -273,22 +276,22 @@ public class EcranEditeurCarte extends Screen {
         addRenderableWidget(champApparitionInitialeNonVisible);
 
         boutonTypeBonbon = Button.builder(Component.literal("Type vis. : (inchangé)"), b -> cyclerTypeBonbon())
-            .bounds(xDroit, HAUT_GRILLE + 124, LARGEUR_PANNEAU_DROIT - 20, 18)
+            .bounds(xDroit, HAUT_GRILLE + 130, largeurChamp, 16)
             .tooltip(net.minecraft.client.gui.components.Tooltip.create(Component.literal(
-                "Type des bonbons visibles sélectionnés : Standard, ou Bleu / Rouge (Sous-mode 2, spécialisation Sous-mode 3)")))
+                "Type des bonbons visibles sélectionnés : Standard, ou Bleu / Rouge (spécialisation)")))
             .build();
         addRenderableWidget(boutonTypeBonbon);
 
         boutonTypeBonbonNonVisible = Button.builder(Component.literal("Type non-vis. : (inchangé)"),
                 b -> cyclerTypeBonbonNonVisible())
-            .bounds(xDroit, HAUT_GRILLE + 144, LARGEUR_PANNEAU_DROIT - 20, 18)
+            .bounds(xDroit, HAUT_GRILLE + 149, largeurChamp, 16)
             .tooltip(net.minecraft.client.gui.components.Tooltip.create(Component.literal(
-                "Type des bonbons non-visibles sélectionnés : Standard, ou Bleu / Rouge (spécialisation Sous-mode 3)")))
+                "Type des bonbons non-visibles sélectionnés : Standard, ou Bleu / Rouge (spécialisation)")))
             .build();
         addRenderableWidget(boutonTypeBonbonNonVisible);
 
         boutonAppliquerDelais = Button.builder(Component.literal("Appliquer"), b -> appliquerDelais())
-            .bounds(xDroit, HAUT_GRILLE + 164, LARGEUR_PANNEAU_DROIT - 20, 18).build();
+            .bounds(xDroit, HAUT_GRILLE + 168, largeurChamp, 16).build();
         addRenderableWidget(boutonAppliquerDelais);
 
         mettreAJourPanneauDelais();
@@ -1776,10 +1779,18 @@ public class EcranEditeurCarte extends Screen {
                     }
                     if (bloc.qteBonbonNonVisible > 0 && taille >= 8) {
                         int icone = Math.max(5, taille / 2 - 1);
-                        guiGraphics.fill(ecranX + taille - icone - 1, ecranY + taille - icone - 1,
-                            ecranX + taille - 1, ecranY + taille - 1, 0xFF9632C8);
+                        int x0 = ecranX + taille - icone - 1;
+                        int y0 = ecranY + taille - icone - 1;
+                        int x1 = ecranX + taille - 1;
+                        int y1 = ecranY + taille - 1;
+                        // Bonbon non-visible : couleur de son type (comme le visible) mais assombrie
+                        // et entourée d'un cadre noir — la couleur donne le type, l'assombrissement +
+                        // le cadre + la position (coin bas-droit) signalent « non-visible » (enterré).
+                        int couleurType = bloc.typeBonbonNonVisible.obtenirCouleurIcone();
+                        guiGraphics.fill(x0, y0, x1, y1, assombrir(couleurType, 0.6f));
+                        dessinerCadre(guiGraphics, x0, y0, x1, y1, 0xFF000000);
                         dessinerTexteCellule(guiGraphics, String.valueOf(bloc.qteBonbonNonVisible),
-                            ecranX + taille - 1 - icone / 2.0f, ecranY + taille - 1 - icone / 2.0f, icone, 0xFFFFFFFF);
+                            (x0 + x1) / 2.0f, (y0 + y1) / 2.0f, icone, 0xFFFFFFFF);
                     }
                 }
             }
@@ -1825,6 +1836,15 @@ public class EcranEditeurCarte extends Screen {
         guiGraphics.disableScissor();
     }
 
+    /** Assombrit une couleur ARGB (canaux RGB multipliés par le facteur, alpha conservé) */
+    private static int assombrir(int argb, float facteur) {
+        int a = (argb >>> 24) & 0xFF;
+        int r = (int) (((argb >> 16) & 0xFF) * facteur);
+        int g = (int) (((argb >> 8) & 0xFF) * facteur);
+        int b = (int) ((argb & 0xFF) * facteur);
+        return (a << 24) | (r << 16) | (g << 8) | b;
+    }
+
     private int couleurBloc(BlocCarte bloc) {
         if (bloc == null || bloc.type == TypeElementCarte.VIDE) {
             return 0xFF2B2B2B;
@@ -1868,13 +1888,13 @@ public class EcranEditeurCarte extends Screen {
             guiGraphics.drawString(this.font, "Délai bonbon visible (s)", xPanneau + 8, HAUT_GRILLE + 16, 0xFFC81E);
         }
         if (champDelaiNonVisible.visible) {
-            guiGraphics.drawString(this.font, "Délai bonbon non-vis. (s)", xPanneau + 8, HAUT_GRILLE + 42, 0xC896FF);
+            guiGraphics.drawString(this.font, "Délai bonbon non-vis. (s)", xPanneau + 8, HAUT_GRILLE + 44, 0xC896FF);
         }
         if (champApparitionInitiale.visible) {
-            guiGraphics.drawString(this.font, "Apparition init. vis. (s)", xPanneau + 8, HAUT_GRILLE + 68, 0xFFC81E);
+            guiGraphics.drawString(this.font, "Apparition init. vis. (s)", xPanneau + 8, HAUT_GRILLE + 72, 0xFFC81E);
         }
         if (champApparitionInitialeNonVisible.visible) {
-            guiGraphics.drawString(this.font, "Apparition init. non-vis. (s)", xPanneau + 8, HAUT_GRILLE + 94, 0xC896FF);
+            guiGraphics.drawString(this.font, "Apparition init. non-vis. (s)", xPanneau + 8, HAUT_GRILLE + 100, 0xC896FF);
         }
     }
 
