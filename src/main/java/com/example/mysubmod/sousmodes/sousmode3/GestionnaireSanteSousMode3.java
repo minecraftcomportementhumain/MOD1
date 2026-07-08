@@ -147,7 +147,7 @@ public class GestionnaireSanteSousMode3 {
                 MonSubMod.JOURNALISEUR.info("Le joueur déconnecté {} est mort côté serveur (santé: {} -> {}, {} ticks manqués)",
                     nomJoueur, info.santeADeconnexion, santeActuelle, ticksSanteManques);
 
-                gestionnaire.gererMortJoueurDeconnecte(nomJoueur, idJoueur);
+                gestionnaire.gererMortJoueurDeconnecte(nomJoueur, idJoueur, serveur);
 
                 String messageMort = "§e" + nomJoueur + " §cest mort pendant sa déconnexion !";
                 for (ServerPlayer j : UtilitaireFiltreJoueurs.obtenirJoueursAuthentifies(serveur)) {
@@ -198,6 +198,7 @@ public class GestionnaireSanteSousMode3 {
     }
 
     private void gererMortJoueur(ServerPlayer joueur) {
+        GestionnaireSousMode3.getInstance().deposerInventaireALaMort(joueur);
         // Réapparition éventuelle : le joueur reste vivant, aucune conséquence.
         if (GestionnaireSousMode3.getInstance().reapparaitreApresMort(joueur)) {
             return;

@@ -86,12 +86,15 @@ public class GestionnaireBonbonsSousMode3 {
         final int delai;
         final boolean estPierre;
         final String zoneNom;
+        final com.example.mysubmod.cartes.TypeBonbonCarte type; // type défini dans la carte
 
-        InfoBonbonCache(int quantite, int delai, boolean estPierre, String zoneNom) {
+        InfoBonbonCache(int quantite, int delai, boolean estPierre, String zoneNom,
+                        com.example.mysubmod.cartes.TypeBonbonCarte type) {
             this.quantite = quantite;
             this.delai = delai;
             this.estPierre = estPierre;
             this.zoneNom = zoneNom;
+            this.type = type;
         }
     }
 
@@ -216,7 +219,8 @@ public class GestionnaireBonbonsSousMode3 {
                 if (yBonbon >= GenerateurCarteSousMode3.Y_BAS_COLONNE) {
                     BlockPos pos = new BlockPos(mondeX, yBonbon, mondeZ);
                     InfoBonbonCache info = new InfoBonbonCache(bloc.qteBonbonNonVisible,
-                        bloc.delaiBonbonNonVisible, bloc.type == TypeElementCarte.PIERRE, zoneNom);
+                        bloc.delaiBonbonNonVisible, bloc.type == TypeElementCarte.PIERRE, zoneNom,
+                        bloc.typeBonbonNonVisible);
                     if (bloc.delaiApparitionInitialeNonVisible > 0) {
                         // Apparition différée : le bloc bonbon est placé (et compté) au moment planifié
                         apparitionsDiffereesCachees.add(new ApparitionDiffereeCache(pos, info,
@@ -555,14 +559,23 @@ public class GestionnaireBonbonsSousMode3 {
 
         niveau.setBlock(pos, net.minecraft.world.level.block.Blocks.AIR.defaultBlockState(), 3);
 
-        // Laisser tomber les objets bonbons, collectibles selon les règles normales
+        // Laisser tomber les objets bonbons (typés Bleu/Rouge quand la spécialisation est
+        // active et que le bloc a un type), collectibles selon les règles normales
         Random aleatoire = new Random();
         for (int i = 0; i < info.quantite; i++) {
+            ItemStack pile;
+            if (bonbonsTypesActifs && info.type == com.example.mysubmod.cartes.TypeBonbonCarte.ROUGE) {
+                pile = new ItemStack(ItemsMod.BONBON_ROUGE.get());
+            } else if (bonbonsTypesActifs && info.type == com.example.mysubmod.cartes.TypeBonbonCarte.BLEU) {
+                pile = new ItemStack(ItemsMod.BONBON_BLEU.get());
+            } else {
+                pile = new ItemStack(ItemsMod.BONBON.get());
+            }
             ItemEntity entite = new ItemEntity(niveau,
                 pos.getX() + 0.3 + aleatoire.nextDouble() * 0.4,
                 pos.getY() + 0.3,
                 pos.getZ() + 0.3 + aleatoire.nextDouble() * 0.4,
-                new ItemStack(ItemsMod.BONBON.get()));
+                pile);
             entite.setPickUpDelay(10);
             entite.setUnlimitedLifetime();
             niveau.addFreshEntity(entite);

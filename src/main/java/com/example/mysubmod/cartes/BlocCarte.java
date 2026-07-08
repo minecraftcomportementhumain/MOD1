@@ -14,6 +14,7 @@ public class BlocCarte {
     public int delaiBonbonVisible = 0;     // secondes, 0 = pas de réapparition
     public int delaiBonbonNonVisible = 0;  // secondes, 0 = pas de réapparition
     public TypeBonbonCarte typeBonbonVisible = TypeBonbonCarte.STANDARD; // Standard / Bleu / Rouge (Sous-mode 2)
+    public TypeBonbonCarte typeBonbonNonVisible = TypeBonbonCarte.STANDARD; // Standard / Bleu / Rouge (spécialisation Sous-mode 3)
     public int delaiApparitionInitiale = 0; // secondes après le début de partie, 0 = dès le début (bonbon visible)
     public int delaiApparitionInitialeNonVisible = 0; // idem pour le bloc bonbon non-visible
 
@@ -34,6 +35,7 @@ public class BlocCarte {
         copie.delaiBonbonVisible = this.delaiBonbonVisible;
         copie.delaiBonbonNonVisible = this.delaiBonbonNonVisible;
         copie.typeBonbonVisible = this.typeBonbonVisible;
+        copie.typeBonbonNonVisible = this.typeBonbonNonVisible;
         copie.delaiApparitionInitiale = this.delaiApparitionInitiale;
         copie.delaiApparitionInitialeNonVisible = this.delaiApparitionInitialeNonVisible;
         return copie;
@@ -52,6 +54,7 @@ public class BlocCarte {
             && delaiBonbonVisible == autre.delaiBonbonVisible
             && delaiBonbonNonVisible == autre.delaiBonbonNonVisible
             && typeBonbonVisible == autre.typeBonbonVisible
+            && typeBonbonNonVisible == autre.typeBonbonNonVisible
             && delaiApparitionInitiale == autre.delaiApparitionInitiale
             && delaiApparitionInitialeNonVisible == autre.delaiApparitionInitialeNonVisible;
     }

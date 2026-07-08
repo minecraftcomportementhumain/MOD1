@@ -404,6 +404,9 @@ public class CarteDonnees {
             if (bloc.qteBonbonNonVisible > 0) {
                 objetBloc.addProperty("bonbonsNonVisibles", bloc.qteBonbonNonVisible);
                 objetBloc.addProperty("delaiNonVisible", bloc.delaiBonbonNonVisible);
+                if (bloc.typeBonbonNonVisible != TypeBonbonCarte.STANDARD) {
+                    objetBloc.addProperty("typeNonVisible", bloc.typeBonbonNonVisible.name());
+                }
                 if (bloc.delaiApparitionInitialeNonVisible > 0) {
                     objetBloc.addProperty("apparitionInitialeNonVisible", bloc.delaiApparitionInitialeNonVisible);
                 }
@@ -468,6 +471,8 @@ public class CarteDonnees {
                     ? objetBloc.get("apparitionInitiale").getAsInt() : 0;
                 bloc.qteBonbonNonVisible = objetBloc.has("bonbonsNonVisibles") ? objetBloc.get("bonbonsNonVisibles").getAsInt() : 0;
                 bloc.delaiBonbonNonVisible = objetBloc.has("delaiNonVisible") ? objetBloc.get("delaiNonVisible").getAsInt() : 0;
+                bloc.typeBonbonNonVisible = objetBloc.has("typeNonVisible")
+                    ? TypeBonbonCarte.valueOf(objetBloc.get("typeNonVisible").getAsString()) : TypeBonbonCarte.STANDARD;
                 bloc.delaiApparitionInitialeNonVisible = objetBloc.has("apparitionInitialeNonVisible")
                     ? objetBloc.get("apparitionInitialeNonVisible").getAsInt() : 0;
                 carte.blocs.put(cle(x, z), bloc);
@@ -534,6 +539,23 @@ public class CarteDonnees {
         for (Map.Entry<Long, BlocCarte> entree : blocs.entrySet()) {
             if (interieur.contains(entree.getKey())) {
                 total += entree.getValue().qteBonbonNonVisible;
+            }
+        }
+        return total;
+    }
+
+    /**
+     * Nombre de bonbons non-visibles de type STANDARD à l'intérieur du périmètre
+     * (la spécialisation du Sous-mode 3 exige que tous les bonbons soient typés Bleu/Rouge)
+     */
+    public int compterBonbonsNonVisiblesStandardInterieur() {
+        Set<Long> interieur = calculerInterieurLimite();
+        int total = 0;
+        for (Map.Entry<Long, BlocCarte> entree : blocs.entrySet()) {
+            BlocCarte bloc = entree.getValue();
+            if (interieur.contains(entree.getKey()) && bloc.qteBonbonNonVisible > 0
+                && bloc.typeBonbonNonVisible == TypeBonbonCarte.STANDARD) {
+                total += bloc.qteBonbonNonVisible;
             }
         }
         return total;

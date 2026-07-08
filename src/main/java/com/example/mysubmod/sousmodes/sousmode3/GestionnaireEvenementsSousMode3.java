@@ -429,8 +429,12 @@ public class GestionnaireEvenementsSousMode3 {
             return;
         }
 
-        // Jet d'objets autorisé par la config : laisser tomber l'objet normalement.
+        // Jet d'objets autorisé par la config : suivre l'entité pour que le filtre anti-résidus
+        // de l'aire de la carte la laisse apparaître (sinon l'objet serait détruit), puis la
+        // laisser tomber normalement. Ces objets sont purgés à la désactivation du sous-mode.
         if (GestionnaireSousMode3.getInstance().obtenirConfig().dropObjet) {
+            GestionnaireSousMode3.getInstance().suivreObjetAuSol(event.getEntity());
+            event.getEntity().setUnlimitedLifetime();
             return;
         }
 
@@ -659,7 +663,8 @@ public class GestionnaireEvenementsSousMode3 {
         // (fleurs, pousses, graines...) d'apparaître sur la carte
         if (event.getEntity() instanceof ItemEntity entiteObjet) {
             if (gestionnaire.estDansAireCarte(entiteObjet.blockPosition())
-                && !GestionnaireBonbonsSousMode3.estObjetBonbon(entiteObjet.getItem())) {
+                && !GestionnaireBonbonsSousMode3.estObjetBonbon(entiteObjet.getItem())
+                && !gestionnaire.estObjetAuSolAutorise(entiteObjet)) {
                 event.setCanceled(true);
             }
             return;

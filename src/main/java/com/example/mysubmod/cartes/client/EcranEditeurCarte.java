@@ -102,6 +102,7 @@ public class EcranEditeurCarte extends Screen {
     private String texteApparitionInitiale = "";
     private String texteApparitionInitialeNonVisible = "";
     private com.example.mysubmod.cartes.TypeBonbonCarte typeBonbonChoisi = null; // null = inchangé
+    private com.example.mysubmod.cartes.TypeBonbonCarte typeBonbonNonVisibleChoisi = null; // null = inchangé
 
     private EditBox champNom;
     private EditBox champLargeur;
@@ -111,6 +112,7 @@ public class EcranEditeurCarte extends Screen {
     private EditBox champApparitionInitiale;
     private EditBox champApparitionInitialeNonVisible;
     private Button boutonTypeBonbon;
+    private Button boutonTypeBonbonNonVisible;
     private Button boutonAppliquerDelais;
     private Button boutonSelection;
     private final Map<OutilPalette, Button> boutonsPalette = new EnumMap<>(OutilPalette.class);
@@ -235,23 +237,24 @@ public class EcranEditeurCarte extends Screen {
             .tooltip(net.minecraft.client.gui.components.Tooltip.create(Component.literal("Rétablir (Ctrl+Y)")))
             .build());
 
-        // ----- Panneau latéral droit : délais de réapparition -----
+        // ----- Panneau latéral droit : délais de réapparition (rangées compactes pour
+        // laisser place aux deux boutons de type sous la hauteur GUI minimale) -----
         int xDroit = this.width - LARGEUR_PANNEAU_DROIT + 8;
-        champDelaiVisible = new EditBox(this.font, xDroit, HAUT_GRILLE + 28, LARGEUR_PANNEAU_DROIT - 20, 18,
+        champDelaiVisible = new EditBox(this.font, xDroit, HAUT_GRILLE + 26, LARGEUR_PANNEAU_DROIT - 20, 18,
             Component.literal("Délai bonbon visible (s)"));
         champDelaiVisible.setMaxLength(8);
         champDelaiVisible.setValue(texteDelaiVisible);
         champDelaiVisible.setResponder(texte -> texteDelaiVisible = texte);
         addRenderableWidget(champDelaiVisible);
 
-        champDelaiNonVisible = new EditBox(this.font, xDroit, HAUT_GRILLE + 58, LARGEUR_PANNEAU_DROIT - 20, 18,
+        champDelaiNonVisible = new EditBox(this.font, xDroit, HAUT_GRILLE + 52, LARGEUR_PANNEAU_DROIT - 20, 18,
             Component.literal("Délai bonbon non-visible (s)"));
         champDelaiNonVisible.setMaxLength(8);
         champDelaiNonVisible.setValue(texteDelaiNonVisible);
         champDelaiNonVisible.setResponder(texte -> texteDelaiNonVisible = texte);
         addRenderableWidget(champDelaiNonVisible);
 
-        champApparitionInitiale = new EditBox(this.font, xDroit, HAUT_GRILLE + 88, LARGEUR_PANNEAU_DROIT - 20, 18,
+        champApparitionInitiale = new EditBox(this.font, xDroit, HAUT_GRILLE + 78, LARGEUR_PANNEAU_DROIT - 20, 18,
             Component.literal("Apparition initiale visible (s)"));
         champApparitionInitiale.setMaxLength(8);
         champApparitionInitiale.setValue(texteApparitionInitiale);
@@ -260,7 +263,7 @@ public class EcranEditeurCarte extends Screen {
             "Secondes après le début de partie avant l'apparition du bonbon visible (0 = dès le début)")));
         addRenderableWidget(champApparitionInitiale);
 
-        champApparitionInitialeNonVisible = new EditBox(this.font, xDroit, HAUT_GRILLE + 118, LARGEUR_PANNEAU_DROIT - 20, 18,
+        champApparitionInitialeNonVisible = new EditBox(this.font, xDroit, HAUT_GRILLE + 104, LARGEUR_PANNEAU_DROIT - 20, 18,
             Component.literal("Apparition initiale non-visible (s)"));
         champApparitionInitialeNonVisible.setMaxLength(8);
         champApparitionInitialeNonVisible.setValue(texteApparitionInitialeNonVisible);
@@ -269,15 +272,23 @@ public class EcranEditeurCarte extends Screen {
             "Secondes après le début de partie avant l'apparition du bloc bonbon non-visible (0 = dès le début)")));
         addRenderableWidget(champApparitionInitialeNonVisible);
 
-        boutonTypeBonbon = Button.builder(Component.literal("Type : (inchangé)"), b -> cyclerTypeBonbon())
-            .bounds(xDroit, HAUT_GRILLE + 140, LARGEUR_PANNEAU_DROIT - 20, 20)
+        boutonTypeBonbon = Button.builder(Component.literal("Type vis. : (inchangé)"), b -> cyclerTypeBonbon())
+            .bounds(xDroit, HAUT_GRILLE + 124, LARGEUR_PANNEAU_DROIT - 20, 18)
             .tooltip(net.minecraft.client.gui.components.Tooltip.create(Component.literal(
-                "Type des bonbons visibles sélectionnés : Standard (Sous-modes 1 et 3) ou Bleu / Rouge (Sous-mode 2)")))
+                "Type des bonbons visibles sélectionnés : Standard, ou Bleu / Rouge (Sous-mode 2, spécialisation Sous-mode 3)")))
             .build();
         addRenderableWidget(boutonTypeBonbon);
 
+        boutonTypeBonbonNonVisible = Button.builder(Component.literal("Type non-vis. : (inchangé)"),
+                b -> cyclerTypeBonbonNonVisible())
+            .bounds(xDroit, HAUT_GRILLE + 144, LARGEUR_PANNEAU_DROIT - 20, 18)
+            .tooltip(net.minecraft.client.gui.components.Tooltip.create(Component.literal(
+                "Type des bonbons non-visibles sélectionnés : Standard, ou Bleu / Rouge (spécialisation Sous-mode 3)")))
+            .build();
+        addRenderableWidget(boutonTypeBonbonNonVisible);
+
         boutonAppliquerDelais = Button.builder(Component.literal("Appliquer"), b -> appliquerDelais())
-            .bounds(xDroit, HAUT_GRILLE + 164, LARGEUR_PANNEAU_DROIT - 20, 20).build();
+            .bounds(xDroit, HAUT_GRILLE + 164, LARGEUR_PANNEAU_DROIT - 20, 18).build();
         addRenderableWidget(boutonAppliquerDelais);
 
         mettreAJourPanneauDelais();
@@ -654,6 +665,7 @@ public class EcranEditeurCarte extends Screen {
                 if (apres.qteBonbonNonVisible == 0) {
                     apres.delaiBonbonNonVisible = 0;
                     apres.delaiApparitionInitialeNonVisible = 0;
+                    apres.typeBonbonNonVisible = com.example.mysubmod.cartes.TypeBonbonCarte.STANDARD;
                 }
             } else {
                 return;
@@ -697,6 +709,7 @@ public class EcranEditeurCarte extends Screen {
             apres.qteBonbonNonVisible = 0;
             apres.delaiBonbonNonVisible = 0;
             apres.delaiApparitionInitialeNonVisible = 0;
+            apres.typeBonbonNonVisible = com.example.mysubmod.cartes.TypeBonbonCarte.STANDARD;
         } else if (existant.type != TypeElementCarte.VIDE) {
             apres.type = TypeElementCarte.VIDE;
             apres.elevation = 0;
@@ -947,7 +960,7 @@ public class EcranEditeurCarte extends Screen {
     private void mettreAJourPanneauDelais() {
         if (champDelaiVisible == null || champDelaiNonVisible == null || boutonAppliquerDelais == null
             || champApparitionInitiale == null || champApparitionInitialeNonVisible == null
-            || boutonTypeBonbon == null) {
+            || boutonTypeBonbon == null || boutonTypeBonbonNonVisible == null) {
             return;
         }
 
@@ -965,6 +978,8 @@ public class EcranEditeurCarte extends Screen {
         champApparitionInitialeNonVisible.active = aNonVisible;
         boutonTypeBonbon.visible = aVisible;
         boutonTypeBonbon.active = aVisible;
+        boutonTypeBonbonNonVisible.visible = aNonVisible;
+        boutonTypeBonbonNonVisible.active = aNonVisible;
         boutonAppliquerDelais.visible = panneauVisible;
         boutonAppliquerDelais.active = panneauVisible;
 
@@ -996,9 +1011,15 @@ public class EcranEditeurCarte extends Screen {
             typeBonbonChoisi = null;
             com.example.mysubmod.cartes.TypeBonbonCarte typeCommun = typeBonbonCommun();
             boutonTypeBonbon.setMessage(Component.literal(
-                "Type : " + (typeCommun != null ? typeCommun.obtenirNomAffichage() + " (inchangé)" : "— (inchangé)")));
+                "Type vis. : " + (typeCommun != null ? typeCommun.obtenirNomAffichage() + " (inchangé)" : "— (inchangé)")));
         }
         if (aNonVisible) {
+            // Type de bonbon non-visible : réinitialisé à « inchangé » à chaque nouvelle sélection
+            typeBonbonNonVisibleChoisi = null;
+            com.example.mysubmod.cartes.TypeBonbonCarte typeCommunNonVisible = typeBonbonNonVisibleCommun();
+            boutonTypeBonbonNonVisible.setMessage(Component.literal(
+                "Type non-vis. : " + (typeCommunNonVisible != null
+                    ? typeCommunNonVisible.obtenirNomAffichage() + " (inchangé)" : "— (inchangé)")));
             Integer valeurCommune = valeurDelaiCommune(false);
             if (valeurCommune == null) {
                 texteDelaiNonVisible = "";
@@ -1069,7 +1090,38 @@ public class EcranEditeurCarte extends Screen {
             typeBonbonChoisi = typeBonbonChoisi.suivant();
         }
         boutonTypeBonbon.setMessage(Component.literal(
-            typeBonbonChoisi == null ? "Type : (inchangé)" : "Type : " + typeBonbonChoisi.obtenirNomAffichage()));
+            typeBonbonChoisi == null ? "Type vis. : (inchangé)" : "Type vis. : " + typeBonbonChoisi.obtenirNomAffichage()));
+    }
+
+    /** Type de bonbon commun aux blocs sélectionnés à bonbons non-visibles (null = mixte) */
+    private com.example.mysubmod.cartes.TypeBonbonCarte typeBonbonNonVisibleCommun() {
+        com.example.mysubmod.cartes.TypeBonbonCarte type = null;
+        for (long cle : cellulesSelectionnees) {
+            BlocCarte bloc = carte.blocs.get(cle);
+            if (bloc == null || bloc.qteBonbonNonVisible <= 0) {
+                continue;
+            }
+            if (type == null) {
+                type = bloc.typeBonbonNonVisible;
+            } else if (type != bloc.typeBonbonNonVisible) {
+                return null;
+            }
+        }
+        return type;
+    }
+
+    /** Fait tourner le choix de type non-visible : (inchangé) → Standard → Bleu → Rouge → (inchangé) */
+    private void cyclerTypeBonbonNonVisible() {
+        if (typeBonbonNonVisibleChoisi == null) {
+            typeBonbonNonVisibleChoisi = com.example.mysubmod.cartes.TypeBonbonCarte.STANDARD;
+        } else if (typeBonbonNonVisibleChoisi == com.example.mysubmod.cartes.TypeBonbonCarte.ROUGE) {
+            typeBonbonNonVisibleChoisi = null;
+        } else {
+            typeBonbonNonVisibleChoisi = typeBonbonNonVisibleChoisi.suivant();
+        }
+        boutonTypeBonbonNonVisible.setMessage(Component.literal(
+            typeBonbonNonVisibleChoisi == null ? "Type non-vis. : (inchangé)"
+                : "Type non-vis. : " + typeBonbonNonVisibleChoisi.obtenirNomAffichage()));
     }
 
     /** Valeur de délai commune aux blocs sélectionnés contenant ce type de bonbon (null = valeurs mixtes) */
@@ -1153,9 +1205,11 @@ public class EcranEditeurCarte extends Screen {
         }
 
         com.example.mysubmod.cartes.TypeBonbonCarte typeApplique = typeBonbonChoisi;
+        com.example.mysubmod.cartes.TypeBonbonCarte typeNonVisibleApplique = typeBonbonNonVisibleChoisi;
 
         if (delaiVisible == null && delaiNonVisible == null && apparitionInitiale == null
-            && apparitionInitialeNonVisible == null && typeApplique == null) {
+            && apparitionInitialeNonVisible == null && typeApplique == null
+            && typeNonVisibleApplique == null) {
             return; // Rien à appliquer (les valeurs existantes ne sont pas écrasées)
         }
 
@@ -1188,6 +1242,11 @@ public class EcranEditeurCarte extends Screen {
             }
             if (typeApplique != null && bloc.qteBonbonVisible > 0 && bloc.typeBonbonVisible != typeApplique) {
                 apres.typeBonbonVisible = typeApplique;
+                changement = true;
+            }
+            if (typeNonVisibleApplique != null && bloc.qteBonbonNonVisible > 0
+                && bloc.typeBonbonNonVisible != typeNonVisibleApplique) {
+                apres.typeBonbonNonVisible = typeNonVisibleApplique;
                 changement = true;
             }
             if (changement) {
@@ -1601,6 +1660,7 @@ public class EcranEditeurCarte extends Screen {
             }
             if (bloc.qteBonbonNonVisible > 0) {
                 info += " | non-vis. ×" + bloc.qteBonbonNonVisible
+                    + " " + bloc.typeBonbonNonVisible.obtenirNomAffichage()
                     + (bloc.delaiBonbonNonVisible > 0 ? " (réap. " + bloc.delaiBonbonNonVisible + "s)" : "")
                     + (bloc.delaiApparitionInitialeNonVisible > 0
                         ? " (appar. " + bloc.delaiApparitionInitialeNonVisible + "s)" : "");
@@ -1805,16 +1865,16 @@ public class EcranEditeurCarte extends Screen {
             xPanneau + 8, HAUT_GRILLE + 6, 0xFFFFFF);
 
         if (champDelaiVisible.visible) {
-            guiGraphics.drawString(this.font, "Délai bonbon visible (s)", xPanneau + 8, HAUT_GRILLE + 18, 0xFFC81E);
+            guiGraphics.drawString(this.font, "Délai bonbon visible (s)", xPanneau + 8, HAUT_GRILLE + 16, 0xFFC81E);
         }
         if (champDelaiNonVisible.visible) {
-            guiGraphics.drawString(this.font, "Délai bonbon non-vis. (s)", xPanneau + 8, HAUT_GRILLE + 48, 0xC896FF);
+            guiGraphics.drawString(this.font, "Délai bonbon non-vis. (s)", xPanneau + 8, HAUT_GRILLE + 42, 0xC896FF);
         }
         if (champApparitionInitiale.visible) {
-            guiGraphics.drawString(this.font, "Apparition init. vis. (s)", xPanneau + 8, HAUT_GRILLE + 78, 0xFFC81E);
+            guiGraphics.drawString(this.font, "Apparition init. vis. (s)", xPanneau + 8, HAUT_GRILLE + 68, 0xFFC81E);
         }
         if (champApparitionInitialeNonVisible.visible) {
-            guiGraphics.drawString(this.font, "Apparition init. non-vis. (s)", xPanneau + 8, HAUT_GRILLE + 108, 0xC896FF);
+            guiGraphics.drawString(this.font, "Apparition init. non-vis. (s)", xPanneau + 8, HAUT_GRILLE + 94, 0xC896FF);
         }
     }
 

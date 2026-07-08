@@ -85,6 +85,8 @@ public class ConfigPartieSousMode3 {
     public boolean placementBloc = true;
     /** Jeter des objets (drop) autorisé. Défaut historique : non. */
     public boolean dropObjet = false;
+    /** À la mort, le joueur laisse tomber son inventaire au sol. Défaut : non. */
+    public boolean dropInventaireMort = false;
     /** Manger un bonbon même à vie pleine (lève le blocage « dépasse le max ») ; soin plafonné au max. Défaut : non. */
     public boolean mangerDepasseMax = false;
 
@@ -166,6 +168,7 @@ public class ConfigPartieSousMode3 {
         tampon.writeBoolean(destructionBloc);
         tampon.writeBoolean(placementBloc);
         tampon.writeBoolean(dropObjet);
+        tampon.writeBoolean(dropInventaireMort);
         tampon.writeBoolean(mangerDepasseMax);
     }
 
@@ -205,6 +208,7 @@ public class ConfigPartieSousMode3 {
         c.destructionBloc = tampon.readBoolean();
         c.placementBloc = tampon.readBoolean();
         c.dropObjet = tampon.readBoolean();
+        c.dropInventaireMort = tampon.readBoolean();
         c.mangerDepasseMax = tampon.readBoolean();
         return c;
     }

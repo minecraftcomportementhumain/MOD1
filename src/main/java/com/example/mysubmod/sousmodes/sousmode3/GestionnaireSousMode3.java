@@ -115,6 +115,14 @@ public class GestionnaireSousMode3 {
     private boolean selectionZonesEnCours = false;
     private Timer minuteurSelectionZones;
 
+    /**
+     * Objets non-bonbons volontairement présents au sol (jetés par un joueur avec l'option
+     * « jeter des objets », ou inventaire déposé à la mort) : le filtre anti-résidus de l'aire
+     * de la carte les laisse apparaître, et ils sont purgés à la désactivation du sous-mode.
+     */
+    private final Set<net.minecraft.world.entity.item.ItemEntity> objetsAuSolAutorises =
+        ConcurrentHashMap.newKeySet();
+
     private final BlockPos plateformeSpectateur = new BlockPos(0, 150, 0);
 
     private GestionnaireSousMode3() {
@@ -150,14 +158,19 @@ public class GestionnaireSousMode3 {
         return carte != null && carte.compterBonbonsNonVisiblesInterieur() > 0;
     }
 
-    /** Vrai si tous les bonbons visibles de la carte sont typés Bleu/Rouge (prérequis de la spécialisation). */
+    /**
+     * Vrai si TOUS les bonbons de la carte (visibles ET non-visibles) sont typés Bleu/Rouge
+     * — prérequis de la spécialisation : chaque bonbon consommé doit avoir une couleur.
+     */
     public boolean carteABonbonsTypes() {
         if (carte == null) {
             return false;
         }
-        int total = carte.compterBonbonsVisiblesInterieur();
-        int standard = carte.compterBonbonsVisiblesStandardInterieur();
-        return total > 0 && standard == 0;
+        int totalVisibles = carte.compterBonbonsVisiblesInterieur();
+        int totalNonVisibles = carte.compterBonbonsNonVisiblesInterieur();
+        return (totalVisibles + totalNonVisibles) > 0
+            && carte.compterBonbonsVisiblesStandardInterieur() == 0
+            && carte.compterBonbonsNonVisiblesStandardInterieur() == 0;
     }
 
     /** Vrai si la carte possède au moins une zone de type Île (prérequis du choix de zone de départ). */
@@ -188,7 +201,8 @@ public class GestionnaireSousMode3 {
     public java.util.List<String> validerConfigContreCarte(ConfigPartieSousMode3 c) {
         java.util.List<String> problemes = new ArrayList<>();
         if (c.specialisation && !carteABonbonsTypes()) {
-            problemes.add("Spécialisation Bleu/Rouge : la carte n'a pas de bonbons typés.");
+            problemes.add("Spécialisation Bleu/Rouge : tous les bonbons de la carte");
+            problemes.add("(visibles et non-visibles) doivent être typés Bleu ou Rouge.");
         }
         if (c.selectionZoneDepart && !carteAZonesIle()) {
             problemes.add("Choix de zone de départ : la carte n'a aucune zone Île.");
@@ -564,6 +578,13 @@ public class GestionnaireSousMode3 {
                 GestionnaireBonbonsSousMode3.obtenirInstance().retirerTousBonbonsDuMonde(serveur);
             } catch (Exception e) {
                 MonSubMod.JOURNALISEUR.error("Erreur lors du retrait des bonbons", e);
+            }
+
+            // Retirer les objets jetés par les joueurs / déposés à la mort
+            try {
+                nettoyerObjetsAuSol();
+            } catch (Exception e) {
+                MonSubMod.JOURNALISEUR.error("Erreur lors du retrait des objets jetés", e);
             }
 
             try {
@@ -1194,6 +1215,10 @@ public class GestionnaireSousMode3 {
     }
 
     public void gererMortJoueurDeconnecte(String nomJoueur, UUID idJoueur) {
+        gererMortJoueurDeconnecte(nomJoueur, idJoueur, null);
+    }
+
+    public void gererMortJoueurDeconnecte(String nomJoueur, UUID idJoueur, MinecraftServer serveur) {
         synchronized (verrouReconnexion) {
             if (!joueursDeconnectes.containsKey(nomJoueur)) {
                 return;
@@ -1211,6 +1236,21 @@ public class GestionnaireSousMode3 {
             joueursSpectateurs.add(idJoueur);
             enregistrerMortJoueur(idJoueur);
             info.estMort = true;
+
+            // Drop de l'inventaire à la mort : déposer l'inventaire sauvegardé au dernier
+            // point de déconnexion (sinon il est simplement perdu, comportement historique)
+            if (config.dropInventaireMort && serveur != null
+                && info.inventaireSauvegarde != null && !info.inventaireSauvegarde.isEmpty()) {
+                ServerLevel monde = serveur.getLevel(ServerLevel.OVERWORLD);
+                if (monde != null) {
+                    java.util.Random aleatoire = new java.util.Random();
+                    for (ItemStack pile : info.inventaireSauvegarde) {
+                        if (pile != null && !pile.isEmpty()) {
+                            deposerPileAuSol(monde, info.x, info.y, info.z, pile.copy(), aleatoire);
+                        }
+                    }
+                }
+            }
             info.inventaireSauvegarde = new ArrayList<>();
         }
     }
@@ -1416,6 +1456,7 @@ public class GestionnaireSousMode3 {
         if (nouvelleSante > 0.5f) {
             return;
         }
+        deposerInventaireALaMort(joueur);
         if (reapparaitreApresMort(joueur)) {
             return;
         }
@@ -1572,6 +1613,7 @@ public class GestionnaireSousMode3 {
         if (!partieActive || !joueursVivants.contains(joueur.getUUID())) {
             return false;
         }
+        deposerInventaireALaMort(joueur);
         if (reapparaitreApresMort(joueur)) {
             return true;
         }
@@ -1624,6 +1666,8 @@ public class GestionnaireSousMode3 {
             return;
         }
 
+        deposerInventaireALaMort(joueur);
+
         // Réapparition éventuelle : le joueur reste vivant, aucune mort enregistrée.
         if (reapparaitreApresMort(joueur)) {
             return;
@@ -1660,6 +1704,72 @@ public class GestionnaireSousMode3 {
         if (generation != null) {
             generation.blocsPlaces.add(pos.immutable());
         }
+    }
+
+    // ==================== Objets au sol autorisés (jet + inventaire à la mort) ====================
+
+    /** Autorise cet objet au sol dans l'aire de la carte (jeté ou déposé à la mort) */
+    public void suivreObjetAuSol(net.minecraft.world.entity.item.ItemEntity entite) {
+        objetsAuSolAutorises.add(entite);
+    }
+
+    /** Vrai si cet objet a été volontairement jeté/déposé (le filtre anti-résidus le laisse passer) */
+    public boolean estObjetAuSolAutorise(net.minecraft.world.entity.item.ItemEntity entite) {
+        return objetsAuSolAutorises.contains(entite);
+    }
+
+    /** Retire du monde les objets jetés/déposés encore au sol (désactivation du sous-mode) */
+    private void nettoyerObjetsAuSol() {
+        int retires = 0;
+        for (net.minecraft.world.entity.item.ItemEntity entite : objetsAuSolAutorises) {
+            if (entite.isAlive()) {
+                entite.discard();
+                retires++;
+            }
+        }
+        objetsAuSolAutorises.clear();
+        if (retires > 0) {
+            MonSubMod.JOURNALISEUR.info("{} objets jetés/déposés retirés du monde (Sous-mode 3)", retires);
+        }
+    }
+
+    /**
+     * Dépose l'inventaire du joueur au sol à sa position (option « drop de l'inventaire à la
+     * mort ») puis le vide. Sans effet si l'option est décochée ou hors partie.
+     */
+    public void deposerInventaireALaMort(ServerPlayer joueur) {
+        if (!config.dropInventaireMort || !partieActive) {
+            return;
+        }
+        ServerLevel monde = joueur.serverLevel();
+        java.util.Random aleatoire = new java.util.Random();
+        int deposes = 0;
+        for (int i = 0; i < joueur.getInventory().getContainerSize(); i++) {
+            ItemStack pile = joueur.getInventory().getItem(i);
+            if (pile.isEmpty()) {
+                continue;
+            }
+            deposerPileAuSol(monde, joueur.getX(), joueur.getY(), joueur.getZ(), pile.copy(), aleatoire);
+            deposes++;
+        }
+        if (deposes > 0) {
+            joueur.getInventory().clearContent();
+        }
+    }
+
+    /** Dépose une pile d'objets au sol (suivie pour le filtre d'apparition et le nettoyage) */
+    private void deposerPileAuSol(ServerLevel monde, double x, double y, double z,
+                                  ItemStack pile, java.util.Random aleatoire) {
+        net.minecraft.world.entity.item.ItemEntity entite = new net.minecraft.world.entity.item.ItemEntity(
+            monde,
+            x - 0.3 + aleatoire.nextDouble() * 0.6,
+            y + 0.3,
+            z - 0.3 + aleatoire.nextDouble() * 0.6,
+            pile);
+        entite.setDefaultPickUpDelay();
+        entite.setUnlimitedLifetime();
+        suivreObjetAuSol(entite); // avant l'ajout au monde : le filtre d'apparition vérifie le suivi
+        monde.addFreshEntity(entite);
     }
 
     // ==================== Getters ====================

@@ -82,14 +82,9 @@ public class EcranConfigurationPartieSousMode3 extends Screen {
         int xB = xA + largeurColonne + ECART_COLONNE;
         int xC = xB + largeurColonne + ECART_COLONNE;
 
-        // ---- Préréglages ----
-        int largeurPreset = (largeurTotale - 2 * 8) / 3;
-        addRenderableWidget(Button.builder(Component.literal("Par défaut"), b -> appliquerPreset(Preset.DEFAUT))
-            .bounds(xA, yPresets, largeurPreset, hPresets).build());
-        addRenderableWidget(Button.builder(Component.literal("Détente"), b -> appliquerPreset(Preset.DETENTE))
-            .bounds(xA + largeurPreset + 8, yPresets, largeurPreset, hPresets).build());
-        addRenderableWidget(Button.builder(Component.literal("Extrême"), b -> appliquerPreset(Preset.EXTREME))
-            .bounds(xA + 2 * (largeurPreset + 8), yPresets, largeurPreset, hPresets).build());
+        // ---- Réinitialisation aux valeurs par défaut ----
+        addRenderableWidget(Button.builder(Component.literal("Par défaut"), b -> reinitialiserConfig())
+            .bounds(this.width / 2 - largeurColonne / 2, yPresets, largeurColonne, hPresets).build());
 
         // ---- Colonne A : Durée & Santé ----
         int[] ya = {yDepart};
@@ -111,7 +106,7 @@ public class EcranConfigurationPartieSousMode3 extends Screen {
         caseAcocher(xA, ya, "Régén. naturelle", config.regenerationNaturelle, v -> config.regenerationNaturelle = v);
         caseAcocher(xA, ya, "Réapparition", config.reapparitionAutorisee, v -> config.reapparitionAutorisee = v);
 
-        // ---- Colonne B : Environnement & déplacement ----
+        // ---- Colonne B : Environnement, mode de jeu, zone de départ ----
         int[] yb = {yDepart};
         titre(xB, yb, "§e§lEnvironnement");
         caseAcocher(xB, yb, "Jour permanent", config.jourPermanent, v -> config.jourPermanent = v);
@@ -119,17 +114,23 @@ public class EcranConfigurationPartieSousMode3 extends Screen {
         caseAcocher(xB, yb, "Noyade mortelle", config.noyadeMortelle, v -> config.noyadeMortelle = v);
         caseAcocher(xB, yb, "Faim", config.faim, v -> config.faim = v);
         caseAcocher(xB, yb, "PvP entre joueurs", config.pvp, v -> config.pvp = v);
-        caseAcocher(xB, yb, "Monstres (nuit)", config.monstresHostiles, v -> config.monstresHostiles = v);
         caseAcocher(xB, yb, "Pluie", config.pluie, v -> config.pluie = v);
 
-        titre(xB, yb, "§e§lMécaniques SM2");
-        caseAcocher(xB, yb, "Bonus sprint", config.bonusSprint, v -> config.bonusSprint = v);
+        titre(xB, yb, "§e§lMode");
         if (!FaitsCarteClientSousMode3.aBonbonsTypes()) {
-            config.specialisation = false; // la carte n'a pas de bonbons typés Bleu/Rouge
+            config.specialisation = false; // tous les bonbons de la carte ne sont pas typés Bleu/Rouge
         }
         Checkbox caseSpecialisation = caseAcocher(xB, yb, "Spécialisation B/R", config.specialisation,
             v -> config.specialisation = v);
         caseSpecialisation.active = FaitsCarteClientSousMode3.aBonbonsTypes();
+
+        titre(xB, yb, "§e§lZone de départ");
+        if (!FaitsCarteClientSousMode3.aZonesIle()) {
+            config.selectionZoneDepart = false; // la carte n'a aucune zone Île sélectionnable
+        }
+        Checkbox caseZone = caseAcocher(xB, yb, "Choix par joueur", config.selectionZoneDepart,
+            v -> config.selectionZoneDepart = v);
+        caseZone.active = FaitsCarteClientSousMode3.aZonesIle();
 
         // ---- Colonne C : Interactions & fin de partie ----
         int[] yc = {yDepart};
@@ -142,19 +143,13 @@ public class EcranConfigurationPartieSousMode3 extends Screen {
         }
         caseAcocher(xC, yc, "Placement blocs", config.placementBloc, v -> config.placementBloc = v);
         caseAcocher(xC, yc, "Jeter des objets", config.dropObjet, v -> config.dropObjet = v);
+        caseAcocher(xC, yc, "Drop à la mort", config.dropInventaireMort, v -> config.dropInventaireMort = v);
         caseAcocher(xC, yc, "Manger à vie max", config.mangerDepasseMax, v -> config.mangerDepasseMax = v);
+        caseAcocher(xC, yc, "Bonus sprint", config.bonusSprint, v -> config.bonusSprint = v);
 
         titre(xC, yc, "§e§lFin de partie");
         ajouterBasculeClassement(xC, yc);
         caseAcocher(xC, yc, "Dernier survivant", config.finAuDernierSurvivant, v -> config.finAuDernierSurvivant = v);
-
-        titre(xC, yc, "§e§lZone de départ");
-        if (!FaitsCarteClientSousMode3.aZonesIle()) {
-            config.selectionZoneDepart = false; // la carte n'a aucune zone Île sélectionnable
-        }
-        Checkbox caseZone = caseAcocher(xC, yc, "Choix par joueur", config.selectionZoneDepart,
-            v -> config.selectionZoneDepart = v);
-        caseZone.active = FaitsCarteClientSousMode3.aZonesIle();
 
         // ---- Boutons de bas de page ----
         int hBouton = compact ? 18 : 20;
@@ -221,31 +216,9 @@ public class EcranConfigurationPartieSousMode3 extends Screen {
         return (h == Math.floor(h)) ? String.valueOf((int) h) : String.valueOf(h);
     }
 
-    private enum Preset { DEFAUT, DETENTE, EXTREME }
-
-    private void appliquerPreset(Preset preset) {
-        ConfigPartieSousMode3 defaut = new ConfigPartieSousMode3();
-        copier(defaut, config);
-        switch (preset) {
-            case DEFAUT -> {
-            }
-            case DETENTE -> {
-                config.degradationSante = false;
-                config.noyadeMortelle = false;
-                config.reapparitionAutorisee = true;
-                config.regenerationNaturelle = true;
-                config.degatsChute = false;
-                config.faim = false;
-            }
-            case EXTREME -> {
-                config.perteSanteParTick = 2.0f;
-                config.intervalleDegradationSecondes = 5;
-                config.degatsChute = true;
-                config.noyadeMortelle = true;
-                config.finAuDernierSurvivant = true;
-                config.pvp = true;
-            }
-        }
+    /** Remet toutes les conditions aux valeurs par défaut (comportement historique) */
+    private void reinitialiserConfig() {
+        copier(new ConfigPartieSousMode3(), config);
         rebuildWidgets();
     }
 
@@ -278,6 +251,7 @@ public class EcranConfigurationPartieSousMode3 extends Screen {
         cible.destructionBloc = source.destructionBloc;
         cible.placementBloc = source.placementBloc;
         cible.dropObjet = source.dropObjet;
+        cible.dropInventaireMort = source.dropInventaireMort;
         cible.mangerDepasseMax = source.mangerDepasseMax;
     }
 
