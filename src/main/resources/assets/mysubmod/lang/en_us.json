@@ -3,5 +3,7 @@
   "item.mysubmod.candy_blue": "Bonbon bleu",
   "item.mysubmod.candy_red": "Bonbon rouge",
   "block.mysubmod.bonbon_cache_terre": "Bonbon non-visible (terre)",
-  "block.mysubmod.bonbon_cache_pierre": "Bonbon non-visible (pierre)"
+  "block.mysubmod.bonbon_cache_pierre": "Bonbon non-visible (pierre)",
+  "key.categories.mysubmod": "Survie aux bonbons",
+  "key.mysubmod.guide": "Ouvrir le guide du jeu"
 }

@@ -66,10 +66,16 @@ public class EcranControleSousMode extends Screen {
             ).bounds(centreX - LARGEUR_BOUTON / 2, débutY + ESPACEMENT_BOUTON * 2, LARGEUR_BOUTON, HAUTEUR_BOUTON).build());
         }
 
+        // Guide du jeu (accessible à tous)
+        addRenderableWidget(Button.builder(
+            Component.literal("📖 Guide du jeu"),
+            bouton -> this.minecraft.setScreen(new EcranGuide())
+        ).bounds(centreX - LARGEUR_BOUTON / 2, débutY + ESPACEMENT_BOUTON * 3, LARGEUR_BOUTON, HAUTEUR_BOUTON).build());
+
         addRenderableWidget(Button.builder(
             Component.literal("Fermer"),
             bouton -> this.onClose()
-        ).bounds(centreX - LARGEUR_BOUTON / 2, débutY + ESPACEMENT_BOUTON * 3 + 10, LARGEUR_BOUTON, HAUTEUR_BOUTON).build());
+        ).bounds(centreX - LARGEUR_BOUTON / 2, débutY + ESPACEMENT_BOUTON * 4 + 10, LARGEUR_BOUTON, HAUTEUR_BOUTON).build());
     }
 
     private void envoyerRequêteSousMode(SousMode mode) {

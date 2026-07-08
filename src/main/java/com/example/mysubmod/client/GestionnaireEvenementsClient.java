@@ -15,6 +15,7 @@ import org.lwjgl.glfw.GLFW;
 public class GestionnaireEvenementsClient {
 
     private static boolean suggestionsAutomatiquesDésactivées = false;
+    private static boolean astuceGuideAffichee = false;
 
     @SubscribeEvent
     public static void onClientTick(TickEvent.ClientTickEvent event) {
@@ -37,6 +38,23 @@ public class GestionnaireEvenementsClient {
 
             suggestionsAutomatiquesDésactivées = true;
             MonSubMod.JOURNALISEUR.info("Suggestions de commandes et tutoriel désactivés automatiquement");
+        }
+
+        // Ouvrir le guide sur pression de la touche dédiée (rebindable)
+        while (GuideClavier.TOUCHE_GUIDE.consumeClick()) {
+            if (mc.screen == null && mc.player != null) {
+                mc.setScreen(new com.example.mysubmod.client.gui.EcranGuide());
+            }
+        }
+
+        // Astuce de découvrabilité, une fois par connexion à un monde
+        if (mc.level == null) {
+            astuceGuideAffichee = false;
+        } else if (!astuceGuideAffichee && mc.player != null && mc.screen == null) {
+            astuceGuideAffichee = true;
+            String touche = GuideClavier.TOUCHE_GUIDE.getTranslatedKeyMessage().getString();
+            mc.player.sendSystemMessage(net.minecraft.network.chat.Component.literal(
+                "§7Astuce : appuyez sur §e[" + touche + "]§7 (ou le bouton §eGuide§7 du menu M) pour ouvrir le guide du jeu."));
         }
     }
 
