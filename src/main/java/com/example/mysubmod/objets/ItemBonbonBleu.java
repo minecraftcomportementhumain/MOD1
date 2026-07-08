@@ -18,7 +18,7 @@ import net.minecraft.world.level.Level;
 import java.util.List;
 
 /**
- * Bonbon bleu pour le Sous-mode 2 (Type A)
+ * Bonbon bleu (Type A) — spécialisation du Sous-mode 3.
  */
 public class ItemBonbonBleu extends Item {
 

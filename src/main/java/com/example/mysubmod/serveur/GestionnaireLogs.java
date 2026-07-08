@@ -30,10 +30,6 @@ public class GestionnaireLogs {
         );
     }
 
-    public static List<String> obtenirDossiersLogs() {
-        return obtenirDossiersLogs(1); // Par défaut Sous-mode 1 pour rétrocompatibilité
-    }
-
     public static List<String> obtenirDossiersLogs(int numeroSubMode) {
         List<String> dossiers = new ArrayList<>();
         File repertoireBase = new File(REPERTOIRE_BASE_LOGS);

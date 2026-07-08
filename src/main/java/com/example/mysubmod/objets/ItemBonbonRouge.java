@@ -18,7 +18,7 @@ import net.minecraft.world.level.Level;
 import java.util.List;
 
 /**
- * Bonbon rouge pour le Sous-mode 2 (Type B)
+ * Bonbon rouge (Type B) — spécialisation du Sous-mode 3.
  */
 public class ItemBonbonRouge extends Item {
 
