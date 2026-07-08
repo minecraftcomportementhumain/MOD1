@@ -432,9 +432,16 @@ public class GestionnaireEvenementsSousMode3 {
         // Jet d'objets autorisé par la config : suivre l'entité pour que le filtre anti-résidus
         // de l'aire de la carte la laisse apparaître (sinon l'objet serait détruit), puis la
         // laisser tomber normalement. Ces objets sont purgés à la désactivation du sous-mode.
-        if (GestionnaireSousMode3.getInstance().obtenirConfig().dropObjet) {
-            GestionnaireSousMode3.getInstance().suivreObjetAuSol(event.getEntity());
+        GestionnaireSousMode3 gestionnaire = GestionnaireSousMode3.getInstance();
+        if (gestionnaire.obtenirConfig().dropObjet) {
+            gestionnaire.suivreObjetAuSol(event.getEntity());
             event.getEntity().setUnlimitedLifetime();
+            if (gestionnaire.obtenirEnregistreurDonnees() != null) {
+                ItemStack pileJetee = event.getEntity().getItem();
+                gestionnaire.obtenirEnregistreurDonnees().enregistrerObjetJete(joueur,
+                    net.minecraftforge.registries.ForgeRegistries.ITEMS.getKey(pileJetee.getItem()).toString(),
+                    pileJetee.getCount());
+            }
             return;
         }
 
@@ -509,16 +516,9 @@ public class GestionnaireEvenementsSousMode3 {
             com.example.mysubmod.reseau.GestionnaireReseau.INSTANCE.send(
                 net.minecraftforge.network.PacketDistributor.PLAYER.with(() -> joueur),
                 new com.example.mysubmod.sousmodes.sousmode3.reseau.PaquetMinuterieJeuSousMode3(-1));
-            // Le HUD des zones est partagé avec les parties sur carte des sous-modes 1 et 2 :
-            // ne pas l'effacer quand l'un d'eux utilise une carte (leur handler envoie les zones)
-            boolean carteAutreSousMode =
-                com.example.mysubmod.sousmodes.sousmode1.GestionnaireSousMode1.getInstance().modeCarteActif()
-                || com.example.mysubmod.sousmodes.sousmode2.GestionnaireSousMode2.getInstance().modeCarteActif();
-            if (!carteAutreSousMode) {
-                com.example.mysubmod.reseau.GestionnaireReseau.INSTANCE.send(
-                    net.minecraftforge.network.PacketDistributor.PLAYER.with(() -> joueur),
-                    com.example.mysubmod.sousmodes.sousmode3.reseau.PaquetZonesSousMode3.vide());
-            }
+            com.example.mysubmod.reseau.GestionnaireReseau.INSTANCE.send(
+                net.minecraftforge.network.PacketDistributor.PLAYER.with(() -> joueur),
+                com.example.mysubmod.sousmodes.sousmode3.reseau.PaquetZonesSousMode3.vide());
         }
     }
 
@@ -707,7 +707,7 @@ public class GestionnaireEvenementsSousMode3 {
             return;
         }
         GestionnaireSousMode3 gestionnaire = GestionnaireSousMode3.getInstance();
-        if (gestionnaire.gererMortParticipant(joueur)) {
+        if (gestionnaire.gererMortParticipant(joueur, event.getSource().getMsgId())) {
             event.setCanceled(true);
             return;
         }

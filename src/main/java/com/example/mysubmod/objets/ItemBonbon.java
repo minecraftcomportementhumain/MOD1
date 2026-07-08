@@ -3,11 +3,6 @@ package com.example.mysubmod.objets;
 import com.example.mysubmod.MonSubMod;
 import com.example.mysubmod.sousmodes.SousMode;
 import com.example.mysubmod.sousmodes.GestionnaireSousModes;
-import com.example.mysubmod.sousmodes.sousmode1.GestionnaireSousMode1;
-import com.example.mysubmod.sousmodes.sousmode2.GestionnaireSousMode2;
-import com.example.mysubmod.sousmodes.sousmode2.GestionnaireBonbonsSousMode2;
-import com.example.mysubmod.sousmodes.sousmode2.GestionnaireSanteSousMode2;
-import com.example.mysubmod.sousmodes.sousmode2.TypeRessource;
 import net.minecraft.network.chat.Component;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.sounds.SoundEvents;
@@ -42,70 +37,8 @@ public class ItemBonbon extends Item {
         if (!level.isClientSide && player instanceof ServerPlayer joueurServeur) {
             SousMode modeActuel = GestionnaireSousModes.getInstance().obtenirModeActuel();
 
-            // Logique Sous-mode 1
-            if (modeActuel == SousMode.SOUS_MODE_1 && GestionnaireSousMode1.getInstance().estPartieActive()) {
-                if (GestionnaireSousMode1.getInstance().estJoueurVivant(joueurServeur.getUUID())) {
-                    float vieActuelle = joueurServeur.getHealth();
-                    float vieMaximale = joueurServeur.getMaxHealth();
-
-                    if (vieActuelle + MONTANT_SOIN > vieMaximale) {
-                        joueurServeur.sendSystemMessage(Component.literal("§cVous ne pouvez pas utiliser ce bonbon car il vous donnerait plus de vie que votre maximum"));
-                        return InteractionResultHolder.fail(pileObjets);
-                    }
-
-                    soignerJoueur(joueurServeur);
-                    pileObjets.shrink(1);
-
-                    if (GestionnaireSousMode1.getInstance().obtenirEnregistreurDonnees() != null) {
-                        GestionnaireSousMode1.getInstance().obtenirEnregistreurDonnees().enregistrerConsommationBonbon(joueurServeur);
-                    }
-
-                    return InteractionResultHolder.success(pileObjets);
-                } else {
-                    joueurServeur.sendSystemMessage(Component.literal("§cVous ne pouvez pas utiliser de bonbons en tant que spectateur"));
-                    return InteractionResultHolder.fail(pileObjets);
-                }
-            }
-            // Logique Sous-mode 2 avec système de spécialisation
-            else if (modeActuel == SousMode.SOUS_MODE_2 && GestionnaireSousMode2.getInstance().estPartieActive()) {
-                if (GestionnaireSousMode2.getInstance().estJoueurVivant(joueurServeur.getUUID())) {
-                    // Extraire le type de ressource du NBT
-                    TypeRessource typeRessource = GestionnaireBonbonsSousMode2.obtenirTypeRessourceDepuisBonbon(pileObjets);
-
-                    if (typeRessource == null) {
-                        joueurServeur.sendSystemMessage(Component.literal("§cCe bonbon n'a pas de type valide"));
-                        return InteractionResultHolder.fail(pileObjets);
-                    }
-
-                    float vieActuelle = joueurServeur.getHealth();
-                    float vieMaximale = joueurServeur.getMaxHealth();
-
-                    if (vieActuelle + MONTANT_SOIN > vieMaximale) {
-                        joueurServeur.sendSystemMessage(Component.literal("§cVous ne pouvez pas utiliser ce bonbon car il vous donnerait plus de vie que votre maximum"));
-                        return InteractionResultHolder.fail(pileObjets);
-                    }
-
-                    // Utiliser GestionnaireSanteSousMode2 qui gère la spécialisation et les pénalités
-                    GestionnaireSanteSousMode2.getInstance().gererConsommationBonbon(joueurServeur, typeRessource);
-                    pileObjets.shrink(1);
-
-                    // Jouer le son de consommation
-                    player.level().playSound(null, player.getX(), player.getY(), player.getZ(),
-                        SoundEvents.PLAYER_BURP, SoundSource.PLAYERS, 0.5f, 1.0f);
-
-                    // Enregistrer la consommation de bonbon avec le type de ressource
-                    if (GestionnaireSousMode2.getInstance().obtenirEnregistreurDonnees() != null) {
-                        GestionnaireSousMode2.getInstance().obtenirEnregistreurDonnees().enregistrerConsommationBonbon(joueurServeur, typeRessource);
-                    }
-
-                    return InteractionResultHolder.success(pileObjets);
-                } else {
-                    joueurServeur.sendSystemMessage(Component.literal("§cVous ne pouvez pas utiliser de bonbons en tant que spectateur"));
-                    return InteractionResultHolder.fail(pileObjets);
-                }
-            }
-            // Logique Sous-mode 3 (reprend la base du Sous-mode 1)
-            else if (modeActuel == SousMode.SOUS_MODE_3
+            // Logique Sous-mode 3
+            if (modeActuel == SousMode.SOUS_MODE_3
                 && com.example.mysubmod.sousmodes.sousmode3.GestionnaireSousMode3.getInstance().estPartieActive()) {
                 com.example.mysubmod.sousmodes.sousmode3.GestionnaireSousMode3 gestionnaireSM3 =
                     com.example.mysubmod.sousmodes.sousmode3.GestionnaireSousMode3.getInstance();
@@ -144,7 +77,8 @@ public class ItemBonbon extends Item {
                     pileObjets.shrink(1);
 
                     if (gestionnaireSM3.obtenirEnregistreurDonnees() != null) {
-                        gestionnaireSM3.obtenirEnregistreurDonnees().enregistrerConsommationBonbon(joueurServeur);
+                        gestionnaireSM3.obtenirEnregistreurDonnees().enregistrerConsommationBonbon(
+                            joueurServeur, "STANDARD", multiplicateur < 1.0f, soinReel);
                     }
 
                     return InteractionResultHolder.success(pileObjets);
@@ -154,7 +88,7 @@ public class ItemBonbon extends Item {
                 }
             }
             else {
-                joueurServeur.sendSystemMessage(Component.literal("§cLes bonbons ne peuvent être utilisés qu'en sous-mode 1, 2 ou 3"));
+                joueurServeur.sendSystemMessage(Component.literal("§cLes bonbons ne peuvent être utilisés qu'en sous-mode 3"));
                 return InteractionResultHolder.fail(pileObjets);
             }
         }
@@ -179,19 +113,8 @@ public class ItemBonbon extends Item {
 
     @Override
     public void appendHoverText(ItemStack stack, Level level, List<Component> tooltip, TooltipFlag flag) {
-        // Vérifier si c'est un bonbon Sous-mode 2 (a un type de ressource)
-        TypeRessource typeRessource = GestionnaireBonbonsSousMode2.obtenirTypeRessourceDepuisBonbon(stack);
-
-        if (typeRessource != null) {
-            // Bonbon Sous-mode 2
-            tooltip.add(Component.literal("§7Type: §f" + typeRessource.obtenirNomAffichage()));
-            tooltip.add(Component.literal("§7Restaure §c1 cœur §7(0.75 cœur si pénalité)"));
-            tooltip.add(Component.literal("§eUtilisable en sous-mode 2"));
-        } else {
-            // Bonbon Sous-mode 1 / Sous-mode 3
-            tooltip.add(Component.literal("§7Restaure §c1 cœur §7de santé"));
-            tooltip.add(Component.literal("§eUtilisable en sous-mode 1 et 3"));
-        }
+        tooltip.add(Component.literal("§7Restaure §c1 cœur §7de santé"));
+        tooltip.add(Component.literal("§eUtilisable en sous-mode 3"));
     }
 
     @Override

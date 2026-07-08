@@ -4,8 +4,6 @@ import com.example.mysubmod.MonSubMod;
 import com.example.mysubmod.reseau.GestionnaireReseau;
 import com.example.mysubmod.reseau.PaquetChangementSousMode;
 import com.example.mysubmod.sousmodes.salleattente.GestionnaireSalleAttente;
-import com.example.mysubmod.sousmodes.sousmode1.GestionnaireSousMode1;
-import com.example.mysubmod.sousmodes.sousmode2.GestionnaireSousMode2;
 import com.example.mysubmod.sousmodes.sousmode3.GestionnaireSousMode3;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerPlayer;
@@ -36,10 +34,7 @@ public class GestionnaireSousModes {
 
         try {
             // Forcer la désactivation de tous les sous-modes possibles pour nettoyer tout état résiduel
-            // Note: GestionnaireSousMode1.deactivate() inclut maintenant clearMap() avec détection améliorée
             GestionnaireSalleAttente.getInstance().deactivate(serveur);
-            GestionnaireSousMode1.getInstance().deactivate(serveur);
-            GestionnaireSousMode2.getInstance().deactivate(serveur);
             GestionnaireSousMode3.getInstance().deactivate(serveur);
 
             // Réinitialiser à un état propre
@@ -66,9 +61,7 @@ public class GestionnaireSousModes {
             return false;
         }
 
-        // Compatibilité carte / sous-modes
-        // Sous-mode 3 : carte obligatoire. Sous-modes 1 et 2 : la carte est optionnelle
-        // (sans carte, génération automatique maintenue) mais validée si sélectionnée.
+        // Sous-mode 3 : carte obligatoire
         boolean carteSelectionnee = com.example.mysubmod.cartes.GestionnaireCartes.getInstance().aCarteSelectionnee();
         if (nouveauMode == SousMode.SOUS_MODE_3 && !carteSelectionnee) {
             MonSubMod.JOURNALISEUR.warn("Tentative de lancer le Sous-mode 3 sans carte sélectionnée - refusé");
@@ -76,33 +69,6 @@ public class GestionnaireSousModes {
                 java.util.List.of("Aucune carte sélectionnée.",
                     "Veuillez sélectionner une carte pour lancer le Sous-mode 3."));
             return false;
-        }
-        if ((nouveauMode == SousMode.SOUS_MODE_1 || nouveauMode == SousMode.SOUS_MODE_2) && carteSelectionnee) {
-            com.example.mysubmod.cartes.CarteDonnees carte = com.example.mysubmod.cartes.GestionnaireCartes.getInstance()
-                .chargerCarte(com.example.mysubmod.cartes.GestionnaireCartes.getInstance().obtenirCarteSelectionnee());
-            if (carte == null) {
-                refuserLancement(joueurDemandeur, "Carte introuvable",
-                    java.util.List.of("La carte sélectionnée est introuvable ou invalide."));
-                return false;
-            }
-            if (carte.compterBonbonsVisiblesInterieur() == 0) {
-                refuserLancement(joueurDemandeur, "Carte sans bonbons",
-                    java.util.List.of("La carte ne contient aucun bonbon visible.",
-                        "Ajoutez des bonbons visibles pour lancer le " + nouveauMode.obtenirNomAffichage() + "."));
-                return false;
-            }
-            // Refus strict au Sous-mode 2 : tous les bonbons visibles doivent être typés Bleu / Rouge
-            if (nouveauMode == SousMode.SOUS_MODE_2) {
-                int standards = carte.compterBonbonsVisiblesStandardInterieur();
-                if (standards > 0) {
-                    MonSubMod.JOURNALISEUR.warn("Tentative de lancer le Sous-mode 2 avec {} bonbon(s) standard - refusé", standards);
-                    refuserLancement(joueurDemandeur, "Bonbons non typés",
-                        java.util.List.of(standards + " bonbon(s) standard sur la carte.",
-                            "Assignez un type Bleu ou Rouge à tous les bonbons visibles",
-                            "pour lancer le Sous-mode 2 (outil Sélection de l'éditeur)."));
-                    return false;
-                }
-            }
         }
 
         // Vérifier le délai - empêcher les changements de mode rapides
@@ -142,12 +108,6 @@ public class GestionnaireSousModes {
                     case SALLE_ATTENTE:
                         GestionnaireSalleAttente.getInstance().deactivate(serveur);
                         break;
-                    case SOUS_MODE_1:
-                        GestionnaireSousMode1.getInstance().deactivate(serveur);
-                        break;
-                    case SOUS_MODE_2:
-                        GestionnaireSousMode2.getInstance().deactivate(serveur);
-                        break;
                     case SOUS_MODE_3:
                         GestionnaireSousMode3.getInstance().deactivate(serveur);
                         break;
@@ -161,12 +121,6 @@ public class GestionnaireSousModes {
                 switch (nouveauMode) {
                     case SALLE_ATTENTE:
                         GestionnaireSalleAttente.getInstance().activate(serveur);
-                        break;
-                    case SOUS_MODE_1:
-                        GestionnaireSousMode1.getInstance().activate(serveur, joueurDemandeur);
-                        break;
-                    case SOUS_MODE_2:
-                        GestionnaireSousMode2.getInstance().activate(serveur, joueurDemandeur);
                         break;
                     case SOUS_MODE_3:
                         GestionnaireSousMode3.getInstance().activate(serveur, joueurDemandeur);

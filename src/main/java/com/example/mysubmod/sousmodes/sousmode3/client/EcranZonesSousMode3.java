@@ -32,13 +32,11 @@ public class EcranZonesSousMode3 extends Screen {
         int centreX = this.width / 2;
         int y = Math.max(40, this.height / 2 - (zones.size() * ESPACEMENT + 40) / 2);
 
-        com.example.mysubmod.sousmodes.SousMode mode =
-            com.example.mysubmod.client.GestionnaireSubModeClient.obtenirModeActuel();
         for (HUDZonesSousMode3.ZoneClient zone : zones) {
             final String nomZone = zone.nom;
             boolean estCiblee = nomZone.equals(HUDZonesSousMode3.obtenirZoneCiblee());
             String etiquette = (estCiblee ? "§b➤ " : "") + nomZone + " §7— "
-                + HUDZonesSousMode3.formaterCompteurs(zone, mode);
+                + HUDZonesSousMode3.formaterCompteurs(zone);
             addRenderableWidget(Button.builder(
                 Component.literal(etiquette),
                 bouton -> {

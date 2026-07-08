@@ -92,93 +92,6 @@ public class GestionnaireReseau {
 
         INSTANCE.registerMessage(
             idPaquet++,
-            com.example.mysubmod.sousmodes.sousmode1.reseau.PaquetSelectionIle.class,
-            com.example.mysubmod.sousmodes.sousmode1.reseau.PaquetSelectionIle::encoder,
-            com.example.mysubmod.sousmodes.sousmode1.reseau.PaquetSelectionIle::decoder,
-            com.example.mysubmod.sousmodes.sousmode1.reseau.PaquetSelectionIle::traiter
-        );
-
-        INSTANCE.registerMessage(
-            idPaquet++,
-            com.example.mysubmod.sousmodes.sousmode1.reseau.PaquetChoixIle.class,
-            com.example.mysubmod.sousmodes.sousmode1.reseau.PaquetChoixIle::encode,
-            com.example.mysubmod.sousmodes.sousmode1.reseau.PaquetChoixIle::decode,
-            com.example.mysubmod.sousmodes.sousmode1.reseau.PaquetChoixIle::traiter,
-            java.util.Optional.of(NetworkDirection.PLAY_TO_SERVER)
-        );
-
-        INSTANCE.registerMessage(
-            idPaquet++,
-            com.example.mysubmod.sousmodes.sousmode1.reseau.PaquetMinuterieJeu.class,
-            com.example.mysubmod.sousmodes.sousmode1.reseau.PaquetMinuterieJeu::encode,
-            com.example.mysubmod.sousmodes.sousmode1.reseau.PaquetMinuterieJeu::decode,
-            com.example.mysubmod.sousmodes.sousmode1.reseau.PaquetMinuterieJeu::traiter
-        );
-
-        INSTANCE.registerMessage(
-            idPaquet++,
-            com.example.mysubmod.sousmodes.sousmode1.reseau.PaquetListeFichiersBonbons.class,
-            com.example.mysubmod.sousmodes.sousmode1.reseau.PaquetListeFichiersBonbons::encoder,
-            com.example.mysubmod.sousmodes.sousmode1.reseau.PaquetListeFichiersBonbons::decoder,
-            com.example.mysubmod.sousmodes.sousmode1.reseau.PaquetListeFichiersBonbons::traiter
-        );
-
-        INSTANCE.registerMessage(
-            idPaquet++,
-            com.example.mysubmod.sousmodes.sousmode1.reseau.PaquetSelectionFichierBonbons.class,
-            com.example.mysubmod.sousmodes.sousmode1.reseau.PaquetSelectionFichierBonbons::encoder,
-            com.example.mysubmod.sousmodes.sousmode1.reseau.PaquetSelectionFichierBonbons::decoder,
-            com.example.mysubmod.sousmodes.sousmode1.reseau.PaquetSelectionFichierBonbons::traiter,
-            java.util.Optional.of(NetworkDirection.PLAY_TO_SERVER)
-        );
-
-        INSTANCE.registerMessage(
-            idPaquet++,
-            com.example.mysubmod.sousmodes.sousmode1.reseau.PaquetTeleversementFichierBonbons.class,
-            com.example.mysubmod.sousmodes.sousmode1.reseau.PaquetTeleversementFichierBonbons::encode,
-            com.example.mysubmod.sousmodes.sousmode1.reseau.PaquetTeleversementFichierBonbons::decode,
-            com.example.mysubmod.sousmodes.sousmode1.reseau.PaquetTeleversementFichierBonbons::traiter,
-            java.util.Optional.of(NetworkDirection.PLAY_TO_SERVER)
-        );
-
-        INSTANCE.registerMessage(
-            idPaquet++,
-            com.example.mysubmod.sousmodes.sousmode1.reseau.PaquetSuppressionFichierBonbons.class,
-            com.example.mysubmod.sousmodes.sousmode1.reseau.PaquetSuppressionFichierBonbons::encode,
-            com.example.mysubmod.sousmodes.sousmode1.reseau.PaquetSuppressionFichierBonbons::decode,
-            com.example.mysubmod.sousmodes.sousmode1.reseau.PaquetSuppressionFichierBonbons::traiter,
-            java.util.Optional.of(NetworkDirection.PLAY_TO_SERVER)
-        );
-
-        INSTANCE.registerMessage(
-            idPaquet++,
-            com.example.mysubmod.sousmodes.sousmode1.reseau.PaquetMiseAJourCompteurBonbons.class,
-            com.example.mysubmod.sousmodes.sousmode1.reseau.PaquetMiseAJourCompteurBonbons::encoder,
-            com.example.mysubmod.sousmodes.sousmode1.reseau.PaquetMiseAJourCompteurBonbons::new,
-            com.example.mysubmod.sousmodes.sousmode1.reseau.PaquetMiseAJourCompteurBonbons::traiter
-        );
-
-        INSTANCE.registerMessage(
-            idPaquet++,
-            com.example.mysubmod.sousmodes.sousmode1.reseau.PaquetDemandeListeFichiersBonbons.class,
-            com.example.mysubmod.sousmodes.sousmode1.reseau.PaquetDemandeListeFichiersBonbons::toBytes,
-            com.example.mysubmod.sousmodes.sousmode1.reseau.PaquetDemandeListeFichiersBonbons::new,
-            com.example.mysubmod.sousmodes.sousmode1.reseau.PaquetDemandeListeFichiersBonbons::traiter,
-            java.util.Optional.of(NetworkDirection.PLAY_TO_SERVER)
-        );
-
-        // Paquets de gestion des journaux
-        INSTANCE.registerMessage(
-            idPaquet++,
-            PaquetDemandeListeLogs.class,
-            PaquetDemandeListeLogs::toBytes,
-            PaquetDemandeListeLogs::new,
-            PaquetDemandeListeLogs::traiter,
-            java.util.Optional.of(NetworkDirection.PLAY_TO_SERVER)
-        );
-
-        INSTANCE.registerMessage(
-            idPaquet++,
             PaquetListeLogs.class,
             PaquetListeLogs::toBytes,
             PaquetListeLogs::new,
@@ -238,127 +151,6 @@ public class GestionnaireReseau {
             com.example.mysubmod.authentification.PaquetReponseAuthAdmin::decode,
             com.example.mysubmod.authentification.PaquetReponseAuthAdmin::traiter,
             java.util.Optional.of(NetworkDirection.PLAY_TO_CLIENT)
-        );
-
-        INSTANCE.registerMessage(
-            idPaquet++,
-            com.example.mysubmod.sousmodes.sousmode1.reseau.PaquetFinPartie.class,
-            com.example.mysubmod.sousmodes.sousmode1.reseau.PaquetFinPartie::encode,
-            com.example.mysubmod.sousmodes.sousmode1.reseau.PaquetFinPartie::decode,
-            com.example.mysubmod.sousmodes.sousmode1.reseau.PaquetFinPartie::traiter
-        );
-
-        // Paquets Sous-mode 2
-        INSTANCE.registerMessage(
-            idPaquet++,
-            com.example.mysubmod.sousmodes.sousmode2.reseau.PaquetSelectionIle.class,
-            com.example.mysubmod.sousmodes.sousmode2.reseau.PaquetSelectionIle::encoder,
-            com.example.mysubmod.sousmodes.sousmode2.reseau.PaquetSelectionIle::decoder,
-            com.example.mysubmod.sousmodes.sousmode2.reseau.PaquetSelectionIle::traiter
-        );
-
-        INSTANCE.registerMessage(
-            idPaquet++,
-            com.example.mysubmod.sousmodes.sousmode2.reseau.PaquetChoixIle.class,
-            com.example.mysubmod.sousmodes.sousmode2.reseau.PaquetChoixIle::encode,
-            com.example.mysubmod.sousmodes.sousmode2.reseau.PaquetChoixIle::decode,
-            com.example.mysubmod.sousmodes.sousmode2.reseau.PaquetChoixIle::traiter,
-            java.util.Optional.of(NetworkDirection.PLAY_TO_SERVER)
-        );
-
-        INSTANCE.registerMessage(
-            idPaquet++,
-            com.example.mysubmod.sousmodes.sousmode2.reseau.PaquetMinuterieJeu.class,
-            com.example.mysubmod.sousmodes.sousmode2.reseau.PaquetMinuterieJeu::encode,
-            com.example.mysubmod.sousmodes.sousmode2.reseau.PaquetMinuterieJeu::decode,
-            com.example.mysubmod.sousmodes.sousmode2.reseau.PaquetMinuterieJeu::traiter
-        );
-
-        INSTANCE.registerMessage(
-            idPaquet++,
-            com.example.mysubmod.sousmodes.sousmode2.reseau.PaquetListeFichiersBonbons.class,
-            com.example.mysubmod.sousmodes.sousmode2.reseau.PaquetListeFichiersBonbons::encoder,
-            com.example.mysubmod.sousmodes.sousmode2.reseau.PaquetListeFichiersBonbons::decoder,
-            com.example.mysubmod.sousmodes.sousmode2.reseau.PaquetListeFichiersBonbons::traiter
-        );
-
-        INSTANCE.registerMessage(
-            idPaquet++,
-            com.example.mysubmod.sousmodes.sousmode2.reseau.PaquetSelectionFichierBonbons.class,
-            com.example.mysubmod.sousmodes.sousmode2.reseau.PaquetSelectionFichierBonbons::encoder,
-            com.example.mysubmod.sousmodes.sousmode2.reseau.PaquetSelectionFichierBonbons::decoder,
-            com.example.mysubmod.sousmodes.sousmode2.reseau.PaquetSelectionFichierBonbons::traiter,
-            java.util.Optional.of(NetworkDirection.PLAY_TO_SERVER)
-        );
-
-        INSTANCE.registerMessage(
-            idPaquet++,
-            com.example.mysubmod.sousmodes.sousmode2.reseau.PaquetTeleversementFichierBonbons.class,
-            com.example.mysubmod.sousmodes.sousmode2.reseau.PaquetTeleversementFichierBonbons::encode,
-            com.example.mysubmod.sousmodes.sousmode2.reseau.PaquetTeleversementFichierBonbons::decode,
-            com.example.mysubmod.sousmodes.sousmode2.reseau.PaquetTeleversementFichierBonbons::traiter,
-            java.util.Optional.of(NetworkDirection.PLAY_TO_SERVER)
-        );
-
-        INSTANCE.registerMessage(
-            idPaquet++,
-            com.example.mysubmod.sousmodes.sousmode2.reseau.PaquetSuppressionFichierBonbons.class,
-            com.example.mysubmod.sousmodes.sousmode2.reseau.PaquetSuppressionFichierBonbons::encode,
-            com.example.mysubmod.sousmodes.sousmode2.reseau.PaquetSuppressionFichierBonbons::decode,
-            com.example.mysubmod.sousmodes.sousmode2.reseau.PaquetSuppressionFichierBonbons::traiter,
-            java.util.Optional.of(NetworkDirection.PLAY_TO_SERVER)
-        );
-
-        INSTANCE.registerMessage(
-            idPaquet++,
-            com.example.mysubmod.sousmodes.sousmode2.reseau.PaquetMiseAJourCompteurBonbons.class,
-            com.example.mysubmod.sousmodes.sousmode2.reseau.PaquetMiseAJourCompteurBonbons::encoder,
-            com.example.mysubmod.sousmodes.sousmode2.reseau.PaquetMiseAJourCompteurBonbons::new,
-            com.example.mysubmod.sousmodes.sousmode2.reseau.PaquetMiseAJourCompteurBonbons::traiter
-        );
-
-        INSTANCE.registerMessage(
-            idPaquet++,
-            com.example.mysubmod.sousmodes.sousmode2.reseau.PaquetDemandeListeFichiersBonbons.class,
-            com.example.mysubmod.sousmodes.sousmode2.reseau.PaquetDemandeListeFichiersBonbons::toBytes,
-            com.example.mysubmod.sousmodes.sousmode2.reseau.PaquetDemandeListeFichiersBonbons::new,
-            com.example.mysubmod.sousmodes.sousmode2.reseau.PaquetDemandeListeFichiersBonbons::traiter,
-            java.util.Optional.of(NetworkDirection.PLAY_TO_SERVER)
-        );
-
-        INSTANCE.registerMessage(
-            idPaquet++,
-            com.example.mysubmod.sousmodes.sousmode2.reseau.PaquetFinPartie.class,
-            com.example.mysubmod.sousmodes.sousmode2.reseau.PaquetFinPartie::encode,
-            com.example.mysubmod.sousmodes.sousmode2.reseau.PaquetFinPartie::decode,
-            com.example.mysubmod.sousmodes.sousmode2.reseau.PaquetFinPartie::traiter
-        );
-
-        INSTANCE.registerMessage(
-            idPaquet++,
-            com.example.mysubmod.sousmodes.sousmode2.reseau.PaquetSynchronisationPenalite.class,
-            com.example.mysubmod.sousmodes.sousmode2.reseau.PaquetSynchronisationPenalite::encoder,
-            com.example.mysubmod.sousmodes.sousmode2.reseau.PaquetSynchronisationPenalite::decoder,
-            com.example.mysubmod.sousmodes.sousmode2.reseau.PaquetSynchronisationPenalite::traiter
-        );
-
-        // Paquet de synchronisation de spécialisation Sous-mode 2
-        INSTANCE.registerMessage(
-            idPaquet++,
-            com.example.mysubmod.sousmodes.sousmode2.reseau.PaquetSyncSpecialisation.class,
-            com.example.mysubmod.sousmodes.sousmode2.reseau.PaquetSyncSpecialisation::encode,
-            com.example.mysubmod.sousmodes.sousmode2.reseau.PaquetSyncSpecialisation::decode,
-            com.example.mysubmod.sousmodes.sousmode2.reseau.PaquetSyncSpecialisation::traiter
-        );
-
-        // Paquet de gestion des journaux Sous-mode 2
-        INSTANCE.registerMessage(
-            idPaquet++,
-            PaquetDemandeListeLogsSousMode2.class,
-            PaquetDemandeListeLogsSousMode2::toBytes,
-            PaquetDemandeListeLogsSousMode2::new,
-            PaquetDemandeListeLogsSousMode2::traiter,
-            java.util.Optional.of(NetworkDirection.PLAY_TO_SERVER)
         );
 
         // Paquets de jetons de file d'attente
@@ -506,15 +298,6 @@ public class GestionnaireReseau {
 
         INSTANCE.registerMessage(
             idPaquet++,
-            com.example.mysubmod.sousmodes.sousmode3.reseau.PaquetLancerPartieSousMode3.class,
-            com.example.mysubmod.sousmodes.sousmode3.reseau.PaquetLancerPartieSousMode3::encode,
-            com.example.mysubmod.sousmodes.sousmode3.reseau.PaquetLancerPartieSousMode3::decode,
-            com.example.mysubmod.sousmodes.sousmode3.reseau.PaquetLancerPartieSousMode3::traiter,
-            java.util.Optional.of(NetworkDirection.PLAY_TO_SERVER)
-        );
-
-        INSTANCE.registerMessage(
-            idPaquet++,
             com.example.mysubmod.sousmodes.sousmode3.reseau.PaquetZonesSousMode3.class,
             com.example.mysubmod.sousmodes.sousmode3.reseau.PaquetZonesSousMode3::encode,
             com.example.mysubmod.sousmodes.sousmode3.reseau.PaquetZonesSousMode3::decode,
@@ -530,7 +313,7 @@ public class GestionnaireReseau {
             java.util.Optional.of(NetworkDirection.PLAY_TO_SERVER)
         );
 
-        // ==================== Parties sur carte (Sous-modes 1 et 2) ====================
+        // ==================== Parties sur carte (partagés avec le Sous-mode 3) ====================
         INSTANCE.registerMessage(
             idPaquet++,
             com.example.mysubmod.cartes.reseau.PaquetSelectionZoneDepart.class,
@@ -583,6 +366,25 @@ public class GestionnaireReseau {
             com.example.mysubmod.sousmodes.sousmode3.reseau.PaquetFaitsCarteSousMode3::encode,
             com.example.mysubmod.sousmodes.sousmode3.reseau.PaquetFaitsCarteSousMode3::decode,
             com.example.mysubmod.sousmodes.sousmode3.reseau.PaquetFaitsCarteSousMode3::traiter,
+            java.util.Optional.of(NetworkDirection.PLAY_TO_CLIENT)
+        );
+
+        // Spécialisation Bleu/Rouge du Sous-mode 3 (option du menu N) — serveur -> client
+        INSTANCE.registerMessage(
+            idPaquet++,
+            com.example.mysubmod.sousmodes.sousmode3.reseau.PaquetSyncSpecialisation.class,
+            com.example.mysubmod.sousmodes.sousmode3.reseau.PaquetSyncSpecialisation::encode,
+            com.example.mysubmod.sousmodes.sousmode3.reseau.PaquetSyncSpecialisation::decode,
+            com.example.mysubmod.sousmodes.sousmode3.reseau.PaquetSyncSpecialisation::traiter,
+            java.util.Optional.of(NetworkDirection.PLAY_TO_CLIENT)
+        );
+
+        INSTANCE.registerMessage(
+            idPaquet++,
+            com.example.mysubmod.sousmodes.sousmode3.reseau.PaquetSynchronisationPenalite.class,
+            com.example.mysubmod.sousmodes.sousmode3.reseau.PaquetSynchronisationPenalite::encode,
+            com.example.mysubmod.sousmodes.sousmode3.reseau.PaquetSynchronisationPenalite::decode,
+            com.example.mysubmod.sousmodes.sousmode3.reseau.PaquetSynchronisationPenalite::traiter,
             java.util.Optional.of(NetworkDirection.PLAY_TO_CLIENT)
         );
     }

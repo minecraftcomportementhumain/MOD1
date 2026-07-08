@@ -452,6 +452,11 @@ public class GestionnaireSousMode3 {
         partieActive = true;
         heureDebutPartie = System.currentTimeMillis();
 
+        // Journaliser les conditions de partie choisies (session auto-descriptive)
+        if (enregistreurDonnees != null) {
+            enregistreurDonnees.enregistrerConfigPartie(config, carte != null ? carte.nom : null);
+        }
+
         ServerLevel monde = serveur.getLevel(ServerLevel.OVERWORLD);
         BlockPos apparition = obtenirPointApparition();
 
@@ -1093,7 +1098,7 @@ public class GestionnaireSousMode3 {
         zonesChoisies.put(joueur.getUUID(), nomZone);
         joueur.sendSystemMessage(Component.literal("§aVous avez sélectionné: " + nomZone));
         if (enregistreurDonnees != null) {
-            enregistreurDonnees.enregistrerActionJoueur(joueur, "SELECTION_ZONE " + nomZone + " (MANUELLE)");
+            enregistreurDonnees.enregistrerSelectionZone(joueur, nomZone, "MANUELLE");
         }
     }
 
@@ -1141,8 +1146,7 @@ public class GestionnaireSousMode3 {
                 if (joueur != null) {
                     joueur.sendSystemMessage(Component.literal("§eZone assignée automatiquement: " + zone));
                     if (enregistreurDonnees != null) {
-                        enregistreurDonnees.enregistrerActionJoueur(joueur,
-                            "SELECTION_ZONE " + zone + " (AUTOMATIQUE)");
+                        enregistreurDonnees.enregistrerSelectionZone(joueur, zone, "AUTOMATIQUE");
                     }
                 }
             }
@@ -1578,6 +1582,9 @@ public class GestionnaireSousMode3 {
         joueur.getFoodData().setFoodLevel(config.faim ? 10 : 20);
         joueur.getFoodData().setSaturation(5.0f);
         joueur.sendSystemMessage(Component.literal("§eVous êtes mort... mais vous réapparaissez au point de départ !"));
+        if (enregistreurDonnees != null) {
+            enregistreurDonnees.enregistrerReapparition(joueur);
+        }
         return true;
     }
 
@@ -1609,7 +1616,7 @@ public class GestionnaireSousMode3 {
      * puis vérification des conditions de fin. Retourne {@code true} si la mort a été prise en
      * charge (l'appelant doit alors annuler la mort vanilla).
      */
-    public boolean gererMortParticipant(ServerPlayer joueur) {
+    public boolean gererMortParticipant(ServerPlayer joueur, String cause) {
         if (!partieActive || !joueursVivants.contains(joueur.getUUID())) {
             return false;
         }
@@ -1627,7 +1634,7 @@ public class GestionnaireSousMode3 {
             j.sendSystemMessage(Component.literal(messageMort));
         }
         if (enregistreurDonnees != null) {
-            enregistreurDonnees.enregistrerMortJoueur(joueur);
+            enregistreurDonnees.enregistrerMortJoueur(joueur, cause != null ? cause : "INCONNUE");
         }
         joueur.server.execute(() -> verifierFinParElimination(joueur.server));
         return true;
@@ -1685,7 +1692,7 @@ public class GestionnaireSousMode3 {
         }
 
         if (obtenirEnregistreurDonnees() != null) {
-            obtenirEnregistreurDonnees().enregistrerMortJoueur(joueur);
+            obtenirEnregistreurDonnees().enregistrerMortJoueur(joueur, "NOYADE");
         }
 
         joueur.server.execute(() -> verifierFinParElimination(joueur.server));
@@ -1754,6 +1761,9 @@ public class GestionnaireSousMode3 {
         }
         if (deposes > 0) {
             joueur.getInventory().clearContent();
+            if (enregistreurDonnees != null) {
+                enregistreurDonnees.enregistrerDropInventaireMort(joueur, deposes);
+            }
         }
     }
 

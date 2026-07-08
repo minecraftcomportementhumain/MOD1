@@ -1,8 +1,9 @@
-package com.example.mysubmod.sousmodes.sousmode2;
+package com.example.mysubmod.sousmodes.sousmode3;
 
 /**
- * Types de ressources disponibles dans le Sous-mode 2
- * Chaque type a un nom d'affichage et une couleur pour l'interface
+ * Types de ressources Bleu/Rouge de la spécialisation (option du menu N du Sous-mode 3).
+ * Chaque type a un nom d'affichage et une couleur pour l'interface.
+ * (Relocalisé depuis le Sous-mode 2 lors de sa suppression.)
  */
 public enum TypeRessource {
     BONBON_BLEU("Bonbon Bleu", 0x5555FF),  // Bleu
@@ -28,7 +29,9 @@ public enum TypeRessource {
      * Analyse le type de ressource depuis une chaîne (insensible à la casse)
      */
     public static TypeRessource depuisChaine(String str) {
-        if (str == null) return null;
+        if (str == null) {
+            return null;
+        }
         String majuscule = str.toUpperCase();
         if (majuscule.equals("A") || majuscule.equals("TYPE_A") || majuscule.equals("BONBON_BLEU")) {
             return BONBON_BLEU;
@@ -37,5 +40,4 @@ public enum TypeRessource {
         }
         return null;
     }
-
 }

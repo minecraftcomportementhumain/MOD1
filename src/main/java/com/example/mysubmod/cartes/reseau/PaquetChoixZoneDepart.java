@@ -34,14 +34,8 @@ public class PaquetChoixZoneDepart {
                 return;
             }
             SousMode mode = GestionnaireSousModes.getInstance().obtenirModeActuel();
-            if (mode == SousMode.SOUS_MODE_1) {
-                com.example.mysubmod.sousmodes.sousmode1.GestionnaireSousMode1.getInstance()
-                    .selectionnerZoneDepart(joueur, paquet.nomZone);
-            } else if (mode == SousMode.SOUS_MODE_2) {
-                com.example.mysubmod.sousmodes.sousmode2.GestionnaireSousMode2.getInstance()
-                    .selectionnerZoneDepart(joueur, paquet.nomZone);
-            } else if (mode == SousMode.SOUS_MODE_3) {
-                // Sous-mode 3 : option « choix de la zone de départ » de la config de partie
+            if (mode == SousMode.SOUS_MODE_3) {
+                // Option « choix de la zone de départ » de la config de partie
                 com.example.mysubmod.sousmodes.sousmode3.GestionnaireSousMode3.getInstance()
                     .selectionnerZoneDepart(joueur, paquet.nomZone);
             }

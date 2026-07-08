@@ -1,6 +1,6 @@
 package com.example.mysubmod.objets;
 
-import com.example.mysubmod.sousmodes.sousmode2.TypeRessource;
+import com.example.mysubmod.sousmodes.sousmode3.TypeRessource;
 import com.example.mysubmod.sousmodes.sousmode3.GestionnaireSanteSousMode3;
 import com.example.mysubmod.sousmodes.sousmode3.GestionnaireSousMode3;
 import com.example.mysubmod.sousmodes.sousmode3.GestionnaireSpecialisationSousMode3;
@@ -47,21 +47,22 @@ final class UtilisationBonbonTypeSousMode3 {
         }
 
         if (specialisation) {
+            // La consommation typée (avec pénalité) est journalisée par le gestionnaire de santé
             GestionnaireSanteSousMode3.getInstance().gererConsommationBonbonTypee(joueur, typeRessource);
         } else {
             float nouvelleVie = Math.min(vieMaximale, vieActuelle + soinReel);
             joueur.setHealth(nouvelleVie);
             joueur.sendSystemMessage(Component.literal(
                 String.format("§a✓ Vous avez récupéré %.1f cœur(s) !", soinReel / 2.0f)));
+            if (gestionnaire.obtenirEnregistreurDonnees() != null) {
+                gestionnaire.obtenirEnregistreurDonnees()
+                    .enregistrerConsommationBonbon(joueur, typeRessource.name(), false, soinReel);
+            }
         }
         pileObjets.shrink(1);
 
         level.playSound(null, joueur.getX(), joueur.getY(), joueur.getZ(),
             SoundEvents.PLAYER_BURP, SoundSource.PLAYERS, 0.5f, 1.0f);
-
-        if (gestionnaire.obtenirEnregistreurDonnees() != null) {
-            gestionnaire.obtenirEnregistreurDonnees().enregistrerConsommationBonbon(joueur);
-        }
         return InteractionResultHolder.success(pileObjets);
     }
 }

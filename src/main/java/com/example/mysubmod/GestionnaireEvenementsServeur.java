@@ -80,22 +80,6 @@ public class GestionnaireEvenementsServeur {
         }
 
         switch (GestionnaireSousModes.getInstance().obtenirModeActuel()) {
-            case SOUS_MODE_1 -> {
-                com.example.mysubmod.sousmodes.sousmode1.GestionnaireSousMode1 gestionnaire =
-                    com.example.mysubmod.sousmodes.sousmode1.GestionnaireSousMode1.getInstance();
-                if (gestionnaire.estPartieActive() && gestionnaire.estJoueurVivant(joueur.getUUID())) {
-                    event.setCanceled(true);
-                    gestionnaire.gererNoyadeJoueur(joueur);
-                }
-            }
-            case SOUS_MODE_2 -> {
-                com.example.mysubmod.sousmodes.sousmode2.GestionnaireSousMode2 gestionnaire =
-                    com.example.mysubmod.sousmodes.sousmode2.GestionnaireSousMode2.getInstance();
-                if (gestionnaire.estPartieActive() && gestionnaire.estJoueurVivant(joueur.getUUID())) {
-                    event.setCanceled(true);
-                    gestionnaire.gererNoyadeJoueur(joueur);
-                }
-            }
             case SOUS_MODE_3 -> {
                 com.example.mysubmod.sousmodes.sousmode3.GestionnaireSousMode3 gestionnaire =
                     com.example.mysubmod.sousmodes.sousmode3.GestionnaireSousMode3.getInstance();
@@ -190,26 +174,17 @@ public class GestionnaireEvenementsServeur {
                 // Ajouter à la salle d'attente APRÈS la téléportation pour éviter l'expulsion par vérification de position
                 salleAttente.ajouterJoueur(joueur, chaineTypeCompte);
 
-                // Effacer tous les éléments d'interface Sous-mode 1 (minuterie, compteurs de bonbons) du client
-                GestionnaireReseau.INSTANCE.send(PacketDistributor.PLAYER.with(() -> joueur),
-                    new com.example.mysubmod.sousmodes.sousmode1.reseau.PaquetMinuterieJeu(-1)); // -1 = désactiver
-                GestionnaireReseau.INSTANCE.send(PacketDistributor.PLAYER.with(() -> joueur),
-                    new com.example.mysubmod.sousmodes.sousmode1.reseau.PaquetMiseAJourCompteurBonbons(new java.util.HashMap<>())); // Map vide = effacer
-
-                // Effacer tous les éléments d'interface Sous-mode 2 (minuterie, compteurs de bonbons, minuterie de pénalité) du client
-                GestionnaireReseau.INSTANCE.send(PacketDistributor.PLAYER.with(() -> joueur),
-                    new com.example.mysubmod.sousmodes.sousmode2.reseau.PaquetMinuterieJeu(-1)); // -1 = désactiver
-                GestionnaireReseau.INSTANCE.send(PacketDistributor.PLAYER.with(() -> joueur),
-                    new com.example.mysubmod.sousmodes.sousmode2.reseau.PaquetMiseAJourCompteurBonbons(new java.util.HashMap<>())); // Map vide = effacer
-                GestionnaireReseau.INSTANCE.send(PacketDistributor.PLAYER.with(() -> joueur),
-                    new com.example.mysubmod.sousmodes.sousmode2.reseau.PaquetSynchronisationPenalite(false, joueur.getUUID())); // false = désactiver
-
-                // Effacer la minuterie Sous-mode 3 et le HUD des zones (partagé avec les parties sur carte)
-                // pendant l'attente d'authentification — ils seront renvoyés après l'authentification
+                // Effacer les éléments d'interface Sous-mode 3 (minuterie, HUD des zones,
+                // spécialisation et minuterie de pénalité) pendant l'attente d'authentification —
+                // ils seront renvoyés après l'authentification
                 GestionnaireReseau.INSTANCE.send(PacketDistributor.PLAYER.with(() -> joueur),
                     new com.example.mysubmod.sousmodes.sousmode3.reseau.PaquetMinuterieJeuSousMode3(-1)); // -1 = désactiver
                 GestionnaireReseau.INSTANCE.send(PacketDistributor.PLAYER.with(() -> joueur),
                     com.example.mysubmod.sousmodes.sousmode3.reseau.PaquetZonesSousMode3.vide());
+                GestionnaireReseau.INSTANCE.send(PacketDistributor.PLAYER.with(() -> joueur),
+                    new com.example.mysubmod.sousmodes.sousmode3.reseau.PaquetSyncSpecialisation(null));
+                GestionnaireReseau.INSTANCE.send(PacketDistributor.PLAYER.with(() -> joueur),
+                    new com.example.mysubmod.sousmodes.sousmode3.reseau.PaquetSynchronisationPenalite(false, joueur.getUUID())); // false = désactiver
 
                 String type = estCandidatFile ? "Candidat file d'attente" : "Protégé/admin non authentifié";
                 MonSubMod.JOURNALISEUR.info("{} {} rendu invisible, téléporté vers la plateforme d'authentification isolée, et ajouté à la salle d'attente", type, nomJoueur);

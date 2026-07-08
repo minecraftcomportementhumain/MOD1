@@ -136,16 +136,11 @@ public class HUDZonesSousMode3 {
         Font police = mc.font;
 
         List<ZoneClient> zones = obtenirZones();
-        com.example.mysubmod.sousmodes.SousMode mode =
-            com.example.mysubmod.client.GestionnaireSubModeClient.obtenirModeActuel();
 
-        // Spécialisation du joueur (Sous-mode 2 sur carte, ou Sous-mode 3 avec l'option
-        // « Spécialisation » — dans les deux cas, null tant qu'aucun bonbon typé n'est consommé)
-        com.example.mysubmod.sousmodes.sousmode2.TypeRessource specialisation =
-            (mode == com.example.mysubmod.sousmodes.SousMode.SOUS_MODE_2
-                || mode == com.example.mysubmod.sousmodes.SousMode.SOUS_MODE_3)
-                ? com.example.mysubmod.sousmodes.sousmode2.client.HUDCompteurBonbons.obtenirSpecialisationJoueur()
-                : null;
+        // Spécialisation du joueur (option « Spécialisation » du menu N — null tant
+        // qu'aucun bonbon typé n'est consommé)
+        com.example.mysubmod.sousmodes.sousmode3.TypeRessource specialisation =
+            SpecialisationClientSousMode3.obtenirSpecialisation();
 
         // Panneau des zones : coin supérieur droit, sous la minuterie
         int largeurPanneau = 170;
@@ -158,7 +153,7 @@ public class HUDZonesSousMode3 {
 
         if (specialisation != null) {
             String texteSpec = "Spécialisation: "
-                + (specialisation == com.example.mysubmod.sousmodes.sousmode2.TypeRessource.BONBON_BLEU ? "Bleu" : "Rouge");
+                + (specialisation == com.example.mysubmod.sousmodes.sousmode3.TypeRessource.BONBON_BLEU ? "Bleu" : "Rouge");
             guiGraphics.drawString(police, texteSpec, x, y, specialisation.obtenirCouleur());
             y += 12;
         }
@@ -169,7 +164,7 @@ public class HUDZonesSousMode3 {
         for (ZoneClient zone : zones) {
             boolean estCiblee = zone.nom.equals(zoneCiblee);
             String prefixe = estCiblee ? "§b➤ " : "§f";
-            String texte = prefixe + zone.nom + " §7— " + formaterCompteurs(zone, mode);
+            String texte = prefixe + zone.nom + " §7— " + formaterCompteurs(zone);
             guiGraphics.drawString(police, texte, x, y, 0xFFFFFF);
             y += hauteurLigne;
         }
@@ -180,18 +175,10 @@ public class HUDZonesSousMode3 {
         afficherFleche(guiGraphics, largeurEcran, hauteurEcran);
     }
 
-    /** Format des compteurs d'une zone selon le sous-mode courant */
-    public static String formaterCompteurs(ZoneClient zone, com.example.mysubmod.sousmodes.SousMode mode) {
-        if (mode == com.example.mysubmod.sousmodes.SousMode.SOUS_MODE_2) {
-            // Sous-mode 2 : détail par couleur de bonbon
-            return "§9" + zone.bonbonsBleus + " bleu(s)§7, §c" + zone.bonbonsRouges + " rouge(s)";
-        }
-        if (mode == com.example.mysubmod.sousmodes.SousMode.SOUS_MODE_1) {
-            // Sous-mode 1 : pas de bonbons non-visibles (ignorés)
-            return "§e" + zone.bonbonsVisibles + " bonbon(s)";
-        }
-        // Sous-mode 3 avec spécialisation (option de la config) : détail Bleu/Rouge en plus
-        // des bonbons non-visibles ; sans spécialisation, les compteurs typés restent à zéro
+    /** Format des compteurs d'une zone */
+    public static String formaterCompteurs(ZoneClient zone) {
+        // Avec la spécialisation (option de la config) : détail Bleu/Rouge en plus des
+        // bonbons non-visibles ; sans spécialisation, les compteurs typés restent à zéro
         if (zone.bonbonsBleus > 0 || zone.bonbonsRouges > 0) {
             return "§9" + zone.bonbonsBleus + " bleu(s)§7, §c" + zone.bonbonsRouges
                 + " rouge(s)§7, §d" + zone.bonbonsNonVisibles + " invis.";

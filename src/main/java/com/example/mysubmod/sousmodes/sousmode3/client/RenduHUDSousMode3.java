@@ -50,5 +50,10 @@ public class RenduHUDSousMode3 {
         if (HUDZonesSousMode3.estActif()) {
             HUDZonesSousMode3.afficher(guiGraphics, largeurEcran, hauteurEcran);
         }
+
+        // Minuterie de pénalité de spécialisation (coin supérieur gauche)
+        if (HUDPenaliteSousMode3.estActif() && !mc.player.isSpectator()) {
+            HUDPenaliteSousMode3.afficher(guiGraphics, largeurEcran, hauteurEcran);
+        }
     }
 }

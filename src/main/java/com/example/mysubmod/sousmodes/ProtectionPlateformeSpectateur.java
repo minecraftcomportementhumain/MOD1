@@ -30,8 +30,7 @@ public class ProtectionPlateformeSpectateur {
     private static final int Y_MAX = 156;
 
     private static boolean sousModeActif() {
-        SousMode mode = GestionnaireSousModes.getInstance().obtenirModeActuel();
-        return mode == SousMode.SOUS_MODE_1 || mode == SousMode.SOUS_MODE_2 || mode == SousMode.SOUS_MODE_3;
+        return GestionnaireSousModes.getInstance().obtenirModeActuel() == SousMode.SOUS_MODE_3;
     }
 
     private static boolean surPlateforme(BlockPos pos) {

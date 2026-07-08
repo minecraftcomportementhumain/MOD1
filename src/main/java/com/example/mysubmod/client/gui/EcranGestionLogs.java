@@ -3,7 +3,6 @@ package com.example.mysubmod.client.gui;
 import com.example.mysubmod.reseau.GestionnaireReseau;
 import com.example.mysubmod.reseau.PaquetTelechargementLogs;
 import com.example.mysubmod.reseau.PaquetSuppressionLogs;
-import com.example.mysubmod.reseau.PaquetDemandeListeLogs;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.components.Button;
 import net.minecraft.client.gui.components.ObjectSelectionList;
@@ -22,10 +21,6 @@ public class EcranGestionLogs extends Screen {
     private Button boutonTéléchargerSélectionné;
     private Button boutonSupprimerSélectionné;
     private Button boutonActualiser;
-
-    public EcranGestionLogs(List<String> dossiersLog) {
-        this(dossiersLog, 1); // Par défaut Sous-mode 1 pour rétrocompatibilité
-    }
 
     public EcranGestionLogs(List<String> dossiersLog, int numeroSousMode) {
         super(Component.literal("Gestion des Journaux — Sous-mode " + numeroSousMode));
@@ -137,14 +132,9 @@ public class EcranGestionLogs extends Screen {
     }
 
     private void actualiserListeLogs() {
-        // Demander la liste du bon sous-mode (le serveur rouvrira l'écran avec la liste à jour)
-        switch (numeroSousMode) {
-            case 2 -> GestionnaireReseau.INSTANCE.sendToServer(
-                new com.example.mysubmod.reseau.PaquetDemandeListeLogsSousMode2());
-            case 3 -> GestionnaireReseau.INSTANCE.sendToServer(
-                new com.example.mysubmod.sousmodes.sousmode3.reseau.PaquetDemandeListeLogsSousMode3());
-            default -> GestionnaireReseau.INSTANCE.sendToServer(new PaquetDemandeListeLogs());
-        }
+        // Demander la liste au serveur (il rouvrira l'écran avec la liste à jour)
+        GestionnaireReseau.INSTANCE.sendToServer(
+            new com.example.mysubmod.sousmodes.sousmode3.reseau.PaquetDemandeListeLogsSousMode3());
     }
 
     @Override

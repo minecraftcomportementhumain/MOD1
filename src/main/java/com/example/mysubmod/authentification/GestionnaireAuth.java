@@ -581,27 +581,7 @@ public class GestionnaireAuth {
         com.example.mysubmod.sousmodes.GestionnaireSousModes gestionnaireSousModes = com.example.mysubmod.sousmodes.GestionnaireSousModes.getInstance();
         com.example.mysubmod.sousmodes.SousMode modeActuel = gestionnaireSousModes.obtenirModeActuel();
 
-        if (modeActuel == com.example.mysubmod.sousmodes.SousMode.SOUS_MODE_1) {
-            com.example.mysubmod.sousmodes.sousmode1.GestionnaireSousMode1 gestionnaireSousMode1 =
-                com.example.mysubmod.sousmodes.sousmode1.GestionnaireSousMode1.getInstance();
-
-            if (gestionnaireSousMode1.etaitJoueurDeconnecte(joueur.getName().getString())) {
-                // Le joueur a été déconnecté pendant le jeu - restaurer sa position et son état
-                com.example.mysubmod.MonSubMod.JOURNALISEUR.info("Le joueur {} a été déconnecté pendant le Sous-mode 1, restauration de l'état", joueur.getName().getString());
-                gestionnaireSousMode1.gererReconnexionJoueur(joueur);
-                return;
-            }
-        } else if (modeActuel == com.example.mysubmod.sousmodes.SousMode.SOUS_MODE_2) {
-            com.example.mysubmod.sousmodes.sousmode2.GestionnaireSousMode2 gestionnaireSousMode2 =
-                com.example.mysubmod.sousmodes.sousmode2.GestionnaireSousMode2.getInstance();
-
-            if (gestionnaireSousMode2.etaitJoueurDeconnecte(joueur.getName().getString())) {
-                // Le joueur a été déconnecté pendant le jeu - restaurer sa position et son état
-                com.example.mysubmod.MonSubMod.JOURNALISEUR.info("Le joueur {} a été déconnecté pendant le Sous-mode 2, restauration de l'état", joueur.getName().getString());
-                gestionnaireSousMode2.gererReconnexionJoueur(joueur);
-                return;
-            }
-        } else if (modeActuel == com.example.mysubmod.sousmodes.SousMode.SOUS_MODE_3) {
+        if (modeActuel == com.example.mysubmod.sousmodes.SousMode.SOUS_MODE_3) {
             com.example.mysubmod.sousmodes.sousmode3.GestionnaireSousMode3 gestionnaireSousMode3 =
                 com.example.mysubmod.sousmodes.sousmode3.GestionnaireSousMode3.getInstance();
 
@@ -615,15 +595,7 @@ public class GestionnaireAuth {
 
         // Le joueur s'authentifie pour la première fois cette session - traiter comme une nouvelle connexion
         // Appeler le gestionnaire d'événements du sous-mode approprié
-        if (modeActuel == com.example.mysubmod.sousmodes.SousMode.SOUS_MODE_1) {
-            com.example.mysubmod.sousmodes.sousmode1.GestionnaireEvenementsSousMode1.onPlayerJoin(
-                new net.minecraftforge.event.entity.player.PlayerEvent.PlayerLoggedInEvent(joueur)
-            );
-        } else if (modeActuel == com.example.mysubmod.sousmodes.SousMode.SOUS_MODE_2) {
-            com.example.mysubmod.sousmodes.sousmode2.GestionnaireEvenementsSousMode2.onPlayerJoin(
-                new net.minecraftforge.event.entity.player.PlayerEvent.PlayerLoggedInEvent(joueur)
-            );
-        } else if (modeActuel == com.example.mysubmod.sousmodes.SousMode.SOUS_MODE_3) {
+        if (modeActuel == com.example.mysubmod.sousmodes.SousMode.SOUS_MODE_3) {
             com.example.mysubmod.sousmodes.sousmode3.GestionnaireEvenementsSousMode3.onPlayerJoin(
                 new net.minecraftforge.event.entity.player.PlayerEvent.PlayerLoggedInEvent(joueur)
             );

@@ -166,8 +166,7 @@ public class GestionnaireSanteSousMode3 {
      * la spécialisation gère le multiplicateur (1.0, ou réduit sous pénalité / changement
      * de type), le soin est plafonné à la vie max. Retourne la santé restaurée.
      */
-    public float gererConsommationBonbonTypee(ServerPlayer joueur,
-                                              com.example.mysubmod.sousmodes.sousmode2.TypeRessource typeRessource) {
+    public float gererConsommationBonbonTypee(ServerPlayer joueur, TypeRessource typeRessource) {
         float santeActuelle = joueur.getHealth();
         float santeMax = joueur.getMaxHealth();
 
@@ -193,6 +192,8 @@ public class GestionnaireSanteSousMode3 {
         if (GestionnaireSousMode3.getInstance().obtenirEnregistreurDonnees() != null) {
             GestionnaireSousMode3.getInstance().obtenirEnregistreurDonnees()
                 .enregistrerChangementSante(joueur, santeActuelle, nouvelleSante);
+            GestionnaireSousMode3.getInstance().obtenirEnregistreurDonnees()
+                .enregistrerConsommationBonbon(joueur, typeRessource.name(), aPenalite, restaurationReelle);
         }
         return restaurationReelle;
     }
@@ -216,7 +217,7 @@ public class GestionnaireSanteSousMode3 {
         }
 
         if (GestionnaireSousMode3.getInstance().obtenirEnregistreurDonnees() != null) {
-            GestionnaireSousMode3.getInstance().obtenirEnregistreurDonnees().enregistrerMortJoueur(joueur);
+            GestionnaireSousMode3.getInstance().obtenirEnregistreurDonnees().enregistrerMortJoueur(joueur, "SANTE");
         }
 
         GestionnaireSousMode3.getInstance().verifierFinParElimination(joueur.server);

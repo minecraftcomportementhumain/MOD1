@@ -16,9 +16,7 @@ import java.util.function.Supplier;
 
 /**
  * Paquet client -> serveur : un admin lance la partie du Sous-mode 3 (menu N) en fournissant
- * les conditions de partie choisies via les cases à cocher. Remplace le paquet vide historique
- * pour le seul Sous-mode 3 ; les Sous-modes 1 et 2 continuent d'utiliser
- * {@link PaquetLancerPartieSousMode3}.
+ * les conditions de partie choisies via les cases à cocher.
  */
 public class PaquetLancerPartieConfigureeSousMode3 {
 

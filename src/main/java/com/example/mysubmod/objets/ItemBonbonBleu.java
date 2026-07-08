@@ -2,10 +2,7 @@ package com.example.mysubmod.objets;
 
 import com.example.mysubmod.sousmodes.SousMode;
 import com.example.mysubmod.sousmodes.GestionnaireSousModes;
-import com.example.mysubmod.sousmodes.sousmode2.GestionnaireSousMode2;
-import com.example.mysubmod.sousmodes.sousmode2.GestionnaireSanteSousMode2;
-import com.example.mysubmod.sousmodes.sousmode2.GestionnaireSpecialisation;
-import com.example.mysubmod.sousmodes.sousmode2.TypeRessource;
+import com.example.mysubmod.sousmodes.sousmode3.TypeRessource;
 import net.minecraft.network.chat.Component;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.sounds.SoundEvents;
@@ -42,43 +39,8 @@ public class ItemBonbonBleu extends Item {
         if (!level.isClientSide && player instanceof ServerPlayer joueurServeur) {
             SousMode modeActuel = GestionnaireSousModes.getInstance().obtenirModeActuel();
 
-            if (modeActuel == SousMode.SOUS_MODE_2 && GestionnaireSousMode2.getInstance().estPartieActive()) {
-                if (GestionnaireSousMode2.getInstance().estJoueurVivant(joueurServeur.getUUID())) {
-                    float vieActuelle = joueurServeur.getHealth();
-                    float vieMaximale = joueurServeur.getMaxHealth();
-
-                    // Calculer le soin réel (avec ou sans pénalité)
-                    float multiplicateur = GestionnaireSpecialisation.getInstance().obtenirMultiplicateurSanteActuel(joueurServeur.getUUID());
-                    float soinBase = 2.0f; // 1 cœur = 2 points de vie
-                    float soinReel = soinBase * multiplicateur;
-
-                    // Ne pas permettre de manger si le soin dépasserait le maximum de vie
-                    if (vieActuelle + soinReel > vieMaximale) {
-                        joueurServeur.sendSystemMessage(Component.literal("§cVous ne pouvez pas utiliser ce bonbon car le soin dépasserait votre maximum de vie"));
-                        return InteractionResultHolder.fail(pileObjets);
-                    }
-
-                    // Utiliser GestionnaireSanteSousMode2 qui gère la spécialisation et les pénalités
-                    GestionnaireSanteSousMode2.getInstance().gererConsommationBonbon(joueurServeur, TypeRessource.BONBON_BLEU);
-                    pileObjets.shrink(1);
-
-                    // Jouer le son
-                    level.playSound(null, player.getX(), player.getY(), player.getZ(),
-                        SoundEvents.PLAYER_BURP, SoundSource.PLAYERS, 0.5f, 1.0f);
-
-                    // Enregistrer la consommation
-                    if (GestionnaireSousMode2.getInstance().obtenirEnregistreurDonnees() != null) {
-                        GestionnaireSousMode2.getInstance().obtenirEnregistreurDonnees().enregistrerConsommationBonbon(joueurServeur, TypeRessource.BONBON_BLEU);
-                    }
-
-                    return InteractionResultHolder.success(pileObjets);
-                } else {
-                    joueurServeur.sendSystemMessage(Component.literal("§cVous ne pouvez pas utiliser de bonbons en tant que spectateur"));
-                    return InteractionResultHolder.fail(pileObjets);
-                }
-            }
             // Sous-mode 3 : bonbons typés (option « Spécialisation » de la config de partie)
-            else if (modeActuel == SousMode.SOUS_MODE_3
+            if (modeActuel == SousMode.SOUS_MODE_3
                 && com.example.mysubmod.sousmodes.sousmode3.GestionnaireSousMode3.getInstance().estPartieActive()) {
                 return UtilisationBonbonTypeSousMode3.utiliser(level, joueurServeur, pileObjets,
                     TypeRessource.BONBON_BLEU);
@@ -92,6 +54,6 @@ public class ItemBonbonBleu extends Item {
     public void appendHoverText(ItemStack stack, Level level, List<Component> tooltip, TooltipFlag flag) {
         tooltip.add(Component.literal("§9Bonbon Bleu (Type A)"));
         tooltip.add(Component.literal("§7Restaure §c1 cœur §7(réduit si pénalité)"));
-        tooltip.add(Component.literal("§eUtilisable en sous-modes 2 et 3"));
+        tooltip.add(Component.literal("§eUtilisable en sous-mode 3"));
     }
 }

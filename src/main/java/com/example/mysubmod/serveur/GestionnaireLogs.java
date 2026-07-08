@@ -22,10 +22,6 @@ import java.util.zip.ZipOutputStream;
 public class GestionnaireLogs {
     private static final String REPERTOIRE_BASE_LOGS = "donnees_monsubmod";
 
-    public static void envoyerListeLogs(ServerPlayer joueur) {
-        envoyerListeLogs(joueur, 1); // Par défaut Sous-mode 1 pour rétrocompatibilité
-    }
-
     public static void envoyerListeLogs(ServerPlayer joueur, int numeroSubMode) {
         List<String> dossiersLogs = obtenirDossiersLogs(numeroSubMode);
         GestionnaireReseau.INSTANCE.send(
@@ -62,10 +58,6 @@ public class GestionnaireLogs {
         dossiers.sort(Comparator.reverseOrder());
 
         return dossiers;
-    }
-
-    public static void telechargerLogs(ServerPlayer joueur, String nomDossier, boolean telechargerTout) {
-        telechargerLogs(joueur, nomDossier, telechargerTout, 1); // Par défaut Sous-mode 1 pour rétrocompatibilité
     }
 
     public static void telechargerLogs(ServerPlayer joueur, String nomDossier, boolean telechargerTout, int numeroSubMode) {
@@ -167,10 +159,6 @@ public class GestionnaireLogs {
                 }
             }
         }
-    }
-
-    public static void supprimerLogs(ServerPlayer joueur, String nomDossier, boolean supprimerTout) {
-        supprimerLogs(joueur, nomDossier, supprimerTout, 1); // Par défaut Sous-mode 1 pour rétrocompatibilité
     }
 
     public static void supprimerLogs(ServerPlayer joueur, String nomDossier, boolean supprimerTout, int numeroSubMode) {

@@ -2,9 +2,8 @@ package com.example.mysubmod.sousmodes.sousmode3;
 
 import com.example.mysubmod.MonSubMod;
 import com.example.mysubmod.reseau.GestionnaireReseau;
-import com.example.mysubmod.sousmodes.sousmode2.TypeRessource;
-import com.example.mysubmod.sousmodes.sousmode2.reseau.PaquetSyncSpecialisation;
-import com.example.mysubmod.sousmodes.sousmode2.reseau.PaquetSynchronisationPenalite;
+import com.example.mysubmod.sousmodes.sousmode3.reseau.PaquetSyncSpecialisation;
+import com.example.mysubmod.sousmodes.sousmode3.reseau.PaquetSynchronisationPenalite;
 import net.minecraft.network.chat.Component;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraftforge.network.PacketDistributor;
@@ -111,6 +110,10 @@ public class GestionnaireSpecialisationSousMode3 {
                     + "§7Consommer l'autre type de ressource activera une pénalité de "
                     + formaterTemps(dureePenaliteMs()) + "."));
             envoyerSyncSpecialisation(joueur, typeRessource);
+            if (GestionnaireSousMode3.getInstance().obtenirEnregistreurDonnees() != null) {
+                GestionnaireSousMode3.getInstance().obtenirEnregistreurDonnees()
+                    .enregistrerChangementSpecialisation(joueur, null, typeRessource.name(), 0);
+            }
             MonSubMod.JOURNALISEUR.info("Joueur {} spécialisé en {} (Sous-mode 3)",
                 joueur.getName().getString(), typeRessource);
             return 1.0f;
@@ -126,6 +129,11 @@ public class GestionnaireSpecialisationSousMode3 {
             joueur.getName().getString(), specialisationActuelle, typeRessource);
         specialisationJoueur.put(idJoueur, typeRessource);
         envoyerSyncSpecialisation(joueur, typeRessource);
+        if (GestionnaireSousMode3.getInstance().obtenirEnregistreurDonnees() != null) {
+            GestionnaireSousMode3.getInstance().obtenirEnregistreurDonnees()
+                .enregistrerChangementSpecialisation(joueur, specialisationActuelle.name(),
+                    typeRessource.name(), dureePenaliteMs());
+        }
 
         long finPenalite = System.currentTimeMillis() + dureePenaliteMs();
         tempsFinPenaliteJoueur.put(idJoueur, finPenalite);
