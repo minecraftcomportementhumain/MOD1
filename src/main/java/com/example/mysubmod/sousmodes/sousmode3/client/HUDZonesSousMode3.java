@@ -190,6 +190,12 @@ public class HUDZonesSousMode3 {
             // Sous-mode 1 : pas de bonbons non-visibles (ignorés)
             return "§e" + zone.bonbonsVisibles + " bonbon(s)";
         }
+        // Sous-mode 3 avec spécialisation (option de la config) : détail Bleu/Rouge en plus
+        // des bonbons non-visibles ; sans spécialisation, les compteurs typés restent à zéro
+        if (zone.bonbonsBleus > 0 || zone.bonbonsRouges > 0) {
+            return "§9" + zone.bonbonsBleus + " bleu(s)§7, §c" + zone.bonbonsRouges
+                + " rouge(s)§7, §d" + zone.bonbonsNonVisibles + " invis.";
+        }
         return "§e" + zone.bonbonsVisibles + " vis.§7, §d" + zone.bonbonsNonVisibles + " invis.";
     }
 

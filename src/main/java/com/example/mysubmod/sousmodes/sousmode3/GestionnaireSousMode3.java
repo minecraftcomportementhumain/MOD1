@@ -365,6 +365,12 @@ public class GestionnaireSousMode3 {
             return false;
         }
 
+        // Purger les restes d'une éventuelle phase de sélection avortée (lancement annulé faute
+        // de participants) : sans cela, des spawns de zone périmés seraient réutilisés par un
+        // lancement ultérieur sans sélection.
+        zonesChoisies.clear();
+        apparitionsParJoueur.clear();
+
         // Option « choix de la zone de départ » : la phase de sélection (30 s) remplace le
         // décompte — même déroulement que les parties sur carte des Sous-modes 1 et 2.
         if (config.selectionZoneDepart) {
