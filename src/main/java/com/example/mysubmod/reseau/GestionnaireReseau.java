@@ -565,6 +565,26 @@ public class GestionnaireReseau {
             com.example.mysubmod.cartes.reseau.PaquetProgressionChargement::traiter,
             java.util.Optional.of(NetworkDirection.PLAY_TO_CLIENT)
         );
+
+        // Lancement configuré du Sous-mode 3 (menu N avec cases à cocher) — client -> serveur
+        INSTANCE.registerMessage(
+            idPaquet++,
+            com.example.mysubmod.sousmodes.sousmode3.reseau.PaquetLancerPartieConfigureeSousMode3.class,
+            com.example.mysubmod.sousmodes.sousmode3.reseau.PaquetLancerPartieConfigureeSousMode3::encode,
+            com.example.mysubmod.sousmodes.sousmode3.reseau.PaquetLancerPartieConfigureeSousMode3::decode,
+            com.example.mysubmod.sousmodes.sousmode3.reseau.PaquetLancerPartieConfigureeSousMode3::traiter,
+            java.util.Optional.of(NetworkDirection.PLAY_TO_SERVER)
+        );
+
+        // Faits sur la carte active du Sous-mode 3 (grisage des options du menu N) — serveur -> client
+        INSTANCE.registerMessage(
+            idPaquet++,
+            com.example.mysubmod.sousmodes.sousmode3.reseau.PaquetFaitsCarteSousMode3.class,
+            com.example.mysubmod.sousmodes.sousmode3.reseau.PaquetFaitsCarteSousMode3::encode,
+            com.example.mysubmod.sousmodes.sousmode3.reseau.PaquetFaitsCarteSousMode3::decode,
+            com.example.mysubmod.sousmodes.sousmode3.reseau.PaquetFaitsCarteSousMode3::traiter,
+            java.util.Optional.of(NetworkDirection.PLAY_TO_CLIENT)
+        );
     }
 
     /**

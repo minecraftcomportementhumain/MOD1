@@ -12,15 +12,17 @@ import java.util.TimerTask;
 import java.util.UUID;
 
 /**
- * Dégradation de santé du Sous-mode 3 (reprend la base du Sous-mode 1) :
- * 1 cœur perdu toutes les 10 secondes ; les bonbons redonnent de la vie.
- * Gère aussi la mort côté serveur des joueurs déconnectés.
+ * Dégradation de santé du Sous-mode 3 (reprend la base du Sous-mode 1).
+ *
+ * <p>Le rythme, l'intensité et l'activation de la dégradation proviennent désormais de
+ * {@link ConfigPartieSousMode3} (choisie par l'admin au menu N). Par défaut : 1 point de vie
+ * perdu toutes les 10 secondes ; les bonbons redonnent de la vie.</p>
+ *
+ * <p>Gère aussi la mort côté serveur des joueurs déconnectés.</p>
  */
 public class GestionnaireSanteSousMode3 {
     private static GestionnaireSanteSousMode3 instance;
     private Timer minuterieSante;
-    private static final float PERTE_SANTE_PAR_TICK = 1.0f;
-    private static final int INTERVALLE_TICK = 10000; // 10 secondes
 
     private GestionnaireSanteSousMode3() {
     }
@@ -32,8 +34,20 @@ public class GestionnaireSanteSousMode3 {
         return instance;
     }
 
+    private static ConfigPartieSousMode3 config() {
+        return GestionnaireSousMode3.getInstance().obtenirConfig();
+    }
+
     public void demarrerDegradationSante(MinecraftServer serveur) {
-        MonSubMod.JOURNALISEUR.info("Démarrage de la dégradation de santé pour Sous-mode 3");
+        ConfigPartieSousMode3 config = config();
+        if (!config.degradationSante) {
+            MonSubMod.JOURNALISEUR.info("Dégradation de santé désactivée par la configuration (Sous-mode 3)");
+            return;
+        }
+
+        final int intervalleMs = config.intervalleDegradationSecondes * 1000;
+        MonSubMod.JOURNALISEUR.info("Démarrage de la dégradation de santé pour Sous-mode 3 (perte {} PV / {} ms)",
+            config.perteSanteParTick, intervalleMs);
 
         minuterieSante = new Timer("SousMode3-Sante", true);
         minuterieSante.scheduleAtFixedRate(new TimerTask() {
@@ -53,7 +67,7 @@ public class GestionnaireSanteSousMode3 {
                     verifierSanteJoueursDeconnectes(serveur);
                 });
             }
-        }, INTERVALLE_TICK, INTERVALLE_TICK);
+        }, intervalleMs, intervalleMs);
     }
 
     public void arreterDegradationSante() {
@@ -65,8 +79,9 @@ public class GestionnaireSanteSousMode3 {
     }
 
     private void degraderSanteJoueur(ServerPlayer joueur) {
+        float perte = config().perteSanteParTick;
         float santeActuelle = joueur.getHealth();
-        float nouvelleSante = Math.max(0.0f, santeActuelle - PERTE_SANTE_PAR_TICK);
+        float nouvelleSante = Math.max(0.0f, santeActuelle - perte);
 
         joueur.setHealth(nouvelleSante);
 
@@ -90,6 +105,14 @@ public class GestionnaireSanteSousMode3 {
      */
     private void verifierSanteJoueursDeconnectes(MinecraftServer serveur) {
         GestionnaireSousMode3 gestionnaire = GestionnaireSousMode3.getInstance();
+        ConfigPartieSousMode3 config = config();
+
+        // Réapparition autorisée : la mort n'est jamais définitive, donc inutile (et incohérent)
+        // de tuer les déconnectés côté serveur — ils réapparaîtront à la reconnexion, comme
+        // un joueur en ligne (verifierMortApresReconnexion -> reapparaitreApresMort).
+        if (config.reapparitionAutorisee) {
+            return;
+        }
 
         Map<String, GestionnaireSousMode3.InfoDeconnexion> joueursDeconnectes =
             gestionnaire.obtenirInfoJoueursDeconnectes();
@@ -99,6 +122,8 @@ public class GestionnaireSanteSousMode3 {
         if (tempsDebutJeu <= 0) {
             return;
         }
+
+        final long intervalleMs = Math.max(1L, (long) config.intervalleDegradationSecondes * 1000L);
 
         for (Map.Entry<String, GestionnaireSousMode3.InfoDeconnexion> entree : joueursDeconnectes.entrySet()) {
             String nomJoueur = entree.getKey();
@@ -113,10 +138,10 @@ public class GestionnaireSanteSousMode3 {
             }
 
             long tempsDeconnexionEffectif = Math.max(info.tempsDeconnexion, tempsDebutJeu);
-            long numeroTickALaDeconnexion = (tempsDeconnexionEffectif - tempsDebutJeu) / 10000;
-            long numeroTickMaintenant = (tempsActuel - tempsDebutJeu) / 10000;
+            long numeroTickALaDeconnexion = (tempsDeconnexionEffectif - tempsDebutJeu) / intervalleMs;
+            long numeroTickMaintenant = (tempsActuel - tempsDebutJeu) / intervalleMs;
             int ticksSanteManques = (int) (numeroTickMaintenant - numeroTickALaDeconnexion);
-            float santeActuelle = info.santeADeconnexion - (ticksSanteManques * PERTE_SANTE_PAR_TICK);
+            float santeActuelle = info.santeADeconnexion - (ticksSanteManques * config.perteSanteParTick);
 
             if (santeActuelle <= 0.0f) {
                 MonSubMod.JOURNALISEUR.info("Le joueur déconnecté {} est mort côté serveur (santé: {} -> {}, {} ticks manqués)",
@@ -129,13 +154,7 @@ public class GestionnaireSanteSousMode3 {
                     j.sendSystemMessage(Component.literal(messageMort));
                 }
 
-                if (gestionnaire.obtenirJoueursVivants().isEmpty()) {
-                    serveur.execute(() -> {
-                        for (ServerPlayer j : UtilitaireFiltreJoueurs.obtenirJoueursAuthentifies(serveur)) {
-                            j.sendSystemMessage(Component.literal("§c§lTous les joueurs sont morts !"));
-                        }
-                        gestionnaire.terminerPartie(serveur);
-                    });
+                if (gestionnaire.verifierFinParElimination(serveur)) {
                     return;
                 }
             }
@@ -143,6 +162,11 @@ public class GestionnaireSanteSousMode3 {
     }
 
     private void gererMortJoueur(ServerPlayer joueur) {
+        // Réapparition éventuelle : le joueur reste vivant, aucune conséquence.
+        if (GestionnaireSousMode3.getInstance().reapparaitreApresMort(joueur)) {
+            return;
+        }
+
         joueur.sendSystemMessage(Component.literal("§cVous êtes mort ! Téléportation vers la zone spectateur..."));
 
         GestionnaireSousMode3.getInstance().enregistrerMortJoueur(joueur.getUUID());
@@ -158,14 +182,6 @@ public class GestionnaireSanteSousMode3 {
             GestionnaireSousMode3.getInstance().obtenirEnregistreurDonnees().enregistrerMortJoueur(joueur);
         }
 
-        if (GestionnaireSousMode3.getInstance().obtenirJoueursVivants().isEmpty()) {
-            MonSubMod.JOURNALISEUR.info("Tous les joueurs sont morts - fin du jeu (Sous-mode 3)");
-            joueur.server.execute(() -> {
-                for (ServerPlayer j : UtilitaireFiltreJoueurs.obtenirJoueursAuthentifies(joueur.server)) {
-                    j.sendSystemMessage(Component.literal("§c§lTous les joueurs sont morts !"));
-                }
-                GestionnaireSousMode3.getInstance().terminerPartie(joueur.server);
-            });
-        }
+        GestionnaireSousMode3.getInstance().verifierFinParElimination(joueur.server);
     }
 }

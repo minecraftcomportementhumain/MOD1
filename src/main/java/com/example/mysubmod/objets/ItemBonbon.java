@@ -113,7 +113,12 @@ public class ItemBonbon extends Item {
                     float vieActuelle = joueurServeur.getHealth();
                     float vieMaximale = joueurServeur.getMaxHealth();
 
-                    if (vieActuelle + MONTANT_SOIN > vieMaximale) {
+                    // Par défaut, on refuse de gaspiller un bonbon qui dépasserait le maximum.
+                    // Si l'admin a coché « manger même à vie pleine », on autorise la consommation
+                    // (le soin reste plafonné au maximum dans soignerJoueur).
+                    boolean autoriserDepassement =
+                        gestionnaireSM3.obtenirConfig().mangerDepasseMax;
+                    if (!autoriserDepassement && vieActuelle + MONTANT_SOIN > vieMaximale) {
                         joueurServeur.sendSystemMessage(Component.literal("§cVous ne pouvez pas utiliser ce bonbon car il vous donnerait plus de vie que votre maximum"));
                         return InteractionResultHolder.fail(pileObjets);
                     }

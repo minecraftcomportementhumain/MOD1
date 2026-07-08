@@ -52,10 +52,23 @@ public class GestionnaireEvenementsSousMode3 {
                 event.setCanceled(true);
                 return;
             }
-            if (!GestionnaireSousModes.getInstance().estAdmin(attaquant)) {
-                event.setCanceled(true);
-                attaquant.sendSystemMessage(Component.literal("§cVous ne pouvez pas attaquer en sous-mode 3"));
+            if (GestionnaireSousModes.getInstance().estAdmin(attaquant)) {
+                return;
             }
+            GestionnaireSousMode3 gestionnaire = GestionnaireSousMode3.getInstance();
+            if (gestionnaire.estPartieActive() && gestionnaire.estJoueurVivant(attaquant.getUUID())) {
+                if (event.getEntity() instanceof ServerPlayer cible) {
+                    // Cible joueur : autorisée seulement si le PvP est activé et la cible vivante.
+                    if (gestionnaire.obtenirConfig().pvp && gestionnaire.estJoueurVivant(cible.getUUID())) {
+                        return;
+                    }
+                } else {
+                    // Cible non-joueur (monstre hostile...) : autorisée, pour pouvoir se défendre.
+                    return;
+                }
+            }
+            event.setCanceled(true);
+            attaquant.sendSystemMessage(Component.literal("§cVous ne pouvez pas attaquer en sous-mode 3"));
         }
     }
 
@@ -127,6 +140,14 @@ public class GestionnaireEvenementsSousMode3 {
             return;
         }
 
+        // Destruction de blocs désactivée par la config : les blocs normaux sont incassables
+        // (les blocs bonbons non-visibles, gérés plus haut, restent toujours minables).
+        if (!gestionnaire.obtenirConfig().destructionBloc) {
+            event.setCanceled(true);
+            joueur.sendSystemMessage(Component.literal("§cLa destruction de blocs est désactivée dans cette partie"));
+            return;
+        }
+
         // Bloc normal de la carte : ajouté tel quel à l'inventaire du joueur (minable et replaçable indéfiniment)
         event.setCanceled(true);
         Block bloc = etat.getBlock();
@@ -185,6 +206,13 @@ public class GestionnaireEvenementsSousMode3 {
         }
 
         BlockPos pos = event.getPos();
+
+        // Placement de blocs désactivé par la config
+        if (!gestionnaire.obtenirConfig().placementBloc) {
+            event.setCanceled(true);
+            joueur.sendSystemMessage(Component.literal("§cLe placement de blocs est désactivé dans cette partie"));
+            return;
+        }
 
         // Un bloc peut être replacé n'importe où à l'intérieur de la cage, y compris
         // dans l'eau et par-dessus un bloc bonbon non-visible
@@ -311,6 +339,11 @@ public class GestionnaireEvenementsSousMode3 {
             return;
         }
 
+        // Crafting autorisé par la config : laisser la fabrication vanilla suivre son cours.
+        if (GestionnaireSousMode3.getInstance().obtenirConfig().crafting) {
+            return;
+        }
+
         // Copier les ingrédients encore présents dans la grille (1 par case non vide)
         java.util.List<ItemStack> ingredients = new java.util.ArrayList<>();
         for (int i = 0; i < event.getInventory().getContainerSize(); i++) {
@@ -396,6 +429,11 @@ public class GestionnaireEvenementsSousMode3 {
             return;
         }
 
+        // Jet d'objets autorisé par la config : laisser tomber l'objet normalement.
+        if (GestionnaireSousMode3.getInstance().obtenirConfig().dropObjet) {
+            return;
+        }
+
         // Les joueurs ne peuvent pas jeter d'objets (bonbons ou blocs minés)
         event.setCanceled(true);
         ItemStack objetJete = event.getEntity().getItem();
@@ -420,6 +458,10 @@ public class GestionnaireEvenementsSousMode3 {
 
             GestionnaireSousMode3 gestionnaire = GestionnaireSousMode3.getInstance();
 
+            // Purger une vie max personnalisée persistée dans le NBT (partie précédente) ;
+            // la reconnexion en partie réapplique ensuite la valeur configurée.
+            gestionnaire.reinitialiserSanteMaxJoueur(joueur);
+
             // Envoyer les zones actuelles au joueur (HUD) — flèche réinitialisée à la reconnexion.
             // Seulement une fois la partie lancée : avant, les compteurs ne reflètent rien et
             // les joueurs déjà connectés n'ont pas ce HUD (le lancement l'envoie à tous).
@@ -442,6 +484,7 @@ public class GestionnaireEvenementsSousMode3 {
                 if (GestionnaireSousModes.getInstance().estAdmin(joueur)) {
                     gestionnaire.teleporterVersSpectateur(joueur);
                     if (gestionnaire.estPhaseAttente()) {
+                        gestionnaire.envoyerFaitsCarteAJoueur(joueur);
                         joueur.sendSystemMessage(Component.literal("§6Appuyez sur N pour ouvrir le menu de lancement de partie"));
                     }
                 } else if (gestionnaire.estPhaseAttente()) {
@@ -454,6 +497,10 @@ public class GestionnaireEvenementsSousMode3 {
                 }
             }
         } else {
+            // Purger une vie max personnalisée persistée dans le NBT d'une partie SM3 précédente
+            // (le joueur s'était déconnecté avant la restauration de fin de partie)
+            GestionnaireSousMode3.getInstance().reinitialiserSanteMaxJoueur(joueur);
+
             // Effacer le HUD Sous-mode 3 pour les joueurs qui se connectent dans un autre mode
             com.example.mysubmod.reseau.GestionnaireReseau.INSTANCE.send(
                 net.minecraftforge.network.PacketDistributor.PLAYER.with(() -> joueur),
@@ -498,15 +545,17 @@ public class GestionnaireEvenementsSousMode3 {
         }
 
         GestionnaireSousMode3 gestionnaire = GestionnaireSousMode3.getInstance();
+        ConfigPartieSousMode3 config = gestionnaire.obtenirConfig();
 
-        // Désactiver le boost de sprint (comme au Sous-mode 1)
         for (ServerPlayer joueur : UtilitaireFiltreJoueurs.obtenirJoueursAuthentifies(event.getServer())) {
+            // Boost de sprint : neutralisé par défaut (comme au Sous-mode 1), laissé actif si
+            // l'option « bonus de vitesse au sprint » est cochée.
             net.minecraft.world.entity.ai.attributes.AttributeInstance vitesseDeplacement =
                 joueur.getAttribute(net.minecraft.world.entity.ai.attributes.Attributes.MOVEMENT_SPEED);
             if (vitesseDeplacement != null) {
                 java.util.UUID uuidModificateurSprint = java.util.UUID.fromString("662A6B8D-DA3E-4C1C-8813-96EA6097278D");
                 vitesseDeplacement.removeModifier(uuidModificateurSprint);
-                if (joueur.isSprinting()) {
+                if (!config.bonusSprint && joueur.isSprinting()) {
                     net.minecraft.world.entity.ai.attributes.AttributeModifier modificateurPasDeSprint =
                         new net.minecraft.world.entity.ai.attributes.AttributeModifier(
                             uuidModificateurSprint, "No sprint boost", -0.003,
@@ -516,16 +565,25 @@ public class GestionnaireEvenementsSousMode3 {
                     }
                 }
             }
+
+            // Faim désactivée : garder la nourriture au maximum pour les joueurs vivants.
+            if (!config.faim && gestionnaire.estJoueurVivant(joueur.getUUID())) {
+                if (joueur.getFoodData().getFoodLevel() < 20) {
+                    joueur.getFoodData().setFoodLevel(20);
+                }
+            }
         }
 
-        // Jour permanent et temps clair
+        // Jour permanent et temps clair (chacun conditionné par la config)
         ServerLevel overworld = event.getServer().getLevel(ServerLevel.OVERWORLD);
         if (overworld != null) {
-            long tempsActuel = overworld.getDayTime() % 24000;
-            if (tempsActuel > 12000) {
-                overworld.setDayTime(6000);
+            if (config.jourPermanent) {
+                long tempsActuel = overworld.getDayTime() % 24000;
+                if (tempsActuel > 12000) {
+                    overworld.setDayTime(6000);
+                }
             }
-            if (overworld.isRaining() || overworld.isThundering()) {
+            if (!config.pluie && (overworld.isRaining() || overworld.isThundering())) {
                 overworld.setWeatherParameters(6000, 0, false, false);
             }
         }
@@ -607,15 +665,53 @@ public class GestionnaireEvenementsSousMode3 {
             return;
         }
 
-        // Bloquer les créatures (monstres, animaux...) dans l'aire de la carte et près de la plateforme
+        // Bloquer les créatures (monstres, animaux...) dans l'aire de la carte et près de la plateforme.
+        // Exception : si « monstres hostiles » est coché, les monstres hostiles sont autorisés dans
+        // l'aire de jeu (jamais près de la plateforme spectateur).
         if (event.getEntity() instanceof net.minecraft.world.entity.Mob) {
             BlockPos pos = event.getEntity().blockPosition();
             BlockPos plateforme = gestionnaire.obtenirPlateformeSpectateur();
             boolean presPlateforme = Math.abs(pos.getX() - plateforme.getX()) <= 20
                 && Math.abs(pos.getZ() - plateforme.getZ()) <= 20;
-            if (gestionnaire.estDansAireCarte(pos) || presPlateforme) {
+            if (presPlateforme) {
                 event.setCanceled(true);
+            } else if (gestionnaire.estDansAireCarte(pos)) {
+                boolean monstreHostile = event.getEntity() instanceof net.minecraft.world.entity.monster.Enemy;
+                boolean autoriser = gestionnaire.obtenirConfig().monstresHostiles && monstreHostile;
+                if (!autoriser) {
+                    event.setCanceled(true);
+                }
             }
+        }
+    }
+
+    // ==================== Mort d'un participant (chute, PvP, faim, feu...) ====================
+
+    /**
+     * Intercepte la mort vanilla d'un participant (dégâts de chute, PvP, faim, feu, etc.) et la
+     * route vers la logique du sous-mode (réapparition ou spectateur définitif + fin éventuelle),
+     * pour éviter l'écran de mort et la réapparition au lit. La dégradation de santé, qui gère
+     * elle-même sa mort, n'appelle jamais {@code die()} et n'est donc pas concernée.
+     */
+    @SubscribeEvent(priority = net.minecraftforge.eventbus.api.EventPriority.HIGHEST)
+    public static void onEntityDeath(net.minecraftforge.event.entity.living.LivingDeathEvent event) {
+        if (!estModeActif()) {
+            return;
+        }
+        if (!(event.getEntity() instanceof ServerPlayer joueur)) {
+            return;
+        }
+        GestionnaireSousMode3 gestionnaire = GestionnaireSousMode3.getInstance();
+        if (gestionnaire.gererMortParticipant(joueur)) {
+            event.setCanceled(true);
+            return;
+        }
+        // Fenêtre entre la fin de partie et la désactivation (partie inactive mais joueurs
+        // encore suivis comme vivants) : bloquer la mort vanilla et resoigner sur place,
+        // sinon le joueur resterait figé à 0 PV (la mort annulée n'est pas prise en charge).
+        if (gestionnaire.estJoueurVivant(joueur.getUUID())) {
+            event.setCanceled(true);
+            joueur.setHealth(joueur.getMaxHealth());
         }
     }
 }

@@ -75,7 +75,7 @@ public class GestionnaireEvenementsClient {
                     if (partieSurCarte) {
                         // Partie sur carte : pas de sélection de fichier de spawn.
                         // Admins : bouton de lancement ; joueurs : ciblage de zone (flèche).
-                        gererToucheNPartieSurCarte(mc,
+                        gererToucheNPartieSurCarte(mc, SousMode.SOUS_MODE_1,
                             com.example.mysubmod.sousmodes.sousmode1.client.MinuterieJeuClient.estActif(),
                             com.example.mysubmod.sousmodes.sousmode1.client.MinuterieJeuClient.partieEstTerminee());
                     } else if (com.example.mysubmod.sousmodes.sousmode1.client.MinuterieJeuClient.partieEstTerminee()) {
@@ -85,7 +85,7 @@ public class GestionnaireEvenementsClient {
                     }
                 } else if (modeActuel == SousMode.SOUS_MODE_2) {
                     if (partieSurCarte) {
-                        gererToucheNPartieSurCarte(mc,
+                        gererToucheNPartieSurCarte(mc, SousMode.SOUS_MODE_2,
                             com.example.mysubmod.sousmodes.sousmode2.client.MinuterieJeuClient.estActif(),
                             com.example.mysubmod.sousmodes.sousmode2.client.MinuterieJeuClient.partieEstTerminee());
                     } else if (com.example.mysubmod.sousmodes.sousmode2.client.MinuterieJeuClient.partieEstTerminee()) {
@@ -97,7 +97,7 @@ public class GestionnaireEvenementsClient {
                     // Sous-mode 3 : pas de sélection de fichier de spawn dans le menu N.
                     // Admins : uniquement le bouton de lancement de partie.
                     // Joueurs : sélection d'une zone pour la flèche de navigation.
-                    gererToucheNPartieSurCarte(mc,
+                    gererToucheNPartieSurCarte(mc, SousMode.SOUS_MODE_3,
                         com.example.mysubmod.sousmodes.sousmode3.client.MinuterieJeuClientSousMode3.estActif(),
                         com.example.mysubmod.sousmodes.sousmode3.client.MinuterieJeuClientSousMode3.partieEstTerminee());
                 }
@@ -110,11 +110,15 @@ public class GestionnaireEvenementsClient {
      * admins avant le lancement -> bouton de lancement de partie ;
      * joueurs pendant la partie -> ciblage d'une zone du HUD (flèche de navigation).
      */
-    private static void gererToucheNPartieSurCarte(Minecraft mc, boolean minuterieActive, boolean partieTerminee) {
+    private static void gererToucheNPartieSurCarte(Minecraft mc, SousMode mode, boolean minuterieActive, boolean partieTerminee) {
         if (GestionnaireSubModeClient.estAdmin()) {
             if (minuterieActive || partieTerminee) {
                 mc.player.sendSystemMessage(net.minecraft.network.chat.Component.literal("§cLa partie est déjà lancée"));
+            } else if (mode == SousMode.SOUS_MODE_3) {
+                // Sous-mode 3 : menu N enrichi avec les conditions de partie (cases à cocher).
+                mc.setScreen(new com.example.mysubmod.sousmodes.sousmode3.client.EcranConfigurationPartieSousMode3());
             } else {
+                // Sous-modes 1 et 2 sur carte : menu N historique (simple bouton de lancement).
                 mc.setScreen(new com.example.mysubmod.sousmodes.sousmode3.client.EcranLancementPartieSousMode3());
             }
         } else if (com.example.mysubmod.sousmodes.sousmode3.client.HUDZonesSousMode3.estActif()) {

@@ -33,10 +33,22 @@ public class GestionnaireEvenementsServeur {
      */
     @SubscribeEvent
     public static void onLivingFall(net.minecraftforge.event.entity.living.LivingFallEvent event) {
-        if (event.getEntity() instanceof ServerPlayer) {
-            event.setDamageMultiplier(0.0f);
-            event.setCanceled(true);
+        if (!(event.getEntity() instanceof ServerPlayer joueur)) {
+            return;
         }
+        // Sous-mode 3 : les dégâts de chute sont réactivables via la config de partie (menu N).
+        // Pour un participant vivant avec l'option cochée, on laisse la chute vanilla s'appliquer.
+        if (GestionnaireSousModes.getInstance().obtenirModeActuel()
+            == com.example.mysubmod.sousmodes.SousMode.SOUS_MODE_3) {
+            com.example.mysubmod.sousmodes.sousmode3.GestionnaireSousMode3 sm3 =
+                com.example.mysubmod.sousmodes.sousmode3.GestionnaireSousMode3.getInstance();
+            if (sm3.estPartieActive() && sm3.obtenirConfig().degatsChute
+                && sm3.estJoueurVivant(joueur.getUUID())) {
+                return;
+            }
+        }
+        event.setDamageMultiplier(0.0f);
+        event.setCanceled(true);
     }
 
     /**

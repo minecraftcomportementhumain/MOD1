@@ -3,6 +3,8 @@ package com.example.mysubmod.sousmodes.sousmode3;
 import com.example.mysubmod.MonSubMod;
 import com.example.mysubmod.cartes.CarteDonnees;
 import com.example.mysubmod.cartes.GestionnaireCartes;
+import com.example.mysubmod.cartes.TypeElementCarte;
+import com.example.mysubmod.cartes.ZoneCarte;
 import com.example.mysubmod.cartes.jeu.PiloteChargementCarte;
 import com.example.mysubmod.reseau.GestionnaireReseau;
 import com.example.mysubmod.sousmodes.GestionnaireSousModes;
@@ -47,8 +49,6 @@ import java.util.concurrent.ConcurrentHashMap;
 public class GestionnaireSousMode3 {
     private static GestionnaireSousMode3 instance;
 
-    private static final int TEMPS_PARTIE_MINUTES = 15;
-    private static final int DECOMPTE_LANCEMENT_SECONDES = 10;
 
     // Informations de déconnexion (accès typé pour le gestionnaire de santé)
     public static class InfoDeconnexion {
@@ -101,6 +101,12 @@ public class GestionnaireSousMode3 {
     private Timer minuteurDecompte;
     private EnregistreurDonneesSousMode3 enregistreurDonnees;
 
+    /** Conditions de partie choisies par l'admin au menu N (défauts = comportement historique). */
+    private ConfigPartieSousMode3 config = new ConfigPartieSousMode3();
+    /** Valeurs de gamerules sauvegardées avant application de la config, à restaurer à la fin (null = non modifié). */
+    private Boolean gameruleDegatsChuteOrigine;
+    private Boolean gameruleRegenOrigine;
+
     private final BlockPos plateformeSpectateur = new BlockPos(0, 150, 0);
 
     private GestionnaireSousMode3() {
@@ -111,6 +117,105 @@ public class GestionnaireSousMode3 {
             instance = new GestionnaireSousMode3();
         }
         return instance;
+    }
+
+    // ==================== Configuration de partie (menu N) ====================
+
+    public ConfigPartieSousMode3 obtenirConfig() {
+        return config;
+    }
+
+    /**
+     * Enregistre la config choisie par l'admin, juste avant le lancement. Applique aussi
+     * les contraintes non négociables imposées par la carte (ex. : la destruction de blocs
+     * reste obligatoire tant que la carte cache des bonbons non-visibles).
+     */
+    public void definirConfig(ConfigPartieSousMode3 nouvelleConfig) {
+        this.config = (nouvelleConfig != null) ? nouvelleConfig : new ConfigPartieSousMode3();
+        if (carteABonbonsNonVisibles()) {
+            this.config.destructionBloc = true;
+        }
+    }
+
+    /** Vrai si la carte active contient au moins un bonbon non-visible (à miner). */
+    public boolean carteABonbonsNonVisibles() {
+        return carte != null && carte.compterBonbonsNonVisiblesInterieur() > 0;
+    }
+
+    /** Vrai si tous les bonbons visibles de la carte sont typés Bleu/Rouge (prérequis de la spécialisation). */
+    public boolean carteABonbonsTypes() {
+        if (carte == null) {
+            return false;
+        }
+        int total = carte.compterBonbonsVisiblesInterieur();
+        int standard = carte.compterBonbonsVisiblesStandardInterieur();
+        return total > 0 && standard == 0;
+    }
+
+    /** Vrai si la carte possède au moins une zone de type Île (prérequis du choix de zone de départ). */
+    public boolean carteAZonesIle() {
+        if (carte == null) {
+            return false;
+        }
+        for (ZoneCarte zone : carte.zones) {
+            if (zone.type == TypeElementCarte.ILE) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /** Transmet à un admin les faits de la carte active (grisage des options du menu N). */
+    public void envoyerFaitsCarteAJoueur(ServerPlayer admin) {
+        GestionnaireReseau.INSTANCE.send(
+            PacketDistributor.PLAYER.with(() -> admin),
+            new com.example.mysubmod.sousmodes.sousmode3.reseau.PaquetFaitsCarteSousMode3(
+                carteABonbonsNonVisibles(), carteABonbonsTypes(), carteAZonesIle()));
+    }
+
+    /**
+     * Contrôle les options dépendantes de la carte. Retourne la liste des incompatibilités
+     * (vide si la config est applicable à la carte active).
+     */
+    public java.util.List<String> validerConfigContreCarte(ConfigPartieSousMode3 c) {
+        java.util.List<String> problemes = new ArrayList<>();
+        if (c.specialisation && !carteABonbonsTypes()) {
+            problemes.add("Spécialisation Bleu/Rouge : la carte n'a pas de bonbons typés.");
+        }
+        if (c.selectionZoneDepart && !carteAZonesIle()) {
+            problemes.add("Choix de zone de départ : la carte n'a aucune zone Île.");
+        }
+        return problemes;
+    }
+
+    /** Sauvegarde puis applique les gamerules pilotées par la config (chute, régénération). */
+    private void appliquerReglagesMonde(ServerLevel monde) {
+        if (monde == null) {
+            return;
+        }
+        net.minecraft.world.level.GameRules regles = monde.getGameRules();
+        MinecraftServer serveur = monde.getServer();
+        gameruleDegatsChuteOrigine = regles.getBoolean(net.minecraft.world.level.GameRules.RULE_FALL_DAMAGE);
+        gameruleRegenOrigine = regles.getBoolean(net.minecraft.world.level.GameRules.RULE_NATURAL_REGENERATION);
+        regles.getRule(net.minecraft.world.level.GameRules.RULE_FALL_DAMAGE).set(config.degatsChute, serveur);
+        regles.getRule(net.minecraft.world.level.GameRules.RULE_NATURAL_REGENERATION).set(config.regenerationNaturelle, serveur);
+    }
+
+    /** Restaure les gamerules à leur valeur d'avant la partie (idempotent). */
+    private void restaurerReglagesMonde(ServerLevel monde) {
+        if (monde == null) {
+            return;
+        }
+        net.minecraft.world.level.GameRules regles = monde.getGameRules();
+        MinecraftServer serveur = monde.getServer();
+        if (gameruleDegatsChuteOrigine != null) {
+            regles.getRule(net.minecraft.world.level.GameRules.RULE_FALL_DAMAGE).set(gameruleDegatsChuteOrigine, serveur);
+            gameruleDegatsChuteOrigine = null;
+        }
+        if (gameruleRegenOrigine != null) {
+            regles.getRule(net.minecraft.world.level.GameRules.RULE_NATURAL_REGENERATION).set(gameruleRegenOrigine, serveur);
+            gameruleRegenOrigine = null;
+        }
     }
 
     // ==================== Activation ====================
@@ -208,6 +313,7 @@ public class GestionnaireSousMode3 {
         diffuserMessage(serveur, "§eCarte « " + carte.nom + " » chargée. En attente du lancement de la partie...");
         for (ServerPlayer joueur : UtilitaireFiltreJoueurs.obtenirJoueursAuthentifies(serveur)) {
             if (GestionnaireSousModes.getInstance().estAdmin(joueur)) {
+                envoyerFaitsCarteAJoueur(joueur);
                 joueur.sendSystemMessage(Component.literal("§6Appuyez sur N pour ouvrir le menu de lancement de partie"));
             }
         }
@@ -247,11 +353,11 @@ public class GestionnaireSousMode3 {
 
         decompteEnCours = true;
         MonSubMod.JOURNALISEUR.info("Lancement de la partie Sous-mode 3 par {} (décompte de {} secondes)",
-            admin != null ? admin.getName().getString() : "SERVEUR", DECOMPTE_LANCEMENT_SECONDES);
+            admin != null ? admin.getName().getString() : "SERVEUR", config.decompteSecondes);
 
         minuteurDecompte = new Timer("SousMode3-Decompte", true);
         minuteurDecompte.scheduleAtFixedRate(new TimerTask() {
-            private int secondesRestantes = DECOMPTE_LANCEMENT_SECONDES;
+            private int secondesRestantes = config.decompteSecondes;
 
             @Override
             public void run() {
@@ -306,6 +412,15 @@ public class GestionnaireSousMode3 {
         ServerLevel monde = serveur.getLevel(ServerLevel.OVERWORLD);
         BlockPos apparition = obtenirPointApparition();
 
+        // Appliquer les gamerules pilotées par la config (chute, régénération naturelle).
+        appliquerReglagesMonde(monde);
+
+        // Pluie demandée : la déclencher tout de suite (le tick cesse de dégager le ciel).
+        // Sans cela l'option n'aurait d'effet qu'au hasard du cycle météo vanilla.
+        if (config.pluie && monde != null) {
+            monde.setWeatherParameters(0, 20 * 60 * 30, true, false); // 30 minutes de pluie
+        }
+
         // Téléporter les joueurs vers le point d'apparition défini dans la carte
         for (ServerPlayer joueur : UtilitaireFiltreJoueurs.obtenirJoueursAuthentifies(serveur)) {
             if (GestionnaireSousModes.getInstance().estAdmin(joueur)) {
@@ -315,6 +430,8 @@ public class GestionnaireSousMode3 {
             joueursVivants.add(joueur.getUUID());
             joueursSpectateurs.remove(joueur.getUUID());
             nomsJoueurs.put(joueur.getUUID(), joueur.getName().getString());
+
+            appliquerSanteMax(joueur);
 
             if (monde != null && apparition != null) {
                 teleportationSecurisee(joueur, monde,
@@ -328,9 +445,11 @@ public class GestionnaireSousMode3 {
         // Réinitialiser la santé et la faim
         reinitialiserSanteTousJoueurs(serveur);
 
-        // Minuterie de partie et dégradation de santé (base du Sous-mode 1)
-        minuteurPartie = new MinuterieJeu(TEMPS_PARTIE_MINUTES, serveur);
-        minuteurPartie.demarrer();
+        // Minuterie de partie (sauf en survie infinie) et dégradation de santé (base du Sous-mode 1)
+        if (!config.sansLimiteTemps) {
+            minuteurPartie = new MinuterieJeu(config.dureePartieMinutes, serveur);
+            minuteurPartie.demarrer();
+        }
         GestionnaireSanteSousMode3.getInstance().demarrerDegradationSante(serveur);
 
         // HUD des zones pour tous les joueurs
@@ -339,7 +458,11 @@ public class GestionnaireSousMode3 {
         // Apparitions initiales différées (délai configuré par bloc, depuis le début de partie)
         GestionnaireBonbonsSousMode3.obtenirInstance().planifierApparitionsInitiales();
 
-        diffuserMessage(serveur, "§aLa partie commence ! Survivez " + TEMPS_PARTIE_MINUTES + " minutes !");
+        if (config.sansLimiteTemps) {
+            diffuserMessage(serveur, "§aLa partie commence ! Survivez le plus longtemps possible !");
+        } else {
+            diffuserMessage(serveur, "§aLa partie commence ! Survivez " + config.dureePartieMinutes + " minutes !");
+        }
         diffuserMessage(serveur, "§7Minez les blocs de la carte pour trouver les bonbons non-visibles !");
     }
 
@@ -427,6 +550,14 @@ public class GestionnaireSousMode3 {
                 MonSubMod.JOURNALISEUR.error("Erreur lors de l'arrêt du gestionnaire de bonbons", e);
             }
 
+            // Restaurer les réglages serveur-wide pilotés par la config (gamerules, santé max)
+            try {
+                restaurerReglagesMonde(serveur.getLevel(ServerLevel.OVERWORLD));
+                restaurerSanteMaxTousJoueurs(serveur);
+            } catch (Exception e) {
+                MonSubMod.JOURNALISEUR.error("Erreur lors de la restauration des réglages du monde", e);
+            }
+
         } finally {
             partieActive = false;
             phaseAttente = false;
@@ -447,6 +578,8 @@ public class GestionnaireSousMode3 {
             nomsJoueurs.clear();
             dernieresPositionsValides.clear();
             evenementsJournalisationEnAttente.clear();
+            // Remettre la config par défaut pour la prochaine partie
+            config = new ConfigPartieSousMode3();
 
             MonSubMod.JOURNALISEUR.info("Désactivation du SousMode3 terminée");
         }
@@ -572,7 +705,11 @@ public class GestionnaireSousMode3 {
             if (e1.estVivant) {
                 return Integer.compare(e2.nombreBonbons, e1.nombreBonbons);
             }
-            return Long.compare(e2.tempsSurvieMs, e1.tempsSurvieMs);
+            // Éliminés : par temps de survie (défaut) ou par bonbons, selon la config.
+            if (config.classementParSurvie) {
+                return Long.compare(e2.tempsSurvieMs, e1.tempsSurvieMs);
+            }
+            return Integer.compare(e2.nombreBonbons, e1.nombreBonbons);
         });
 
         for (ServerPlayer joueur : UtilitaireFiltreJoueurs.obtenirJoueursAuthentifies(serveur)) {
@@ -900,15 +1037,17 @@ public class GestionnaireSousMode3 {
         long tempsActuel = System.currentTimeMillis();
 
         // Pénalité de santé : ticks de dégradation manqués pendant la déconnexion
+        // (aucune pénalité si la dégradation de la santé est désactivée par la config)
         int ticksSanteManques = 0;
         float perteSante = 0.0f;
-        if (partieActive && heureDebutPartie > 0) {
+        if (partieActive && heureDebutPartie > 0 && config.degradationSante) {
+            long intervalleMs = Math.max(1L, (long) config.intervalleDegradationSecondes * 1000L);
             long tempsDeconnexionEffectif = Math.max(tempsDeconnexion, heureDebutPartie);
-            long numeroTickADeconnexion = (tempsDeconnexionEffectif - heureDebutPartie) / 10000;
-            long numeroTickAReconnexion = (tempsActuel - heureDebutPartie) / 10000;
+            long numeroTickADeconnexion = (tempsDeconnexionEffectif - heureDebutPartie) / intervalleMs;
+            long numeroTickAReconnexion = (tempsActuel - heureDebutPartie) / intervalleMs;
             ticksSanteManques = (int) (numeroTickAReconnexion - numeroTickADeconnexion);
             if (ticksSanteManques > 0) {
-                perteSante = ticksSanteManques * 1.0f;
+                perteSante = ticksSanteManques * config.perteSanteParTick;
             }
         }
 
@@ -940,10 +1079,11 @@ public class GestionnaireSousMode3 {
                     apparition.getX() + 0.5, apparition.getY(), apparition.getZ() + 0.5);
             }
             joueur.setGameMode(GameType.SURVIVAL);
+            appliquerSanteMax(joueur);
 
             // Santé pleine puis pénalité pour le temps manqué depuis le début de la partie
             joueur.setHealth(joueur.getMaxHealth());
-            joueur.getFoodData().setFoodLevel(10);
+            joueur.getFoodData().setFoodLevel(config.faim ? 10 : 20);
             joueur.getFoodData().setSaturation(5.0f);
             float nouvelleSante = Math.max(0.5f, joueur.getMaxHealth() - perteSante);
             joueur.setHealth(nouvelleSante);
@@ -960,6 +1100,10 @@ public class GestionnaireSousMode3 {
 
         if (joueursVivants.contains(nouveauUUID)) {
             boolean deconnecteAvantDebutPartie = heureDebutPartie > 0 && tempsDeconnexion < heureDebutPartie;
+
+            if (partieActive) {
+                appliquerSanteMax(joueur); // le nouvel entity du joueur repart avec l'attribut vanilla
+            }
 
             if (monde != null) {
                 if (deconnecteAvantDebutPartie) {
@@ -986,7 +1130,7 @@ public class GestionnaireSousMode3 {
             float santeActuelle = joueur.getHealth();
             if (deconnecteAvantDebutPartie) {
                 joueur.setHealth(joueur.getMaxHealth());
-                joueur.getFoodData().setFoodLevel(10);
+                joueur.getFoodData().setFoodLevel(config.faim ? 10 : 20);
                 joueur.getFoodData().setSaturation(5.0f);
                 santeActuelle = joueur.getMaxHealth();
             }
@@ -1016,6 +1160,9 @@ public class GestionnaireSousMode3 {
         if (nouvelleSante > 0.5f) {
             return;
         }
+        if (reapparaitreApresMort(joueur)) {
+            return;
+        }
         joueur.sendSystemMessage(Component.literal("§cVous êtes mort pendant votre déconnexion !"));
         enregistrerMortJoueur(joueur.getUUID());
         teleporterVersSpectateur(joueur);
@@ -1026,14 +1173,7 @@ public class GestionnaireSousMode3 {
             for (ServerPlayer j : UtilitaireFiltreJoueurs.obtenirJoueursAuthentifies(serveur)) {
                 j.sendSystemMessage(Component.literal(messageMort));
             }
-            if (obtenirJoueursVivants().isEmpty()) {
-                serveur.execute(() -> {
-                    for (ServerPlayer j : UtilitaireFiltreJoueurs.obtenirJoueursAuthentifies(serveur)) {
-                        j.sendSystemMessage(Component.literal("§c§lTous les joueurs sont morts !"));
-                    }
-                    terminerPartie(serveur);
-                });
-            }
+            serveur.execute(() -> verifierFinParElimination(serveur));
         }
     }
 
@@ -1079,9 +1219,119 @@ public class GestionnaireSousMode3 {
                 continue;
             }
             joueur.setHealth(joueur.getMaxHealth());
-            joueur.getFoodData().setFoodLevel(10);
+            joueur.getFoodData().setFoodLevel(config.faim ? 10 : 20);
             joueur.getFoodData().setSaturation(5.0f);
         }
+    }
+
+    /** Applique la santé maximale configurée (attribut) au joueur ; sans effet si la valeur est 20 (défaut). */
+    private void appliquerSanteMax(ServerPlayer joueur) {
+        net.minecraft.world.entity.ai.attributes.AttributeInstance attribut =
+            joueur.getAttribute(net.minecraft.world.entity.ai.attributes.Attributes.MAX_HEALTH);
+        if (attribut != null && attribut.getBaseValue() != config.santeMaxPoints) {
+            attribut.setBaseValue(config.santeMaxPoints);
+        }
+    }
+
+    /** Remet la santé maximale vanilla (20) à tous les joueurs connectés. Appelé au nettoyage. */
+    private void restaurerSanteMaxTousJoueurs(MinecraftServer serveur) {
+        for (ServerPlayer joueur : UtilitaireFiltreJoueurs.obtenirJoueursAuthentifies(serveur)) {
+            reinitialiserSanteMaxJoueur(joueur);
+        }
+    }
+
+    /**
+     * Remet la santé maximale vanilla (20) d'un joueur si un attribut modifié a persisté.
+     * L'attribut MAX_HEALTH est sauvegardé dans le NBT du joueur : un participant déconnecté
+     * pendant une partie à vie max personnalisée le conserverait sinon indéfiniment.
+     * Appelé à chaque connexion ; la reconnexion en partie réapplique ensuite la valeur configurée.
+     */
+    public void reinitialiserSanteMaxJoueur(ServerPlayer joueur) {
+        net.minecraft.world.entity.ai.attributes.AttributeInstance attribut =
+            joueur.getAttribute(net.minecraft.world.entity.ai.attributes.Attributes.MAX_HEALTH);
+        if (attribut != null && attribut.getBaseValue() != 20.0) {
+            attribut.setBaseValue(20.0);
+            if (joueur.getHealth() > 20.0f) {
+                joueur.setHealth(20.0f);
+            }
+        }
+    }
+
+    /**
+     * À la mort d'un joueur : si la config autorise la réapparition, le joueur renaît au point
+     * de départ avec la santé pleine et reste vivant. Retourne {@code true} dans ce cas ; sinon
+     * {@code false} (l'appelant applique le passage en spectateur définitif).
+     */
+    public boolean reapparaitreApresMort(ServerPlayer joueur) {
+        if (!config.reapparitionAutorisee || !partieActive) {
+            return false;
+        }
+        MinecraftServer serveur = joueur.getServer();
+        ServerLevel monde = serveur != null ? serveur.getLevel(ServerLevel.OVERWORLD) : null;
+        BlockPos apparition = obtenirPointApparition();
+        if (monde != null && apparition != null) {
+            teleportationSecurisee(joueur, monde,
+                apparition.getX() + 0.5, apparition.getY(), apparition.getZ() + 0.5);
+            dernieresPositionsValides.put(joueur.getUUID(), new double[]{
+                apparition.getX() + 0.5, apparition.getY(), apparition.getZ() + 0.5, 0, 0});
+        }
+        joueur.setGameMode(GameType.SURVIVAL);
+        joueur.setHealth(joueur.getMaxHealth());
+        joueur.getFoodData().setFoodLevel(config.faim ? 10 : 20);
+        joueur.getFoodData().setSaturation(5.0f);
+        joueur.sendSystemMessage(Component.literal("§eVous êtes mort... mais vous réapparaissez au point de départ !"));
+        return true;
+    }
+
+    /**
+     * Vérifie les conditions de fin par élimination et termine la partie le cas échéant.
+     * 0 survivant → fin ; 1 survivant → fin si l'option « dernier survivant » est active.
+     * Retourne {@code true} si la partie a été terminée.
+     */
+    public boolean verifierFinParElimination(MinecraftServer serveur) {
+        if (!partieActive) {
+            return false;
+        }
+        int vivants = joueursVivants.size();
+        boolean doitFinir = vivants == 0 || (config.finAuDernierSurvivant && vivants <= 1);
+        if (!doitFinir) {
+            return false;
+        }
+        String message = vivants == 0 ? "§c§lTous les joueurs sont morts !" : "§6§lIl ne reste qu'un survivant !";
+        for (ServerPlayer j : UtilitaireFiltreJoueurs.obtenirJoueursAuthentifies(serveur)) {
+            j.sendSystemMessage(Component.literal(message));
+        }
+        terminerPartie(serveur);
+        return true;
+    }
+
+    /**
+     * Traite la mort d'un participant vivant quelle qu'en soit la cause vanilla (chute, PvP,
+     * faim, feu…) : réapparition si la config l'autorise, sinon passage en spectateur définitif,
+     * puis vérification des conditions de fin. Retourne {@code true} si la mort a été prise en
+     * charge (l'appelant doit alors annuler la mort vanilla).
+     */
+    public boolean gererMortParticipant(ServerPlayer joueur) {
+        if (!partieActive || !joueursVivants.contains(joueur.getUUID())) {
+            return false;
+        }
+        if (reapparaitreApresMort(joueur)) {
+            return true;
+        }
+        joueur.sendSystemMessage(Component.literal("§cVous êtes mort ! Téléportation vers la zone spectateur..."));
+        enregistrerMortJoueur(joueur.getUUID());
+        teleporterVersSpectateur(joueur);
+        joueur.setHealth(joueur.getMaxHealth());
+
+        String messageMort = "§e" + joueur.getName().getString() + " §cest mort !";
+        for (ServerPlayer j : UtilitaireFiltreJoueurs.obtenirJoueursAuthentifies(joueur.server)) {
+            j.sendSystemMessage(Component.literal(messageMort));
+        }
+        if (enregistreurDonnees != null) {
+            enregistreurDonnees.enregistrerMortJoueur(joueur);
+        }
+        joueur.server.execute(() -> verifierFinParElimination(joueur.server));
+        return true;
     }
 
     private void diffuserMessage(MinecraftServer serveur, String contenu) {
@@ -1111,6 +1361,17 @@ public class GestionnaireSousMode3 {
             return;
         }
 
+        // Noyade non mortelle : on réoxygène le joueur et on n'inflige aucune conséquence.
+        if (!config.noyadeMortelle) {
+            joueur.setAirSupply(joueur.getMaxAirSupply());
+            return;
+        }
+
+        // Réapparition éventuelle : le joueur reste vivant, aucune mort enregistrée.
+        if (reapparaitreApresMort(joueur)) {
+            return;
+        }
+
         joueur.sendSystemMessage(Component.literal("§cVous vous êtes noyé ! Téléportation vers la zone spectateur..."));
 
         enregistrerMortJoueur(joueur.getUUID());
@@ -1126,15 +1387,7 @@ public class GestionnaireSousMode3 {
             obtenirEnregistreurDonnees().enregistrerMortJoueur(joueur);
         }
 
-        if (obtenirJoueursVivants().isEmpty()) {
-            MonSubMod.JOURNALISEUR.info("Tous les joueurs sont morts (noyade) - fin du jeu (Sous-mode 3)");
-            joueur.server.execute(() -> {
-                for (ServerPlayer j : UtilitaireFiltreJoueurs.obtenirJoueursAuthentifies(joueur.server)) {
-                    j.sendSystemMessage(Component.literal("§c§lTous les joueurs sont morts !"));
-                }
-                terminerPartie(joueur.server);
-            });
-        }
+        joueur.server.execute(() -> verifierFinParElimination(joueur.server));
     }
 
     public void incrementerCompteurBonbons(UUID idJoueur, int montant) {
