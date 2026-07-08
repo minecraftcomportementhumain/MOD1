@@ -49,11 +49,6 @@ public class PaquetLancerPartieConfigureeSousMode3 {
             ConfigPartieSousMode3 config = paquet.config;
             config.borner();
 
-            // Options du Groupe 3 pas encore implémentées : neutralisées côté serveur par sécurité
-            // (l'écran ne les propose pas ; ceci évite toute activation accidentelle).
-            config.specialisation = false;
-            config.selectionZoneDepart = false;
-
             // Garde-fou : une partie doit pouvoir se terminer d'elle-même.
             if (!config.peutSeTerminer()) {
                 GestionnaireReseau.INSTANCE.sendTo(

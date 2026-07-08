@@ -67,13 +67,16 @@ public class GestionnaireBonbonsSousMode3 {
         final int surfaceY; // Y du bloc de surface (l'objet apparaît au-dessus)
         final int delai;
         final String zoneNom; // null si hors zone (ex. bonbon sur l'eau)
+        final com.example.mysubmod.cartes.TypeBonbonCarte type; // type défini dans la carte
 
-        InfoCelluleVisible(int mondeX, int mondeZ, int surfaceY, int delai, String zoneNom) {
+        InfoCelluleVisible(int mondeX, int mondeZ, int surfaceY, int delai, String zoneNom,
+                           com.example.mysubmod.cartes.TypeBonbonCarte type) {
             this.mondeX = mondeX;
             this.mondeZ = mondeZ;
             this.surfaceY = surfaceY;
             this.delai = delai;
             this.zoneNom = zoneNom;
+            this.type = type;
         }
     }
 
@@ -127,6 +130,12 @@ public class GestionnaireBonbonsSousMode3 {
     private final List<ApparitionDiffereeCache> apparitionsDiffereesCachees = new ArrayList<>();
     private Timer minuterieReapparition;
     private MinecraftServer serveurJeu;
+    /**
+     * Bonbons typés Bleu/Rouge actifs (option « Spécialisation » du menu N). Faux par défaut :
+     * les bonbons visibles apparaissent en type standard pendant la phase d'attente, puis sont
+     * retypés au lancement si l'option est cochée ({@link #activerBonbonsTypes}).
+     */
+    private boolean bonbonsTypesActifs = false;
 
     private GestionnaireBonbonsSousMode3() {
     }
@@ -190,7 +199,8 @@ public class GestionnaireBonbonsSousMode3 {
                     : GenerateurCarteSousMode3.NIVEAU_MER + bloc.elevation;
                 long cleMonde = cleCellule(mondeX, mondeZ);
                 cellulesVisibles.put(cleMonde,
-                    new InfoCelluleVisible(mondeX, mondeZ, surfaceY, bloc.delaiBonbonVisible, zoneNom));
+                    new InfoCelluleVisible(mondeX, mondeZ, surfaceY, bloc.delaiBonbonVisible, zoneNom,
+                        bloc.typeBonbonVisible));
                 if (bloc.delaiApparitionInitiale > 0) {
                     // Apparition différée : comptée dans la zone au moment de l'apparition
                     apparitionsDifferees.add(new ApparitionDifferee(cleMonde, bloc.qteBonbonVisible,
@@ -287,13 +297,101 @@ public class GestionnaireBonbonsSousMode3 {
             info.mondeX + decalageX,
             info.surfaceY + 1.1,
             info.mondeZ + decalageZ,
-            new ItemStack(ItemsMod.BONBON.get()));
+            creerPileBonbonVisible(info));
         entite.setPickUpDelay(40);
         entite.setUnlimitedLifetime();
         entite.setDeltaMovement(0, 0, 0);
         niveau.addFreshEntity(entite);
 
         entitesBonbonsVisibles.put(entite, cleCellule(info.mondeX, info.mondeZ));
+    }
+
+    /** Item d'un bonbon visible : typé Bleu/Rouge quand la spécialisation est active, sinon standard */
+    private ItemStack creerPileBonbonVisible(InfoCelluleVisible info) {
+        if (bonbonsTypesActifs) {
+            if (info.type == com.example.mysubmod.cartes.TypeBonbonCarte.ROUGE) {
+                return new ItemStack(ItemsMod.BONBON_ROUGE.get());
+            }
+            if (info.type == com.example.mysubmod.cartes.TypeBonbonCarte.BLEU) {
+                return new ItemStack(ItemsMod.BONBON_BLEU.get());
+            }
+        }
+        return new ItemStack(ItemsMod.BONBON.get());
+    }
+
+    /** Vrai pour tout objet bonbon du mod (standard, bleu ou rouge) */
+    public static boolean estObjetBonbon(ItemStack pile) {
+        return pile.is(ItemsMod.BONBON.get())
+            || pile.is(ItemsMod.BONBON_BLEU.get())
+            || pile.is(ItemsMod.BONBON_ROUGE.get());
+    }
+
+    /** Ajuste les compteurs visibles d'une zone (total + détail Bleu/Rouge si les types sont actifs) */
+    private void ajusterCompteursZoneVisible(DonneesZone zone,
+                                             com.example.mysubmod.cartes.TypeBonbonCarte type, int delta) {
+        zone.bonbonsVisibles = Math.max(0, zone.bonbonsVisibles + delta);
+        if (!bonbonsTypesActifs) {
+            return;
+        }
+        if (type == com.example.mysubmod.cartes.TypeBonbonCarte.BLEU) {
+            zone.bonbonsBleus = Math.max(0, zone.bonbonsBleus + delta);
+        } else if (type == com.example.mysubmod.cartes.TypeBonbonCarte.ROUGE) {
+            zone.bonbonsRouges = Math.max(0, zone.bonbonsRouges + delta);
+        }
+    }
+
+    /**
+     * Active les bonbons typés Bleu/Rouge (option « Spécialisation » cochée au lancement) :
+     * remplace les objets bonbons standards déjà apparus pendant la phase d'attente par leur
+     * version typée, et recompose les compteurs Bleu/Rouge des zones. Les apparitions futures
+     * (réapparitions, apparitions initiales différées) sortiront directement typées.
+     */
+    public void activerBonbonsTypes(ServerLevel niveau) {
+        bonbonsTypesActifs = true;
+
+        Map<ItemEntity, Long> anciennes = new HashMap<>(entitesBonbonsVisibles);
+        entitesBonbonsVisibles.clear();
+        Random aleatoire = new Random();
+        int retypes = 0;
+        for (Map.Entry<ItemEntity, Long> entree : anciennes.entrySet()) {
+            ItemEntity entite = entree.getKey();
+            InfoCelluleVisible info = cellulesVisibles.get(entree.getValue());
+            int quantite = entite.isAlive() ? Math.max(1, entite.getItem().getCount()) : 0;
+            if (entite.isAlive()) {
+                entite.discard();
+            }
+            if (info == null) {
+                continue;
+            }
+            for (int i = 0; i < quantite; i++) {
+                fairApparaitreBonbonVisible(niveau, info, aleatoire);
+                retypes++;
+            }
+        }
+
+        // Recomposer le détail Bleu/Rouge des zones depuis les entités présentes
+        for (DonneesZone zone : zones) {
+            zone.bonbonsBleus = 0;
+            zone.bonbonsRouges = 0;
+        }
+        for (Map.Entry<ItemEntity, Long> entree : entitesBonbonsVisibles.entrySet()) {
+            InfoCelluleVisible info = cellulesVisibles.get(entree.getValue());
+            if (info == null || info.zoneNom == null) {
+                continue;
+            }
+            DonneesZone zone = zonesParNom.get(info.zoneNom);
+            if (zone == null) {
+                continue;
+            }
+            int quantite = Math.max(1, entree.getKey().getItem().getCount());
+            if (info.type == com.example.mysubmod.cartes.TypeBonbonCarte.BLEU) {
+                zone.bonbonsBleus += quantite;
+            } else if (info.type == com.example.mysubmod.cartes.TypeBonbonCarte.ROUGE) {
+                zone.bonbonsRouges += quantite;
+            }
+        }
+
+        MonSubMod.JOURNALISEUR.info("Bonbons typés Bleu/Rouge activés (Sous-mode 3) : {} objets retypés", retypes);
     }
 
     /**
@@ -316,8 +414,7 @@ public class GestionnaireBonbonsSousMode3 {
 
         // Mise à jour du compteur de zone en temps réel
         if (info.zoneNom != null && zonesParNom.containsKey(info.zoneNom)) {
-            DonneesZone zone = zonesParNom.get(info.zoneNom);
-            zone.bonbonsVisibles = Math.max(0, zone.bonbonsVisibles - quantite);
+            ajusterCompteursZoneVisible(zonesParNom.get(info.zoneNom), info.type, -quantite);
             envoyerCompteursZones();
         }
 
@@ -360,7 +457,7 @@ public class GestionnaireBonbonsSousMode3 {
                         }
                         fairApparaitreBonbonVisible(niveau, info, new Random());
                         if (info.zoneNom != null && zonesParNom.containsKey(info.zoneNom)) {
-                            zonesParNom.get(info.zoneNom).bonbonsVisibles++;
+                            ajusterCompteursZoneVisible(zonesParNom.get(info.zoneNom), info.type, 1);
                             envoyerCompteursZones();
                         }
                     });
@@ -422,7 +519,8 @@ public class GestionnaireBonbonsSousMode3 {
                                 fairApparaitreBonbonVisible(niveau, info, aleatoire);
                             }
                             if (info.zoneNom != null && zonesParNom.containsKey(info.zoneNom)) {
-                                zonesParNom.get(info.zoneNom).bonbonsVisibles += apparition.quantite;
+                                ajusterCompteursZoneVisible(zonesParNom.get(info.zoneNom), info.type,
+                                    apparition.quantite);
                                 envoyerCompteursZones();
                             }
                         });
@@ -565,8 +663,7 @@ public class GestionnaireBonbonsSousMode3 {
         }
         int nombreRetire = 0;
         for (net.minecraft.world.entity.Entity entite : overworld.getAllEntities()) {
-            if (entite instanceof ItemEntity entiteObjet
-                && entiteObjet.getItem().getItem() == ItemsMod.BONBON.get()) {
+            if (entite instanceof ItemEntity entiteObjet && estObjetBonbon(entiteObjet.getItem())) {
                 entiteObjet.discard();
                 nombreRetire++;
             }
@@ -585,6 +682,7 @@ public class GestionnaireBonbonsSousMode3 {
             minuterieReapparition.cancel();
             minuterieReapparition = null;
         }
+        bonbonsTypesActifs = false;
         cellulesVisibles.clear();
         entitesBonbonsVisibles.clear();
         blocsBonbonsCaches.clear();

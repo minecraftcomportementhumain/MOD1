@@ -161,6 +161,42 @@ public class GestionnaireSanteSousMode3 {
         }
     }
 
+    /**
+     * Consommation d'un bonbon typé Bleu/Rouge (option « Spécialisation » du menu N) :
+     * la spécialisation gère le multiplicateur (1.0, ou réduit sous pénalité / changement
+     * de type), le soin est plafonné à la vie max. Retourne la santé restaurée.
+     */
+    public float gererConsommationBonbonTypee(ServerPlayer joueur,
+                                              com.example.mysubmod.sousmodes.sousmode2.TypeRessource typeRessource) {
+        float santeActuelle = joueur.getHealth();
+        float santeMax = joueur.getMaxHealth();
+
+        float multiplicateur = GestionnaireSpecialisationSousMode3.getInstance()
+            .gererCollecteRessource(joueur, typeRessource);
+        float restaurationReelle = 2.0f * multiplicateur;
+
+        float nouvelleSante = Math.min(santeMax, santeActuelle + restaurationReelle);
+        joueur.setHealth(nouvelleSante);
+
+        boolean aPenalite = GestionnaireSpecialisationSousMode3.getInstance().aPenalite(joueur.getUUID());
+        if (aPenalite) {
+            long msRestants = GestionnaireSpecialisationSousMode3.getInstance()
+                .obtenirTempsRestantPenalite(joueur.getUUID());
+            joueur.sendSystemMessage(Component.literal(String.format(
+                "§e+%.2f ❤ §c(Pénalité - %s restant)", restaurationReelle / 2.0f,
+                GestionnaireSpecialisationSousMode3.formaterTemps(msRestants))));
+        } else {
+            joueur.sendSystemMessage(Component.literal(String.format(
+                "§a+%.1f ❤ §7(%s)", restaurationReelle / 2.0f, typeRessource.obtenirNomAffichage())));
+        }
+
+        if (GestionnaireSousMode3.getInstance().obtenirEnregistreurDonnees() != null) {
+            GestionnaireSousMode3.getInstance().obtenirEnregistreurDonnees()
+                .enregistrerChangementSante(joueur, santeActuelle, nouvelleSante);
+        }
+        return restaurationReelle;
+    }
+
     private void gererMortJoueur(ServerPlayer joueur) {
         // Réapparition éventuelle : le joueur reste vivant, aucune conséquence.
         if (GestionnaireSousMode3.getInstance().reapparaitreApresMort(joueur)) {

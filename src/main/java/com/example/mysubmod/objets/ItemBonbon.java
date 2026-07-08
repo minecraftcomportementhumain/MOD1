@@ -113,17 +113,34 @@ public class ItemBonbon extends Item {
                     float vieActuelle = joueurServeur.getHealth();
                     float vieMaximale = joueurServeur.getMaxHealth();
 
+                    // Avec la spécialisation active, le bonbon standard (issu des blocs cachés)
+                    // reste neutre : il ne change pas la spécialisation mais subit la pénalité.
+                    float multiplicateur = gestionnaireSM3.obtenirConfig().specialisation
+                        ? com.example.mysubmod.sousmodes.sousmode3.GestionnaireSpecialisationSousMode3
+                            .getInstance().obtenirMultiplicateurSanteActuel(joueurServeur.getUUID())
+                        : 1.0f;
+                    float soinReel = MONTANT_SOIN * multiplicateur;
+
                     // Par défaut, on refuse de gaspiller un bonbon qui dépasserait le maximum.
                     // Si l'admin a coché « manger même à vie pleine », on autorise la consommation
-                    // (le soin reste plafonné au maximum dans soignerJoueur).
+                    // (le soin reste plafonné au maximum).
                     boolean autoriserDepassement =
                         gestionnaireSM3.obtenirConfig().mangerDepasseMax;
-                    if (!autoriserDepassement && vieActuelle + MONTANT_SOIN > vieMaximale) {
+                    if (!autoriserDepassement && vieActuelle + soinReel > vieMaximale) {
                         joueurServeur.sendSystemMessage(Component.literal("§cVous ne pouvez pas utiliser ce bonbon car il vous donnerait plus de vie que votre maximum"));
                         return InteractionResultHolder.fail(pileObjets);
                     }
 
-                    soignerJoueur(joueurServeur);
+                    if (multiplicateur < 1.0f) {
+                        float nouvelleVie = Math.min(vieMaximale, vieActuelle + soinReel);
+                        joueurServeur.setHealth(nouvelleVie);
+                        joueurServeur.sendSystemMessage(Component.literal(
+                            String.format("§e✓ Vous avez récupéré %.2f cœur(s) §c(pénalité)", soinReel / 2.0f)));
+                        joueurServeur.level().playSound(null, joueurServeur.getX(), joueurServeur.getY(),
+                            joueurServeur.getZ(), SoundEvents.PLAYER_BURP, SoundSource.PLAYERS, 0.5f, 1.0f);
+                    } else {
+                        soignerJoueur(joueurServeur);
+                    }
                     pileObjets.shrink(1);
 
                     if (gestionnaireSM3.obtenirEnregistreurDonnees() != null) {

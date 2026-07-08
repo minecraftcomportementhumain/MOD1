@@ -269,7 +269,7 @@ public class GestionnaireEvenementsSousMode3 {
 
         if (gestionnaire.estJoueurVivant(joueur.getUUID()) && gestionnaire.estPartieActive()) {
             // Les joueurs vivants peuvent utiliser les bonbons et placer les blocs minés
-            if (objetTenu.is(ItemsMod.BONBON.get()) || objetTenu.getItem() instanceof BlockItem) {
+            if (GestionnaireBonbonsSousMode3.estObjetBonbon(objetTenu) || objetTenu.getItem() instanceof BlockItem) {
                 return;
             }
             event.setCanceled(true);
@@ -313,7 +313,7 @@ public class GestionnaireEvenementsSousMode3 {
         ItemStack objetTenu = joueur.getItemInHand(event.getHand());
 
         if (gestionnaire.estJoueurVivant(joueur.getUUID())) {
-            if (objetTenu.is(ItemsMod.BONBON.get()) || objetTenu.getItem() instanceof BlockItem) {
+            if (GestionnaireBonbonsSousMode3.estObjetBonbon(objetTenu) || objetTenu.getItem() instanceof BlockItem) {
                 return;
             }
             event.setCanceled(true);
@@ -392,7 +392,7 @@ public class GestionnaireEvenementsSousMode3 {
         ItemStack pile = event.getItem().getItem();
 
         if (gestionnaire.estJoueurVivant(joueur.getUUID())) {
-            if (pile.is(ItemsMod.BONBON.get())) {
+            if (GestionnaireBonbonsSousMode3.estObjetBonbon(pile)) {
                 gestionnaire.incrementerCompteurBonbons(joueur.getUUID(), pile.getCount());
 
                 // Compteur de zone + réapparition (si bonbon visible de la carte)
@@ -659,7 +659,7 @@ public class GestionnaireEvenementsSousMode3 {
         // (fleurs, pousses, graines...) d'apparaître sur la carte
         if (event.getEntity() instanceof ItemEntity entiteObjet) {
             if (gestionnaire.estDansAireCarte(entiteObjet.blockPosition())
-                && !entiteObjet.getItem().is(ItemsMod.BONBON.get())) {
+                && !GestionnaireBonbonsSousMode3.estObjetBonbon(entiteObjet.getItem())) {
                 event.setCanceled(true);
             }
             return;

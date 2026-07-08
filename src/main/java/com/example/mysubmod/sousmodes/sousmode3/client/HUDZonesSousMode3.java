@@ -139,9 +139,11 @@ public class HUDZonesSousMode3 {
         com.example.mysubmod.sousmodes.SousMode mode =
             com.example.mysubmod.client.GestionnaireSubModeClient.obtenirModeActuel();
 
-        // Spécialisation du joueur (Sous-mode 2 sur carte)
+        // Spécialisation du joueur (Sous-mode 2 sur carte, ou Sous-mode 3 avec l'option
+        // « Spécialisation » — dans les deux cas, null tant qu'aucun bonbon typé n'est consommé)
         com.example.mysubmod.sousmodes.sousmode2.TypeRessource specialisation =
-            mode == com.example.mysubmod.sousmodes.SousMode.SOUS_MODE_2
+            (mode == com.example.mysubmod.sousmodes.SousMode.SOUS_MODE_2
+                || mode == com.example.mysubmod.sousmodes.SousMode.SOUS_MODE_3)
                 ? com.example.mysubmod.sousmodes.sousmode2.client.HUDCompteurBonbons.obtenirSpecialisationJoueur()
                 : null;
 

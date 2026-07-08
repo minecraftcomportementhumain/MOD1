@@ -77,6 +77,12 @@ public class ItemBonbonBleu extends Item {
                     return InteractionResultHolder.fail(pileObjets);
                 }
             }
+            // Sous-mode 3 : bonbons typés (option « Spécialisation » de la config de partie)
+            else if (modeActuel == SousMode.SOUS_MODE_3
+                && com.example.mysubmod.sousmodes.sousmode3.GestionnaireSousMode3.getInstance().estPartieActive()) {
+                return UtilisationBonbonTypeSousMode3.utiliser(level, joueurServeur, pileObjets,
+                    TypeRessource.BONBON_BLEU);
+            }
         }
 
         return InteractionResultHolder.consume(pileObjets);
@@ -85,7 +91,7 @@ public class ItemBonbonBleu extends Item {
     @Override
     public void appendHoverText(ItemStack stack, Level level, List<Component> tooltip, TooltipFlag flag) {
         tooltip.add(Component.literal("§9Bonbon Bleu (Type A)"));
-        tooltip.add(Component.literal("§7Restaure §c1 cœur §7(0.75 cœur si pénalité)"));
-        tooltip.add(Component.literal("§eUtilisable en sous-mode 2"));
+        tooltip.add(Component.literal("§7Restaure §c1 cœur §7(réduit si pénalité)"));
+        tooltip.add(Component.literal("§eUtilisable en sous-modes 2 et 3"));
     }
 }

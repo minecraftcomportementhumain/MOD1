@@ -1,6 +1,7 @@
 package com.example.mysubmod.sousmodes.sousmode3;
 
 import com.example.mysubmod.MonSubMod;
+import com.example.mysubmod.cartes.BlocCarte;
 import com.example.mysubmod.cartes.CarteDonnees;
 import com.example.mysubmod.cartes.GestionnaireCartes;
 import com.example.mysubmod.cartes.TypeElementCarte;
@@ -106,6 +107,13 @@ public class GestionnaireSousMode3 {
     /** Valeurs de gamerules sauvegardées avant application de la config, à restaurer à la fin (null = non modifié). */
     private Boolean gameruleDegatsChuteOrigine;
     private Boolean gameruleRegenOrigine;
+
+    // Sélection de la zone de départ (option du menu N) : choix des joueurs pendant la phase
+    // de sélection, puis point d'apparition individuel utilisé à la place de celui de la carte.
+    private final Map<UUID, String> zonesChoisies = new ConcurrentHashMap<>();
+    private final Map<UUID, BlockPos> apparitionsParJoueur = new ConcurrentHashMap<>();
+    private boolean selectionZonesEnCours = false;
+    private Timer minuteurSelectionZones;
 
     private final BlockPos plateformeSpectateur = new BlockPos(0, 150, 0);
 
@@ -344,11 +352,26 @@ public class GestionnaireSousMode3 {
             }
             return false;
         }
+        if (selectionZonesEnCours) {
+            if (admin != null) {
+                admin.sendSystemMessage(Component.literal("§cLa sélection des zones de départ est déjà en cours"));
+            }
+            return false;
+        }
         if (!UtilitaireFiltreJoueurs.aParticipantConnecte(serveur)) {
             if (admin != null) {
                 admin.sendSystemMessage(Component.literal("§cImpossible de lancer la partie - Aucun joueur (protégé ou libre) connecté!"));
             }
             return false;
+        }
+
+        // Option « choix de la zone de départ » : la phase de sélection (30 s) remplace le
+        // décompte — même déroulement que les parties sur carte des Sous-modes 1 et 2.
+        if (config.selectionZoneDepart) {
+            MonSubMod.JOURNALISEUR.info("Lancement de la partie Sous-mode 3 par {} (sélection de zone de {} secondes)",
+                admin != null ? admin.getName().getString() : "SERVEUR", TEMPS_SELECTION_ZONES_SECONDES);
+            demarrerSelectionZones(serveur);
+            return true;
         }
 
         decompteEnCours = true;
@@ -421,7 +444,8 @@ public class GestionnaireSousMode3 {
             monde.setWeatherParameters(0, 20 * 60 * 30, true, false); // 30 minutes de pluie
         }
 
-        // Téléporter les joueurs vers le point d'apparition défini dans la carte
+        // Téléporter les joueurs vers leur point d'apparition : celui de leur zone de départ
+        // choisie (option « choix de zone »), sinon celui défini dans la carte
         for (ServerPlayer joueur : UtilitaireFiltreJoueurs.obtenirJoueursAuthentifies(serveur)) {
             if (GestionnaireSousModes.getInstance().estAdmin(joueur)) {
                 continue;
@@ -433,11 +457,15 @@ public class GestionnaireSousMode3 {
 
             appliquerSanteMax(joueur);
 
-            if (monde != null && apparition != null) {
+            BlockPos cible = obtenirPointApparitionPour(joueur.getUUID());
+            if (cible == null) {
+                cible = apparition;
+            }
+            if (monde != null && cible != null) {
                 teleportationSecurisee(joueur, monde,
-                    apparition.getX() + 0.5, apparition.getY(), apparition.getZ() + 0.5);
+                    cible.getX() + 0.5, cible.getY(), cible.getZ() + 0.5);
                 dernieresPositionsValides.put(joueur.getUUID(), new double[]{
-                    apparition.getX() + 0.5, apparition.getY(), apparition.getZ() + 0.5, 0, 0});
+                    cible.getX() + 0.5, cible.getY(), cible.getZ() + 0.5, 0, 0});
             }
             joueur.setGameMode(GameType.SURVIVAL);
         }
@@ -451,6 +479,13 @@ public class GestionnaireSousMode3 {
             minuteurPartie.demarrer();
         }
         GestionnaireSanteSousMode3.getInstance().demarrerDegradationSante(serveur);
+
+        // Spécialisation Bleu/Rouge : retyper les bonbons déjà apparus pendant l'attente
+        // et repartir d'un état de spécialisation vierge
+        if (config.specialisation && monde != null) {
+            GestionnaireSpecialisationSousMode3.getInstance().reinitialiser();
+            GestionnaireBonbonsSousMode3.obtenirInstance().activerBonbonsTypes(monde);
+        }
 
         // HUD des zones pour tous les joueurs
         GestionnaireBonbonsSousMode3.obtenirInstance().envoyerZonesCompletesATous(true);
@@ -485,6 +520,13 @@ public class GestionnaireSousMode3 {
             }
 
             arreterDecompte();
+            arreterSelectionZones();
+
+            try {
+                GestionnaireSpecialisationSousMode3.getInstance().reinitialiser();
+            } catch (Exception e) {
+                MonSubMod.JOURNALISEUR.error("Erreur lors de la réinitialisation de la spécialisation", e);
+            }
 
             try {
                 if (minuteurPartie != null) {
@@ -578,6 +620,10 @@ public class GestionnaireSousMode3 {
             nomsJoueurs.clear();
             dernieresPositionsValides.clear();
             evenementsJournalisationEnAttente.clear();
+            zonesChoisies.clear();
+            apparitionsParJoueur.clear();
+            selectionZonesEnCours = false;
+            heureDebutSelectionZones = 0;
             // Remettre la config par défaut pour la prochaine partie
             config = new ConfigPartieSousMode3();
 
@@ -883,7 +929,7 @@ public class GestionnaireSousMode3 {
                     joueur.connection.teleport(derniere[0], derniere[1], derniere[2],
                         (float) derniere[3], (float) derniere[4]);
                 } else {
-                    BlockPos apparition = obtenirPointApparition();
+                    BlockPos apparition = obtenirPointApparitionPour(joueur.getUUID());
                     if (apparition != null) {
                         joueur.connection.teleport(apparition.getX() + 0.5, apparition.getY(),
                             apparition.getZ() + 0.5, 0, 0);
@@ -898,6 +944,178 @@ public class GestionnaireSousMode3 {
             return generation.pointApparitionMonde;
         }
         return plateformeSpectateur.above();
+    }
+
+    /**
+     * Point d'apparition d'un joueur donné : le spawn de sa zone de départ choisie
+     * (option « choix de zone »), sinon le point d'apparition de la carte.
+     */
+    public BlockPos obtenirPointApparitionPour(UUID idJoueur) {
+        BlockPos individuel = apparitionsParJoueur.get(idJoueur);
+        return individuel != null ? individuel : obtenirPointApparition();
+    }
+
+    // ==================== Sélection de la zone de départ (option du menu N) ====================
+
+    private static final int TEMPS_SELECTION_ZONES_SECONDES = 30;
+    private long heureDebutSelectionZones;
+
+    /** Noms des zones de type Île de la carte active (sélectionnables comme zone de départ) */
+    private List<String> obtenirZonesIle() {
+        List<String> noms = new ArrayList<>();
+        if (carte != null) {
+            for (ZoneCarte zone : carte.zones) {
+                if (zone.type == TypeElementCarte.ILE) {
+                    noms.add(zone.nom);
+                }
+            }
+        }
+        return noms;
+    }
+
+    /**
+     * Point de départ d'une zone : surface de la cellule la plus proche du centre géométrique
+     * (même règle que les parties sur carte des Sous-modes 1 et 2). Null si zone inconnue.
+     */
+    private BlockPos calculerSpawnZone(String nomZone) {
+        if (carte == null || generation == null || nomZone == null) {
+            return null;
+        }
+        for (ZoneCarte zone : carte.zones) {
+            if (!zone.nom.equals(nomZone)) {
+                continue;
+            }
+            double[] centre = zone.obtenirCentre();
+            int[] meilleure = null;
+            double meilleureDistance = Double.MAX_VALUE;
+            for (int[] cellule : zone.cellules) {
+                double dx = cellule[0] - centre[0];
+                double dz = cellule[1] - centre[1];
+                double distance = dx * dx + dz * dz;
+                if (distance < meilleureDistance) {
+                    meilleureDistance = distance;
+                    meilleure = cellule;
+                }
+            }
+            if (meilleure == null) {
+                return null;
+            }
+            BlocCarte bloc = carte.obtenirBloc(meilleure[0], meilleure[1]);
+            int surfaceY = GenerateurCarteSousMode3.NIVEAU_MER + Math.max(0, bloc.elevation);
+            return new BlockPos(generation.origineX + meilleure[0], surfaceY + 1,
+                generation.origineZ + meilleure[1]);
+        }
+        return null;
+    }
+
+    /** Phase de sélection : envoi de l'écran aux participants + minuterie de fin (30 s) */
+    private void demarrerSelectionZones(MinecraftServer serveur) {
+        selectionZonesEnCours = true;
+        heureDebutSelectionZones = System.currentTimeMillis();
+
+        List<String> zonesIle = obtenirZonesIle();
+        for (ServerPlayer joueur : UtilitaireFiltreJoueurs.obtenirJoueursAuthentifies(serveur)) {
+            if (!GestionnaireSousModes.getInstance().estAdmin(joueur)) {
+                GestionnaireReseau.INSTANCE.send(PacketDistributor.PLAYER.with(() -> joueur),
+                    new com.example.mysubmod.cartes.reseau.PaquetSelectionZoneDepart(
+                        zonesIle, TEMPS_SELECTION_ZONES_SECONDES));
+            }
+        }
+
+        minuteurSelectionZones = new Timer("SousMode3-SelectionZones", true);
+        minuteurSelectionZones.schedule(new TimerTask() {
+            @Override
+            public void run() {
+                if (serveur == null || serveur.isStopped()) {
+                    return;
+                }
+                serveur.execute(() -> terminerSelectionZones(serveur));
+            }
+        }, TEMPS_SELECTION_ZONES_SECONDES * 1000L);
+
+        diffuserMessage(serveur, "§eChoisissez votre zone de départ ! Temps restant: "
+            + TEMPS_SELECTION_ZONES_SECONDES + " secondes");
+    }
+
+    /** Choix de zone de départ par un joueur (paquet réseau, partagé avec SM1/SM2 sur carte) */
+    public void selectionnerZoneDepart(ServerPlayer joueur, String nomZone) {
+        if (!selectionZonesEnCours || UtilitaireFiltreJoueurs.estJoueurRestreint(joueur)
+            || GestionnaireSousModes.getInstance().estAdmin(joueur)) {
+            return;
+        }
+        if (!obtenirZonesIle().contains(nomZone)) {
+            return;
+        }
+        zonesChoisies.put(joueur.getUUID(), nomZone);
+        joueur.sendSystemMessage(Component.literal("§aVous avez sélectionné: " + nomZone));
+        if (enregistreurDonnees != null) {
+            enregistreurDonnees.enregistrerActionJoueur(joueur, "SELECTION_ZONE " + nomZone + " (MANUELLE)");
+        }
+    }
+
+    /** Renvoie l'écran de sélection à un joueur qui (re)joint pendant la phase (sans choix fait) */
+    public void envoyerSelectionZonesSiEnCours(ServerPlayer joueur) {
+        if (!selectionZonesEnCours || GestionnaireSousModes.getInstance().estAdmin(joueur)
+            || zonesChoisies.containsKey(joueur.getUUID())) {
+            return;
+        }
+        int restant = obtenirTempsSelectionZonesRestant();
+        if (restant > 0) {
+            GestionnaireReseau.INSTANCE.send(PacketDistributor.PLAYER.with(() -> joueur),
+                new com.example.mysubmod.cartes.reseau.PaquetSelectionZoneDepart(obtenirZonesIle(), restant));
+        }
+    }
+
+    private int obtenirTempsSelectionZonesRestant() {
+        if (!selectionZonesEnCours || heureDebutSelectionZones == 0) {
+            return 0;
+        }
+        long ecoulees = (System.currentTimeMillis() - heureDebutSelectionZones) / 1000;
+        return Math.max(0, (int) (TEMPS_SELECTION_ZONES_SECONDES - ecoulees));
+    }
+
+    /**
+     * Fin de la phase de sélection : zone aléatoire pour les participants sans choix,
+     * calcul du point d'apparition individuel de chacun, puis démarrage de la partie.
+     */
+    private void terminerSelectionZones(MinecraftServer serveur) {
+        if (!selectionZonesEnCours || partieActive) {
+            return;
+        }
+        selectionZonesEnCours = false;
+        arreterSelectionZones();
+
+        List<String> zonesIle = obtenirZonesIle();
+        java.util.Random aleatoire = new java.util.Random();
+        for (UUID idJoueur : joueursEnAttente) {
+            String zone = zonesChoisies.get(idJoueur);
+            if (zone == null && !zonesIle.isEmpty()) {
+                zone = zonesIle.get(aleatoire.nextInt(zonesIle.size()));
+                zonesChoisies.put(idJoueur, zone);
+                ServerPlayer joueur = serveur.getPlayerList().getPlayer(idJoueur);
+                if (joueur != null) {
+                    joueur.sendSystemMessage(Component.literal("§eZone assignée automatiquement: " + zone));
+                    if (enregistreurDonnees != null) {
+                        enregistreurDonnees.enregistrerActionJoueur(joueur,
+                            "SELECTION_ZONE " + zone + " (AUTOMATIQUE)");
+                    }
+                }
+            }
+            BlockPos spawn = calculerSpawnZone(zone);
+            if (spawn != null) {
+                apparitionsParJoueur.put(idJoueur, spawn);
+            }
+        }
+
+        demarrerPartie(serveur);
+    }
+
+    private void arreterSelectionZones() {
+        selectionZonesEnCours = false;
+        if (minuteurSelectionZones != null) {
+            minuteurSelectionZones.cancel();
+            minuteurSelectionZones = null;
+        }
     }
 
     // ==================== Déconnexions / reconnexions (base du Sous-mode 1) ====================
@@ -1028,6 +1246,13 @@ public class GestionnaireSousMode3 {
                 if (dernieresPositionsValides.containsKey(ancienUUID)) {
                     dernieresPositionsValides.put(nouveauUUID, dernieresPositionsValides.remove(ancienUUID));
                 }
+                if (zonesChoisies.containsKey(ancienUUID)) {
+                    zonesChoisies.put(nouveauUUID, zonesChoisies.remove(ancienUUID));
+                }
+                if (apparitionsParJoueur.containsKey(ancienUUID)) {
+                    apparitionsParJoueur.put(nouveauUUID, apparitionsParJoueur.remove(ancienUUID));
+                }
+                GestionnaireSpecialisationSousMode3.getInstance().migrerDonneesJoueur(ancienUUID, nouveauUUID);
                 nomsJoueurs.remove(ancienUUID);
                 nomsJoueurs.put(nouveauUUID, nomJoueur);
             }
@@ -1059,6 +1284,7 @@ public class GestionnaireSousMode3 {
             joueursEnAttente.add(nouveauUUID);
             nomsJoueurs.put(nouveauUUID, nomJoueur);
             teleporterVersPlateforme(joueur);
+            envoyerSelectionZonesSiEnCours(joueur);
             joueur.sendSystemMessage(Component.literal(
                 "§eVous avez été reconnecté. En attente du lancement de la partie..."));
             if (enregistreurDonnees != null) {
@@ -1073,13 +1299,16 @@ public class GestionnaireSousMode3 {
             joueursVivants.add(nouveauUUID);
             nomsJoueurs.put(nouveauUUID, nomJoueur);
 
-            BlockPos apparition = obtenirPointApparition();
+            BlockPos apparition = obtenirPointApparitionPour(nouveauUUID);
             if (monde != null && apparition != null) {
                 teleportationSecurisee(joueur, monde,
                     apparition.getX() + 0.5, apparition.getY(), apparition.getZ() + 0.5);
             }
             joueur.setGameMode(GameType.SURVIVAL);
             appliquerSanteMax(joueur);
+            if (config.specialisation) {
+                GestionnaireSpecialisationSousMode3.getInstance().synchroniserAvecClient(joueur);
+            }
 
             // Santé pleine puis pénalité pour le temps manqué depuis le début de la partie
             joueur.setHealth(joueur.getMaxHealth());
@@ -1103,11 +1332,14 @@ public class GestionnaireSousMode3 {
 
             if (partieActive) {
                 appliquerSanteMax(joueur); // le nouvel entity du joueur repart avec l'attribut vanilla
+                if (config.specialisation) {
+                    GestionnaireSpecialisationSousMode3.getInstance().synchroniserAvecClient(joueur);
+                }
             }
 
             if (monde != null) {
                 if (deconnecteAvantDebutPartie) {
-                    BlockPos apparition = obtenirPointApparition();
+                    BlockPos apparition = obtenirPointApparitionPour(nouveauUUID);
                     teleportationSecurisee(joueur, monde,
                         apparition.getX() + 0.5, apparition.getY(), apparition.getZ() + 0.5);
                 } else {
@@ -1184,6 +1416,7 @@ public class GestionnaireSousMode3 {
         stockerInventaireJoueur(joueur);
         viderInventaireJoueur(joueur);
         teleporterVersPlateforme(joueur);
+        envoyerSelectionZonesSiEnCours(joueur);
     }
 
     // ==================== Inventaires ====================
@@ -1268,7 +1501,7 @@ public class GestionnaireSousMode3 {
         }
         MinecraftServer serveur = joueur.getServer();
         ServerLevel monde = serveur != null ? serveur.getLevel(ServerLevel.OVERWORLD) : null;
-        BlockPos apparition = obtenirPointApparition();
+        BlockPos apparition = obtenirPointApparitionPour(joueur.getUUID());
         if (monde != null && apparition != null) {
             teleportationSecurisee(joueur, monde,
                 apparition.getX() + 0.5, apparition.getY(), apparition.getZ() + 0.5);

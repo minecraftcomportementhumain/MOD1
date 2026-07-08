@@ -122,8 +122,14 @@ public class EcranConfigurationPartieSousMode3 extends Screen {
         caseAcocher(xB, yb, "Monstres (nuit)", config.monstresHostiles, v -> config.monstresHostiles = v);
         caseAcocher(xB, yb, "Pluie", config.pluie, v -> config.pluie = v);
 
-        titre(xB, yb, "§e§lDéplacement");
+        titre(xB, yb, "§e§lMécaniques SM2");
         caseAcocher(xB, yb, "Bonus sprint", config.bonusSprint, v -> config.bonusSprint = v);
+        if (!FaitsCarteClientSousMode3.aBonbonsTypes()) {
+            config.specialisation = false; // la carte n'a pas de bonbons typés Bleu/Rouge
+        }
+        Checkbox caseSpecialisation = caseAcocher(xB, yb, "Spécialisation B/R", config.specialisation,
+            v -> config.specialisation = v);
+        caseSpecialisation.active = FaitsCarteClientSousMode3.aBonbonsTypes();
 
         // ---- Colonne C : Interactions & fin de partie ----
         int[] yc = {yDepart};
@@ -141,6 +147,14 @@ public class EcranConfigurationPartieSousMode3 extends Screen {
         titre(xC, yc, "§e§lFin de partie");
         ajouterBasculeClassement(xC, yc);
         caseAcocher(xC, yc, "Dernier survivant", config.finAuDernierSurvivant, v -> config.finAuDernierSurvivant = v);
+
+        titre(xC, yc, "§e§lZone de départ");
+        if (!FaitsCarteClientSousMode3.aZonesIle()) {
+            config.selectionZoneDepart = false; // la carte n'a aucune zone Île sélectionnable
+        }
+        Checkbox caseZone = caseAcocher(xC, yc, "Choix par joueur", config.selectionZoneDepart,
+            v -> config.selectionZoneDepart = v);
+        caseZone.active = FaitsCarteClientSousMode3.aZonesIle();
 
         // ---- Boutons de bas de page ----
         int hBouton = compact ? 18 : 20;

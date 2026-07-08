@@ -51,10 +51,15 @@ public class GestionnaireSubModeClient {
             com.example.mysubmod.sousmodes.sousmode3.client.HUDZonesSousMode3.desactiver();
         }
 
-        // Nettoyer les éléments du HUD lors de l'entrée dans le Sous-mode 3 (réinitialise la flèche)
+        // Nettoyer les éléments du HUD lors de l'entrée dans le Sous-mode 3 (réinitialise la flèche).
+        // La spécialisation et la minuterie de pénalité (HUD partagés avec le Sous-mode 2) sont
+        // aussi remises à zéro : le Sous-mode 3 les utilise quand l'option « Spécialisation »
+        // de la config de partie est cochée.
         if (mode == SousMode.SOUS_MODE_3) {
             com.example.mysubmod.sousmodes.sousmode3.client.MinuterieJeuClientSousMode3.desactiver();
             com.example.mysubmod.sousmodes.sousmode3.client.HUDZonesSousMode3.desactiver();
+            com.example.mysubmod.sousmodes.sousmode2.client.HUDCompteurBonbons.definirSpecialisationJoueur(null);
+            com.example.mysubmod.sousmodes.sousmode2.client.HUDMinuteriePenalite.desactiver();
         }
 
         // Nettoyer la minuterie lors de la sortie du Sous-mode 3. Le HUD des zones n'est
@@ -64,6 +69,12 @@ public class GestionnaireSubModeClient {
         // retomberait sur le menu de sélection de fichier.
         if (ancienMode == SousMode.SOUS_MODE_3 && mode != SousMode.SOUS_MODE_3) {
             com.example.mysubmod.sousmodes.sousmode3.client.MinuterieJeuClientSousMode3.desactiver();
+            // Purger la spécialisation/pénalité du Sous-mode 3, sauf en entrant au Sous-mode 2
+            // (son bloc d'entrée les remet déjà à zéro de toute façon)
+            if (mode != SousMode.SOUS_MODE_2) {
+                com.example.mysubmod.sousmodes.sousmode2.client.HUDCompteurBonbons.definirSpecialisationJoueur(null);
+                com.example.mysubmod.sousmodes.sousmode2.client.HUDMinuteriePenalite.desactiver();
+            }
         }
     }
 
