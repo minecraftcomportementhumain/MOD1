@@ -22,7 +22,6 @@ import java.nio.charset.StandardCharsets;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Deque;
-import java.util.EnumMap;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -59,11 +58,12 @@ public class EcranEditeurCarte extends Screen {
     }
 
     private static final int MAX_ANNULATIONS = 20;
-    private static final int LARGEUR_PALETTE = 148;
-    private static final int LARGEUR_PANNEAU_DROIT = 160;
     private static final int HAUTEUR_BARRE_ETAT = 16;
     /** Largeur d'écran à partir de laquelle la barre du haut tient sur une seule rangée */
     private static final int SEUIL_BARRE_UNIQUE = 880;
+    /** En dessous de cette largeur, palette et inspecteur se compactent pour préserver la grille */
+    private static final int SEUIL_LATERAUX_COMPACTS = 640;
+    private static final int LARGEUR_CHAMP_SELECTION = 62;
     private static final int TAILLE_MORCEAU_RESEAU = 30000;
 
     // Couleurs de l'habillage
@@ -130,22 +130,29 @@ public class EcranEditeurCarte extends Screen {
     private Button boutonTypeBonbon;
     private Button boutonTypeBonbonNonVisible;
     private Button boutonAppliquerDelais;
+    private Button boutonSauvegarder;
     private Button boutonSelection;
     private Button boutonAnnuler;
     private Button boutonRetablir;
-    private final Map<OutilPalette, Button> boutonsPalette = new EnumMap<>(OutilPalette.class);
 
     // Habillage recalculé à chaque init() (dépend de la taille de l'écran)
     private int hautGrille = 52;
+    private int largeurPalette = 148;
+    private int largeurPanneauDroit = 160;
     private int pitchSelection = 18;       // Pas vertical d'une rangée des cartes du panneau sélection
     private int hauteurCarteSelection = 72; // Hauteur d'une carte Bonbon visible / non-visible
     private final List<TextePeint> textesPeints = new ArrayList<>();
     private final List<int[]> separateursPeints = new ArrayList<>(); // {x, y0, y1}
-    private int xIndicateurModifie;
-    private int yIndicateurModifie;
 
-    // Modifications non sauvegardées + garde-fou de fermeture
-    private boolean modifieDepuisSauvegarde = false;
+    // État « sauvegardé » : sommet de la pile d'annulation et nom au dernier point de
+    // sauvegarde réussie (ou chargement). L'éditeur est modifié dès que l'un des deux
+    // diffère — annuler jusqu'au point de sauvegarde redevient donc « non modifié ».
+    private ActionEditeur reperePileSauvegarde = null;
+    private String nomSauvegarde = "";
+    // Instantané au moment de l'envoi du JSON : l'accusé du serveur peut arriver après
+    // de nouvelles modifications, qui doivent rester marquées non sauvegardées
+    private ActionEditeur reperePileEnvoi = null;
+    private String nomEnvoi = "";
     private boolean fermetureConfirmee = false;
 
     // Notification non bloquante (refus de placement / succès)
@@ -153,8 +160,8 @@ public class EcranEditeurCarte extends Screen {
     private boolean toastErreur = false;
     private long toastExpiration = 0;
 
-    // Statistiques de la carte pour l'inspecteur (recalcul au plus toutes les 500 ms)
-    private long statsProchainCalcul = 0;
+    // Statistiques de la carte pour l'inspecteur (recalculées après chaque action)
+    private boolean statsObsoletes = true;
     private boolean statLimiteFermee = false;
     private int statBonbonsVisibles = 0;
     private int statBonbonsNonVisibles = 0;
@@ -180,31 +187,34 @@ public class EcranEditeurCarte extends Screen {
     @Override
     protected void init() {
         super.init();
-        boutonsPalette.clear();
         textesPeints.clear();
         separateursPeints.clear();
 
         // ----- Barre du haut : groupes Fichier / Aire / Limite, sur une rangée si
-        // l'écran est assez large, sinon sur deux (Fichier en haut, Aire+Limite dessous) -----
+        // l'écran est assez large, sinon sur deux (Fichier en haut, Aire+Limite dessous).
+        // Panneaux latéraux compactés sous SEUIL_LATERAUX_COMPACTS pour garder de la grille -----
         boolean barreUnique = this.width >= SEUIL_BARRE_UNIQUE;
+        boolean laterauxCompacts = this.width < SEUIL_LATERAUX_COMPACTS;
         hautGrille = barreUnique ? 30 : 52;
+        largeurPalette = laterauxCompacts ? 116 : 148;
+        largeurPanneauDroit = laterauxCompacts ? 136 : 160;
 
         int x = 6;
         champNom = new EditBox(this.font, x, 6, 130, 18, Component.literal("Nom de la carte"));
         champNom.setMaxLength(CarteDonnees.LONGUEUR_MAX_NOM);
         champNom.setHint(Component.literal("Nom de la carte"));
         champNom.setValue(texteNom);
-        champNom.setResponder(texte -> texteNom = texte);
+        champNom.setResponder(texte -> {
+            texteNom = texte;
+            mettreAJourIndicateurSauvegarde(); // Le nom fait partie de l'état sauvegardé
+        });
         addRenderableWidget(champNom);
-        x += 134;
+        x += 136;
 
-        // Point « modifications non sauvegardées » dessiné entre le nom et Sauvegarder
-        xIndicateurModifie = x;
-        yIndicateurModifie = 11;
-        x += 8;
-
-        addRenderableWidget(Button.builder(Component.literal("Sauvegarder"), b -> sauvegarder())
-            .bounds(x, 5, 80, 20).build());
+        // Le ● « modifications non sauvegardées » vit sur le bouton Sauvegarder
+        boutonSauvegarder = Button.builder(Component.literal("Sauvegarder"), b -> sauvegarder())
+            .bounds(x, 5, 80, 20).build();
+        addRenderableWidget(boutonSauvegarder);
         x += 84;
 
         addRenderableWidget(Button.builder(Component.literal("Charger"), b ->
@@ -230,8 +240,13 @@ public class EcranEditeurCarte extends Screen {
             x = 6;
         }
 
-        textesPeints.add(new TextePeint(x, yTexte2, "Aire", COULEUR_ETIQUETTE));
-        x += this.font.width("Aire") + 6;
+        // Étiquettes de groupes omises sous 480 px : la rangée Aire+Limite doit tenir
+        // aux largeurs GUI minimales (elles n'apportent que du contexte visuel)
+        boolean etiquettesGroupes = this.width >= 480;
+        if (etiquettesGroupes) {
+            textesPeints.add(new TextePeint(x, yTexte2, "Aire", COULEUR_ETIQUETTE));
+            x += this.font.width("Aire") + 6;
+        }
         champLargeur = new EditBox(this.font, x, yChamps2, 36, 18, Component.literal("Largeur"));
         champLargeur.setMaxLength(4);
         champLargeur.setValue(texteLargeur);
@@ -239,8 +254,10 @@ public class EcranEditeurCarte extends Screen {
         addRenderableWidget(champLargeur);
         x += 40;
 
-        textesPeints.add(new TextePeint(x, yTexte2, "×", COULEUR_ETIQUETTE));
-        x += this.font.width("×") + 4;
+        if (etiquettesGroupes) {
+            textesPeints.add(new TextePeint(x, yTexte2, "×", COULEUR_ETIQUETTE));
+            x += this.font.width("×") + 4;
+        }
         champHauteur = new EditBox(this.font, x, yChamps2, 36, 18, Component.literal("Hauteur"));
         champHauteur.setMaxLength(4);
         champHauteur.setValue(texteHauteur);
@@ -252,10 +269,12 @@ public class EcranEditeurCarte extends Screen {
             .bounds(x, yBoutons2, 96, 20).build());
         x += 100;
 
-        separateursPeints.add(new int[]{x, yBoutons2, yBoutons2 + 20});
-        x += 8;
-        textesPeints.add(new TextePeint(x, yTexte2, "Limite", COULEUR_ETIQUETTE));
-        x += this.font.width("Limite") + 6;
+        if (etiquettesGroupes) {
+            separateursPeints.add(new int[]{x, yBoutons2, yBoutons2 + 20});
+            x += 8;
+            textesPeints.add(new TextePeint(x, yTexte2, "Limite", COULEUR_ETIQUETTE));
+            x += this.font.width("Limite") + 6;
+        }
 
         addRenderableWidget(Button.builder(Component.literal("Par défaut"), b -> appliquerLimiteParDefaut())
             .bounds(x, yBoutons2, 70, 20)
@@ -285,14 +304,14 @@ public class EcranEditeurCarte extends Screen {
             yPalette = ajouterBoutonOutil(outil, yPalette, pasPalette);
         }
 
-        yPalette = ajouterTitrePalette("Bonbons & apparition", yPalette, hauteurTitre);
+        yPalette = ajouterTitrePalette(laterauxCompacts ? "Bonbons" : "Bonbons & apparition", yPalette, hauteurTitre);
         for (OutilPalette outil : new OutilPalette[]{
                 OutilPalette.BONBON_VISIBLE, OutilPalette.BONBON_NON_VISIBLE, OutilPalette.APPARITION}) {
             yPalette = ajouterBoutonOutil(outil, yPalette, pasPalette);
         }
 
         yPalette = ajouterTitrePalette("Édition", yPalette, hauteurTitre);
-        boutonSelection = new BoutonPalette(6, yPalette, LARGEUR_PALETTE - 12, hauteurBoutonPalette,
+        boutonSelection = new BoutonPalette(6, yPalette, largeurPalette - 12, hauteurBoutonPalette,
             Component.literal("Sélection"), b -> basculerModeSelection(),
             BoutonPalette.Pastille.SELECTION, 0, () -> modeSelection, COULEUR_SELECTION);
         boutonSelection.setTooltip(net.minecraft.client.gui.components.Tooltip.create(
@@ -300,7 +319,7 @@ public class EcranEditeurCarte extends Screen {
         addRenderableWidget(boutonSelection);
         yPalette += pasPalette;
 
-        int largeurMoitie = (LARGEUR_PALETTE - 16) / 2;
+        int largeurMoitie = (largeurPalette - 16) / 2;
         boutonAnnuler = Button.builder(Component.literal("↶ Annuler"), b -> annuler())
             .bounds(6, yPalette, largeurMoitie, hauteurBoutonPalette)
             .tooltip(net.minecraft.client.gui.components.Tooltip.create(Component.literal("Annuler (Ctrl+Z)")))
@@ -323,10 +342,10 @@ public class EcranEditeurCarte extends Screen {
         pitchSelection = Math.max(14, Math.min(20, (dispoSelection / 2 - 18) / 3));
         hauteurCarteSelection = 18 + 3 * pitchSelection;
         int hauteurChamp = Math.min(14, pitchSelection - 2);
-        int largeurChamp = 62;
-        int xChamp = this.width - 8 - largeurChamp;
-        int xType = this.width - LARGEUR_PANNEAU_DROIT + 46;
-        int largeurType = LARGEUR_PANNEAU_DROIT - 54;
+        int largeurChamp = LARGEUR_CHAMP_SELECTION;
+        int xChamp = xChampSelection();
+        int xType = xTypeSelection();
+        int largeurType = largeurPanneauDroit - 54;
 
         champDelaiVisible = new EditBox(this.font, xChamp, 0, largeurChamp, hauteurChamp,
             Component.literal("Délai bonbon visible (s)"));
@@ -379,8 +398,9 @@ public class EcranEditeurCarte extends Screen {
             .build();
         addRenderableWidget(boutonTypeBonbonNonVisible);
 
-        boutonAppliquerDelais = Button.builder(Component.literal("Appliquer à la sélection"), b -> appliquerDelais())
-            .bounds(this.width - LARGEUR_PANNEAU_DROIT + 8, 0, LARGEUR_PANNEAU_DROIT - 16, 16).build();
+        boutonAppliquerDelais = Button.builder(
+                Component.literal(laterauxCompacts ? "Appliquer" : "Appliquer à la sélection"), b -> appliquerDelais())
+            .bounds(this.width - largeurPanneauDroit + 8, 0, largeurPanneauDroit - 16, 16).build();
         addRenderableWidget(boutonAppliquerDelais);
 
         // ----- Barre d'état : contrôles de zoom à droite -----
@@ -399,7 +419,18 @@ public class EcranEditeurCarte extends Screen {
             .build());
 
         mettreAJourBoutonsAnnulation();
+        mettreAJourIndicateurSauvegarde();
         mettreAJourPanneauDelais();
+    }
+
+    /** Colonne des champs du panneau sélection (alignés au bord droit) */
+    private int xChampSelection() {
+        return this.width - 8 - LARGEUR_CHAMP_SELECTION;
+    }
+
+    /** Colonne des boutons de type du panneau sélection */
+    private int xTypeSelection() {
+        return this.width - largeurPanneauDroit + 46;
     }
 
     /** Ajoute un titre de section peint dans la palette et retourne le y suivant */
@@ -410,7 +441,13 @@ public class EcranEditeurCarte extends Screen {
 
     /** Crée le bouton de palette d'un outil (pastille + étiquette) et retourne le y suivant */
     private int ajouterBoutonOutil(OutilPalette outil, int y, int pasPalette) {
-        String etiquette = outil == OutilPalette.APPARITION ? "Apparition" : outil.nomAffichage;
+        boolean compact = largeurPalette < 148;
+        String etiquette = switch (outil) {
+            case BONBON_VISIBLE -> compact ? "Bonbon vis." : outil.nomAffichage;
+            case BONBON_NON_VISIBLE -> compact ? "Bonbon non-vis." : outil.nomAffichage;
+            case APPARITION -> "Apparition";
+            default -> outil.nomAffichage;
+        };
         BoutonPalette.Pastille pastille = switch (outil) {
             case BONBON_NON_VISIBLE -> BoutonPalette.Pastille.ENTERREE;
             case APPARITION -> BoutonPalette.Pastille.DRAPEAU;
@@ -424,11 +461,10 @@ public class EcranEditeurCarte extends Screen {
             case BONBON_VISIBLE, BONBON_NON_VISIBLE -> COULEUR_BONBON_VISIBLE;
             case APPARITION -> 0;
         };
-        BoutonPalette bouton = new BoutonPalette(6, y, LARGEUR_PALETTE - 12, pasPalette - 2,
+        BoutonPalette bouton = new BoutonPalette(6, y, largeurPalette - 12, pasPalette - 2,
             Component.literal(etiquette), b -> selectionnerOutil(outil),
             pastille, couleurPastille, () -> outilActif == outil, COULEUR_ACCENT);
         bouton.setTooltip(net.minecraft.client.gui.components.Tooltip.create(Component.literal(outil.nomAffichage)));
-        boutonsPalette.put(outil, bouton);
         addRenderableWidget(bouton);
         return y + pasPalette;
     }
@@ -463,12 +499,12 @@ public class EcranEditeurCarte extends Screen {
     // ==================== Coordonnées grille <-> écran ====================
 
     private int grilleGaucheEcran() {
-        return LARGEUR_PALETTE;
+        return largeurPalette;
     }
 
     private int grilleDroiteEcran() {
         // L'inspecteur est permanent : la grille garde une largeur constante
-        return this.width - LARGEUR_PANNEAU_DROIT;
+        return this.width - largeurPanneauDroit;
     }
 
     private int basGrille() {
@@ -504,8 +540,7 @@ public class EcranEditeurCarte extends Screen {
             pileAnnulation.removeLast();
         }
         pileRetablissement.clear();
-        modifieDepuisSauvegarde = true;
-        mettreAJourBoutonsAnnulation();
+        surCarteModifiee();
     }
 
     private void annuler() {
@@ -516,8 +551,7 @@ public class EcranEditeurCarte extends Screen {
         action.annuler(carte);
         pileRetablissement.push(action);
         cellulesSelectionnees.clear();
-        modifieDepuisSauvegarde = true;
-        mettreAJourBoutonsAnnulation();
+        surCarteModifiee();
         synchroniserChampsTaille();
         mettreAJourPanneauDelais();
     }
@@ -530,10 +564,32 @@ public class EcranEditeurCarte extends Screen {
         action.retablir(carte);
         pileAnnulation.push(action);
         cellulesSelectionnees.clear();
-        modifieDepuisSauvegarde = true;
-        mettreAJourBoutonsAnnulation();
+        surCarteModifiee();
         synchroniserChampsTaille();
         mettreAJourPanneauDelais();
+    }
+
+    /** À appeler après toute action sur la carte : statistiques, indicateur ●, boutons ↶/↷ */
+    private void surCarteModifiee() {
+        statsObsoletes = true;
+        mettreAJourIndicateurSauvegarde();
+        mettreAJourBoutonsAnnulation();
+    }
+
+    /**
+     * Des modifications existent-elles depuis la dernière sauvegarde réussie (ou le
+     * dernier chargement) ? Comparaison par repère de pile : annuler jusqu'au point
+     * de sauvegarde exact redonne « non modifié ». Le nom fait partie de l'état.
+     */
+    private boolean estModifie() {
+        return pileAnnulation.peek() != reperePileSauvegarde || !texteNom.equals(nomSauvegarde);
+    }
+
+    /** Le bouton Sauvegarder porte un ● lorsque des modifications ne sont pas sauvegardées */
+    private void mettreAJourIndicateurSauvegarde() {
+        if (boutonSauvegarder != null) {
+            boutonSauvegarder.setMessage(Component.literal(estModifie() ? "Sauvegarder ●" : "Sauvegarder"));
+        }
     }
 
     /** Annuler / Rétablir sont grisés lorsque leur pile est vide */
@@ -588,6 +644,12 @@ public class EcranEditeurCarte extends Screen {
      * restent réservées aux décisions (écrasement, remplissage, erreurs de sauvegarde).
      */
     private void afficherToast(String message, boolean erreur) {
+        // Repli : si la bande de grille est trop étroite pour un toast lisible,
+        // reprendre la fenêtre modale d'origine — le message ne doit jamais se perdre
+        if (grilleDroiteEcran() - grilleGaucheEcran() - 24 < 60) {
+            afficherMessage(erreur ? "Placement refusé" : "Information", message);
+            return;
+        }
         toastTexte = message;
         toastErreur = erreur;
         toastExpiration = net.minecraft.Util.getMillis() + 2600;
@@ -1075,8 +1137,24 @@ public class EcranEditeurCarte extends Screen {
         mettreAJourPanneauDelais();
     }
 
-    /** Charge une carte existante dans l'éditeur (le nom est pré-rempli) */
+    /**
+     * Charge une carte existante dans l'éditeur (le nom est pré-rempli).
+     * Comme la fermeture, le chargement écrase le travail en cours : il demande
+     * confirmation si des modifications ne sont pas sauvegardées.
+     */
     public void chargerCarte(CarteDonnees carteChargee) {
+        if (estModifie()) {
+            afficherConfirmation("Modifications non sauvegardées",
+                List.of("Charger « " + carteChargee.nom + " » remplacera les modifications non sauvegardées.",
+                    "Voulez-vous continuer ?"),
+                () -> appliquerCarteChargee(carteChargee),
+                null);
+            return;
+        }
+        appliquerCarteChargee(carteChargee);
+    }
+
+    private void appliquerCarteChargee(CarteDonnees carteChargee) {
         this.carte = carteChargee;
         this.texteNom = carteChargee.nom;
         if (champNom != null) {
@@ -1085,9 +1163,10 @@ public class EcranEditeurCarte extends Screen {
         pileAnnulation.clear();
         pileRetablissement.clear();
         cellulesSelectionnees.clear();
-        modifieDepuisSauvegarde = false;
-        statsProchainCalcul = 0; // Recalcul immédiat des statistiques de l'inspecteur
-        mettreAJourBoutonsAnnulation();
+        // La carte chargée devient le nouvel état « sauvegardé »
+        reperePileSauvegarde = null;
+        nomSauvegarde = texteNom;
+        surCarteModifiee();
         synchroniserChampsTaille();
         mettreAJourPanneauDelais();
     }
@@ -1213,8 +1292,8 @@ public class EcranEditeurCarte extends Screen {
         // Repositionnement : les cartes de l'inspecteur s'empilent selon les familles
         // présentes dans la sélection (les cadres sont dessinés par dessinerInspecteur
         // aux mêmes positions, dérivées des flags de visibilité des champs)
-        int xChampSel = this.width - 8 - 62;
-        int xTypeSel = this.width - LARGEUR_PANNEAU_DROIT + 46;
+        int xChampSel = xChampSelection();
+        int xTypeSel = xTypeSelection();
         int ySel = hautGrille + 18;
         if (aVisible) {
             champDelaiVisible.setPosition(xChampSel, ySel + 16);
@@ -1228,7 +1307,7 @@ public class EcranEditeurCarte extends Screen {
             boutonTypeBonbonNonVisible.setPosition(xTypeSel, ySel + 16 + 2 * pitchSelection);
             ySel += hauteurCarteSelection + 4;
         }
-        boutonAppliquerDelais.setPosition(this.width - LARGEUR_PANNEAU_DROIT + 8, ySel);
+        boutonAppliquerDelais.setPosition(this.width - largeurPanneauDroit + 8, ySel);
     }
 
     /** Valeur d'apparition initiale commune aux blocs sélectionnés contenant ce type de bonbon (null = mixte) */
@@ -1497,6 +1576,10 @@ public class EcranEditeurCarte extends Screen {
             return;
         }
 
+        // Instantané du point envoyé : les modifications faites pendant l'aller-retour
+        // réseau ne sont pas dans ce JSON et doivent rester marquées non sauvegardées
+        reperePileEnvoi = pileAnnulation.peek();
+        nomEnvoi = texteNom;
         jsonSauvegardeEnAttente = carte.versJson();
         envoyerSauvegarde(jsonSauvegardeEnAttente, false);
     }
@@ -1547,7 +1630,11 @@ public class EcranEditeurCarte extends Screen {
 
     public void surSauvegardeReussie(String nomCarte) {
         jsonSauvegardeEnAttente = null;
-        modifieDepuisSauvegarde = false;
+        // L'état sauvegardé est celui de l'envoi : si l'utilisateur a modifié la carte
+        // pendant l'aller-retour réseau, l'indicateur ● reste allumé
+        reperePileSauvegarde = reperePileEnvoi;
+        nomSauvegarde = nomEnvoi;
+        mettreAJourIndicateurSauvegarde();
         afficherToast("La carte « " + nomCarte + " » a été sauvegardée", false);
     }
 
@@ -1711,6 +1798,13 @@ public class EcranEditeurCarte extends Screen {
         return super.mouseScrolled(sourisX, sourisY, delta);
     }
 
+    /** Taille de cellule qui cadre toute la carte dans la vue (avec une marge de 5 %) */
+    private double tailleCelluleAjustee() {
+        int largeurVue = grilleDroiteEcran() - grilleGaucheEcran();
+        int hauteurVue = basGrille() - hautGrille;
+        return Math.min((double) largeurVue / carte.largeur, (double) hauteurVue / carte.hauteur) * 0.95;
+    }
+
     /**
      * Zoom / dézoom autour d'un point de l'écran (la cellule sous le pivot est conservée).
      * Le dézoom permet toujours de voir l'ensemble de la carte, quelle que soit sa taille.
@@ -1718,11 +1812,7 @@ public class EcranEditeurCarte extends Screen {
     private void zoomer(double facteur, double pivotX, double pivotY) {
         double celluleX = ecranVersCelluleX(pivotX);
         double celluleZ = ecranVersCelluleZ(pivotY);
-        int largeurVue = grilleDroiteEcran() - grilleGaucheEcran();
-        int hauteurVue = basGrille() - hautGrille;
-        double tailleAjustement = Math.min((double) largeurVue / carte.largeur,
-            (double) hauteurVue / carte.hauteur) * 0.95;
-        double tailleMin = Math.max(0.2, Math.min(3, tailleAjustement));
+        double tailleMin = Math.max(0.2, Math.min(3, tailleCelluleAjustee()));
         tailleCellule = Math.max(tailleMin, Math.min(48, tailleCellule * facteur));
         decalageX = pivotX - grilleGaucheEcran() - celluleX * tailleCellule;
         decalageY = pivotY - hautGrille - celluleZ * tailleCellule;
@@ -1735,13 +1825,9 @@ public class EcranEditeurCarte extends Screen {
 
     /** Bouton « Ajuster » : cadre toute la carte, centrée dans la vue */
     private void ajusterVue() {
-        int largeurVue = grilleDroiteEcran() - grilleGaucheEcran();
-        int hauteurVue = basGrille() - hautGrille;
-        double tailleAjustement = Math.min((double) largeurVue / carte.largeur,
-            (double) hauteurVue / carte.hauteur) * 0.95;
-        tailleCellule = Math.max(0.2, Math.min(48, tailleAjustement));
-        decalageX = (largeurVue - carte.largeur * tailleCellule) / 2;
-        decalageY = (hauteurVue - carte.hauteur * tailleCellule) / 2;
+        tailleCellule = Math.max(0.2, Math.min(48, tailleCelluleAjustee()));
+        decalageX = (grilleDroiteEcran() - grilleGaucheEcran() - carte.largeur * tailleCellule) / 2;
+        decalageY = (basGrille() - hautGrille - carte.hauteur * tailleCellule) / 2;
     }
 
     @Override
@@ -1815,7 +1901,7 @@ public class EcranEditeurCarte extends Screen {
     @Override
     public void onClose() {
         // Garde-fou : confirmer la fermeture lorsque des modifications ne sont pas sauvegardées
-        if (modifieDepuisSauvegarde && !fermetureConfirmee) {
+        if (estModifie() && !fermetureConfirmee) {
             afficherConfirmation("Modifications non sauvegardées",
                 List.of("La carte contient des modifications non sauvegardées.",
                     "Voulez-vous vraiment fermer l'éditeur ?"),
@@ -1838,8 +1924,8 @@ public class EcranEditeurCarte extends Screen {
 
         // Fond des panneaux : barre du haut, palette, inspecteur, barre d'état
         guiGraphics.fill(0, 0, this.width, hautGrille, 0xE0202020);
-        guiGraphics.fill(0, hautGrille, LARGEUR_PALETTE, basGrille(), 0xE0181818);
-        guiGraphics.fill(this.width - LARGEUR_PANNEAU_DROIT, hautGrille, this.width, basGrille(), 0xE0181818);
+        guiGraphics.fill(0, hautGrille, largeurPalette, basGrille(), 0xE0181818);
+        guiGraphics.fill(this.width - largeurPanneauDroit, hautGrille, this.width, basGrille(), 0xE0181818);
         guiGraphics.fill(0, basGrille(), this.width, this.height, 0xE0202020);
 
         dessinerGrille(guiGraphics, sourisX, sourisY);
@@ -1850,11 +1936,6 @@ public class EcranEditeurCarte extends Screen {
         }
         for (int[] separateur : separateursPeints) {
             guiGraphics.fill(separateur[0], separateur[1], separateur[0] + 1, separateur[2], 0xFF3A4046);
-        }
-
-        // Indicateur « modifications non sauvegardées » entre le nom et Sauvegarder
-        if (modifieDepuisSauvegarde) {
-            guiGraphics.drawString(this.font, "●", xIndicateurModifie, yIndicateurModifie, COULEUR_BONBON_VISIBLE);
         }
 
         int[] cellule = modalActif ? null : celluleSousSouris(sourisX, sourisY);
@@ -2073,13 +2154,12 @@ public class EcranEditeurCarte extends Screen {
 
     // ==================== Inspecteur (panneau latéral droit) ====================
 
-    /** Rafraîchit les statistiques affichées par l'inspecteur (au plus toutes les 500 ms) */
+    /** Rafraîchit les statistiques affichées par l'inspecteur (après chaque action sur la carte) */
     private void rafraichirStatsCarte() {
-        long maintenant = net.minecraft.Util.getMillis();
-        if (maintenant < statsProchainCalcul) {
+        if (!statsObsoletes) {
             return;
         }
-        statsProchainCalcul = maintenant + 500;
+        statsObsoletes = false;
         statLimiteFermee = carte.limiteEstBoucleFermeeValide();
         int visibles = 0;
         int nonVisibles = 0;
@@ -2094,11 +2174,12 @@ public class EcranEditeurCarte extends Screen {
     /**
      * Panneau de droite permanent. Hors sélection : bloc survolé + état de la carte +
      * légende. En sélection avec bonbons : les cadres des cartes « Bonbon visible » /
-     * « Bonbon non-visible » derrière les champs posés par mettreAJourPanneauDelais().
+     * « Bonbon non-visible » derrière les champs posés par mettreAJourPanneauDelais(),
+     * puis le bloc survolé sous le bouton Appliquer si la place le permet.
      */
     private void dessinerInspecteur(GuiGraphics guiGraphics, int[] celluleSurvolee) {
-        int xCarte = this.width - LARGEUR_PANNEAU_DROIT + 6;
-        int largeurCarte = LARGEUR_PANNEAU_DROIT - 12;
+        int xCarte = this.width - largeurPanneauDroit + 6;
+        int largeurCarte = largeurPanneauDroit - 12;
 
         if (panneauDelaisVisible()) {
             guiGraphics.drawString(this.font, "§6Sélection : §7" + cellulesSelectionnees.size() + " bloc(s)",
@@ -2111,6 +2192,11 @@ public class EcranEditeurCarte extends Screen {
             if (champDelaiNonVisible.visible) {
                 dessinerCarteSelection(guiGraphics, xCarte, y, largeurCarte, "Bonbon non-visible",
                     COULEUR_BONBON_NON_VISIBLE);
+            }
+            // L'info du bloc survolé reste consultable pendant le réglage des délais
+            if (celluleSurvolee != null) {
+                dessinerCarteLignes(guiGraphics, xCarte, boutonAppliquerDelais.getY() + 20, largeurCarte,
+                    "Bloc survolé", 0xFF7F8780, lignesBlocSurvole(celluleSurvolee));
             }
             return;
         }
@@ -2125,39 +2211,8 @@ public class EcranEditeurCarte extends Screen {
                     new LigneInspecteur("", "les blocs à bonbons.", COULEUR_ETIQUETTE)));
         }
 
-        // Bloc survolé
-        List<LigneInspecteur> lignesBloc = new ArrayList<>();
-        if (celluleSurvolee != null) {
-            BlocCarte bloc = carte.obtenirBloc(celluleSurvolee[0], celluleSurvolee[1]);
-            lignesBloc.add(new LigneInspecteur("Position",
-                "(" + celluleSurvolee[0] + ", " + celluleSurvolee[1] + ")", 0xFFFFFFFF));
-            lignesBloc.add(new LigneInspecteur("Type", bloc.type.obtenirNomAffichage(), 0xFFFFFFFF));
-            if (bloc.type == TypeElementCarte.ILE || bloc.type == TypeElementCarte.PIERRE) {
-                lignesBloc.add(new LigneInspecteur("Élévation",
-                    (bloc.elevation > 0 ? "+" : "") + bloc.elevation,
-                    bloc.elevation < 0 ? 0xFF9FD3FF : 0xFFFFFFFF));
-            }
-            if (bloc.qteBonbonVisible > 0) {
-                lignesBloc.add(new LigneInspecteur("Visible",
-                    "×" + bloc.qteBonbonVisible + " · " + bloc.typeBonbonVisible.obtenirNomAffichage(),
-                    COULEUR_BONBON_VISIBLE));
-                String details = detailsBonbon(bloc.delaiBonbonVisible, bloc.delaiApparitionInitiale);
-                if (!details.isEmpty()) {
-                    lignesBloc.add(new LigneInspecteur("", details, COULEUR_TEXTE_ESTOMPE));
-                }
-            }
-            if (bloc.qteBonbonNonVisible > 0) {
-                lignesBloc.add(new LigneInspecteur("Non-visible",
-                    "×" + bloc.qteBonbonNonVisible + " · " + bloc.typeBonbonNonVisible.obtenirNomAffichage(),
-                    COULEUR_BONBON_NON_VISIBLE));
-                String details = detailsBonbon(bloc.delaiBonbonNonVisible, bloc.delaiApparitionInitialeNonVisible);
-                if (!details.isEmpty()) {
-                    lignesBloc.add(new LigneInspecteur("", details, COULEUR_TEXTE_ESTOMPE));
-                }
-            }
-        } else {
-            lignesBloc.add(new LigneInspecteur("", "Survolez la grille…", COULEUR_TEXTE_ESTOMPE));
-        }
+        List<LigneInspecteur> lignesBloc = celluleSurvolee != null ? lignesBlocSurvole(celluleSurvolee)
+            : List.of(new LigneInspecteur("", "Survolez la grille…", COULEUR_TEXTE_ESTOMPE));
         y = dessinerCarteLignes(guiGraphics, xCarte, y, largeurCarte, "Bloc survolé", 0xFF7F8780, lignesBloc);
 
         // État de la carte : les mêmes critères que la validation à la sauvegarde
@@ -2166,11 +2221,43 @@ public class EcranEditeurCarte extends Screen {
                 statLimiteFermee ? 0xFF5FD37E : 0xFFFF7A6B),
             new LigneInspecteur("Apparition", carte.aPointApparition() ? "placée ✔" : "absente ✘",
                 carte.aPointApparition() ? 0xFF5FD37E : 0xFFFF7A6B),
-            new LigneInspecteur("Bonbons visibles", String.valueOf(statBonbonsVisibles), 0xFFFFFFFF),
+            new LigneInspecteur("Bonbons vis.", String.valueOf(statBonbonsVisibles), 0xFFFFFFFF),
             new LigneInspecteur("Bonbons non-vis.", String.valueOf(statBonbonsNonVisibles), 0xFFFFFFFF));
         y = dessinerCarteLignes(guiGraphics, xCarte, y, largeurCarte, "État de la carte", 0xFF7F8780, lignesEtat);
 
         dessinerLegende(guiGraphics, xCarte, y, largeurCarte);
+    }
+
+    /** Lignes de la carte « Bloc survolé » : position, type, élévation, bonbons et leurs délais */
+    private List<LigneInspecteur> lignesBlocSurvole(int[] cellule) {
+        List<LigneInspecteur> lignes = new ArrayList<>();
+        BlocCarte bloc = carte.obtenirBloc(cellule[0], cellule[1]);
+        lignes.add(new LigneInspecteur("Position", "(" + cellule[0] + ", " + cellule[1] + ")", 0xFFFFFFFF));
+        lignes.add(new LigneInspecteur("Type", bloc.type.obtenirNomAffichage(), 0xFFFFFFFF));
+        if (bloc.type == TypeElementCarte.ILE || bloc.type == TypeElementCarte.PIERRE) {
+            lignes.add(new LigneInspecteur("Élévation",
+                (bloc.elevation > 0 ? "+" : "") + bloc.elevation,
+                bloc.elevation < 0 ? 0xFF9FD3FF : 0xFFFFFFFF));
+        }
+        if (bloc.qteBonbonVisible > 0) {
+            lignes.add(new LigneInspecteur("Visible",
+                "×" + bloc.qteBonbonVisible + " · " + bloc.typeBonbonVisible.obtenirNomAffichage(),
+                COULEUR_BONBON_VISIBLE));
+            String details = detailsBonbon(bloc.delaiBonbonVisible, bloc.delaiApparitionInitiale);
+            if (!details.isEmpty()) {
+                lignes.add(new LigneInspecteur("", details, COULEUR_TEXTE_ESTOMPE));
+            }
+        }
+        if (bloc.qteBonbonNonVisible > 0) {
+            lignes.add(new LigneInspecteur("Non-visible",
+                "×" + bloc.qteBonbonNonVisible + " · " + bloc.typeBonbonNonVisible.obtenirNomAffichage(),
+                COULEUR_BONBON_NON_VISIBLE));
+            String details = detailsBonbon(bloc.delaiBonbonNonVisible, bloc.delaiApparitionInitialeNonVisible);
+            if (!details.isEmpty()) {
+                lignes.add(new LigneInspecteur("", details, COULEUR_TEXTE_ESTOMPE));
+            }
+        }
+        return lignes;
     }
 
     /** « réap. Ns · appar. Ns » (parties non nulles seulement) */
@@ -2242,21 +2329,26 @@ public class EcranEditeurCarte extends Screen {
         dessinerCadre(guiGraphics, x, y, x + largeur, y + hauteur, COULEUR_CADRE_CARTE_INSP);
         guiGraphics.drawString(this.font, "Légende", x + 5, y + 5, 0xFF7F8780);
 
+        int largeurTexte = largeur - 21;
         int yLigne = y + 16;
         // Bonbon visible : carré plein, coin haut-gauche du bloc
         guiGraphics.fill(x + 5, yLigne, x + 13, yLigne + 8, COULEUR_BONBON_VISIBLE);
-        guiGraphics.drawString(this.font, "haut-gauche : visible", x + 17, yLigne, COULEUR_ETIQUETTE);
+        guiGraphics.drawString(this.font,
+            this.font.plainSubstrByWidth("haut-gauche : visible", largeurTexte), x + 17, yLigne, COULEUR_ETIQUETTE);
         yLigne += 11;
         // Bonbon non-visible : carré assombri encadré, coin bas-droit
         guiGraphics.fill(x + 5, yLigne, x + 13, yLigne + 8, assombrir(COULEUR_BONBON_VISIBLE, 0.6f));
         dessinerCadre(guiGraphics, x + 5, yLigne, x + 13, yLigne + 8, 0xFF000000);
-        guiGraphics.drawString(this.font, "bas-droit : non-visible", x + 17, yLigne, COULEUR_ETIQUETTE);
+        guiGraphics.drawString(this.font,
+            this.font.plainSubstrByWidth("bas-droit : non-visible", largeurTexte), x + 17, yLigne, COULEUR_ETIQUETTE);
         yLigne += 11;
         guiGraphics.drawString(this.font, "2", x + 7, yLigne, 0xFFFFFFFF);
-        guiGraphics.drawString(this.font, "chiffre : élévation", x + 17, yLigne, COULEUR_ETIQUETTE);
+        guiGraphics.drawString(this.font,
+            this.font.plainSubstrByWidth("chiffre : élévation", largeurTexte), x + 17, yLigne, COULEUR_ETIQUETTE);
         yLigne += 11;
         guiGraphics.drawString(this.font, "⚑", x + 5, yLigne, 0xFFFF3030);
-        guiGraphics.drawString(this.font, "apparition des joueurs", x + 17, yLigne, COULEUR_ETIQUETTE);
+        guiGraphics.drawString(this.font,
+            this.font.plainSubstrByWidth("apparition des joueurs", largeurTexte), x + 17, yLigne, COULEUR_ETIQUETTE);
     }
 
     // ==================== Barre d'état ====================
@@ -2271,9 +2363,14 @@ public class EcranEditeurCarte extends Screen {
         String nomOutil = modeSelection ? "Sélection"
             : (outilActif != null ? outilActif.nomAffichage : "Aucun outil");
         String texteOutil = "Outil : " + nomOutil;
-        guiGraphics.drawString(this.font, texteOutil, 82, y, 0xFFE8EBE4);
+        // Tronqué avant la zone des boutons de zoom (ancrés à width - 136)
+        int largeurMaxOutil = this.width - 140 - 82;
+        if (largeurMaxOutil > 20) {
+            guiGraphics.drawString(this.font,
+                this.font.plainSubstrByWidth(texteOutil, largeurMaxOutil), 82, y, 0xFFE8EBE4);
+        }
 
-        int xAstuce = 82 + this.font.width(texteOutil) + 12;
+        int xAstuce = 82 + Math.min(this.font.width(texteOutil), Math.max(0, largeurMaxOutil)) + 12;
         int largeurMaxAstuce = this.width - 140 - xAstuce;
         if (largeurMaxAstuce > 40) {
             guiGraphics.drawString(this.font,

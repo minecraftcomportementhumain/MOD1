@@ -255,7 +255,7 @@ public class EcranGuide extends Screen {
             + "et non-visibles, puis §eAppliquer§r.");
         para(l, "§7Le panneau de droite montre le bloc survolé, l'état de la carte (limite fermée, apparition, "
             + "totaux de bonbons) et la légende ; la barre du bas rappelle les contrôles de l'outil actif. "
-            + "Un point §6●§7 près du nom signale des modifications non sauvegardées.");
+            + "Un point §6●§7 sur le bouton Sauvegarder signale des modifications non sauvegardées.");
         para(l, "§7Sur la grille : bonbon visible = coin haut-gauche coloré ; non-visible = coin bas-droite "
             + "coloré mais assombri et bordé de noir (couleur = type, assombrissement = caché).");
         para(l, "À la §esauvegarde§r, donnez un nom ; l'éditeur refuse une carte invalide et indique quoi "
