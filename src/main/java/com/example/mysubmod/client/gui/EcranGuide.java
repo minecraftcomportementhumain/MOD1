@@ -249,9 +249,13 @@ public class EcranGuide extends Screen {
             + "§eBonbon visible, Bonbon non-visible, Apparition§r.");
         puce(l, "§eClic gauche§r peint / ajoute · §eClic droit§r retire / décrémente.");
         puce(l, "§eCtrl + molette§r sur Île/Pierre : élévation d'un cran (−15 à +15).");
-        puce(l, "§eMolette§r : zoom · §eflèches§r : déplacer la vue · §eCtrl+Z / Ctrl+Y§r : annuler / rétablir.");
+        puce(l, "§eMolette§r ou §e− / + / Ajuster§r (barre du bas) : zoom · §eclic milieu / flèches§r : déplacer "
+            + "la vue · §eCtrl+Z / Ctrl+Y§r : annuler / rétablir.");
         puce(l, "§eSélection§r : régler les délais et le §etype§r (Standard/Bleu/Rouge) des bonbons visibles "
             + "et non-visibles, puis §eAppliquer§r.");
+        para(l, "§7Le panneau de droite montre le bloc survolé, l'état de la carte (limite fermée, apparition, "
+            + "totaux de bonbons) et la légende ; la barre du bas rappelle les contrôles de l'outil actif. "
+            + "Un point §6●§7 près du nom signale des modifications non sauvegardées.");
         para(l, "§7Sur la grille : bonbon visible = coin haut-gauche coloré ; non-visible = coin bas-droite "
             + "coloré mais assombri et bordé de noir (couleur = type, assombrissement = caché).");
         para(l, "À la §esauvegarde§r, donnez un nom ; l'éditeur refuse une carte invalide et indique quoi "
