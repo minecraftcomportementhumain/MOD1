@@ -42,13 +42,15 @@ public class PaquetDemandeDonneesCarte {
                 return;
             }
 
-            CarteDonnees carte = GestionnaireCartes.getInstance().chargerCarte(paquet.nomCarte);
-            if (carte == null) {
+            // Le fichier est transmis tel quel (le client sait décoder les formats v1 et v2) :
+            // aucun décodage + ré-encodage côté serveur, et le transfert part compressé
+            String json = GestionnaireCartes.getInstance().lireJsonCarte(paquet.nomCarte);
+            if (json == null) {
                 joueur.sendSystemMessage(Component.literal("§cCarte introuvable : " + paquet.nomCarte));
                 return;
             }
 
-            byte[] donnees = carte.versJson().getBytes(StandardCharsets.UTF_8);
+            byte[] donnees = UtilitaireCompressionCarte.compresser(json.getBytes(StandardCharsets.UTF_8));
             UUID idTransfert = UUID.randomUUID();
             int nombreTotalMorceaux = Math.max(1, (int) Math.ceil((double) donnees.length / TAILLE_MORCEAU));
 

@@ -107,7 +107,8 @@ public class GestionnairePaquetsCartes {
         }
 
         try {
-            CarteDonnees carte = CarteDonnees.depuisJson(new String(complet, StandardCharsets.UTF_8));
+            byte[] json = com.example.mysubmod.cartes.reseau.UtilitaireCompressionCarte.decompresserSiGzip(complet);
+            CarteDonnees carte = CarteDonnees.depuisJson(new String(json, StandardCharsets.UTF_8));
             Minecraft mc = Minecraft.getInstance();
             if (mc.screen instanceof EcranEditeurCarte editeur) {
                 editeur.chargerCarte(carte);

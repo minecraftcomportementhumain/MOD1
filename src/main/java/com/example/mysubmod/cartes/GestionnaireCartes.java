@@ -82,6 +82,23 @@ public class GestionnaireCartes {
     }
 
     public CarteDonnees chargerCarte(String nomCarte) {
+        String json = lireJsonCarte(nomCarte);
+        if (json == null) {
+            return null;
+        }
+        try {
+            return CarteDonnees.depuisJson(json);
+        } catch (Exception e) {
+            MonSubMod.JOURNALISEUR.error("Échec du chargement de la carte {}", nomCarte, e);
+            return null;
+        }
+    }
+
+    /**
+     * Lit le JSON brut d'une carte sans le décoder (envoi direct vers l'éditeur,
+     * relecture de la seed à la sauvegarde). Retourne null si la carte n'existe pas.
+     */
+    public String lireJsonCarte(String nomCarte) {
         try {
             Path fichier = UtilitaireCheminSecurise.resoudreConfine(Paths.get(REPERTOIRE_CARTES), nomCarte + ".json");
             if (fichier == null) {
@@ -92,10 +109,9 @@ public class GestionnaireCartes {
                 MonSubMod.JOURNALISEUR.warn("Carte introuvable : {}", nomCarte);
                 return null;
             }
-            String json = Files.readString(fichier, StandardCharsets.UTF_8);
-            return CarteDonnees.depuisJson(json);
+            return Files.readString(fichier, StandardCharsets.UTF_8);
         } catch (Exception e) {
-            MonSubMod.JOURNALISEUR.error("Échec du chargement de la carte {}", nomCarte, e);
+            MonSubMod.JOURNALISEUR.error("Échec de la lecture de la carte {}", nomCarte, e);
             return null;
         }
     }
@@ -115,9 +131,11 @@ public class GestionnaireCartes {
             assurerRepertoireExiste();
 
             // Seed fixe générée automatiquement à la première sauvegarde de la carte
-            CarteDonnees carteExistante = carteExiste(carte.nom) ? chargerCarte(carte.nom) : null;
-            if (carteExistante != null && carteExistante.seed != 0) {
-                carte.seed = carteExistante.seed;
+            // (relue en flux depuis le fichier existant, sans décoder toute la carte)
+            String jsonExistant = carteExiste(carte.nom) ? lireJsonCarte(carte.nom) : null;
+            long seedExistante = jsonExistant != null ? CarteDonnees.seedDepuisJson(jsonExistant) : 0;
+            if (seedExistante != 0) {
+                carte.seed = seedExistante;
             } else if (carte.seed == 0) {
                 carte.seed = new java.util.Random().nextLong();
                 if (carte.seed == 0) {
@@ -218,7 +236,8 @@ public class GestionnaireCartes {
 
     /**
      * Enregistre un morceau d'une carte envoyée par un client.
-     * Retourne le JSON complet si tous les morceaux sont arrivés, sinon null.
+     * Retourne le JSON complet (décompressé si le client l'a envoyé en GZIP)
+     * si tous les morceaux sont arrivés, sinon null.
      */
     public String gererMorceauCarte(UUID idTransfert, int indexMorceau, int nombreTotalMorceaux, byte[] donnees) {
         if (nombreTotalMorceaux <= 0 || nombreTotalMorceaux > MAX_MORCEAUX
@@ -254,7 +273,13 @@ public class GestionnaireCartes {
                 System.arraycopy(morceau, 0, complet, position, morceau.length);
                 position += morceau.length;
             }
-            return new String(complet, StandardCharsets.UTF_8);
+            try {
+                return new String(com.example.mysubmod.cartes.reseau.UtilitaireCompressionCarte
+                    .decompresserSiGzip(complet), StandardCharsets.UTF_8);
+            } catch (IllegalArgumentException e) {
+                MonSubMod.JOURNALISEUR.warn("Transfert de carte rejeté : {}", e.getMessage());
+                return null;
+            }
         }
         return null;
     }

@@ -1,5 +1,6 @@
 package com.example.mysubmod.cartes.client;
 
+import com.example.mysubmod.cartes.CarteDonnees;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.components.Button;
 import net.minecraft.client.gui.components.EditBox;
@@ -121,6 +122,10 @@ public class EcranImportCsvCarte extends Screen {
                     hauteur = Integer.parseInt(parties[1].trim());
                     if (largeur < 1 || hauteur < 1) {
                         throw new IllegalArgumentException("taille minimale : 1×1 bloc");
+                    }
+                    if (largeur > CarteDonnees.DIMENSION_MAX || hauteur > CarteDonnees.DIMENSION_MAX) {
+                        throw new IllegalArgumentException("taille maximale : "
+                            + CarteDonnees.DIMENSION_MAX + "×" + CarteDonnees.DIMENSION_MAX + " blocs");
                     }
                     continue;
                 }

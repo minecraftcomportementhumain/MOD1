@@ -7,27 +7,33 @@ import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 
-import java.util.ArrayDeque;
+import java.util.AbstractSet;
 import java.util.ArrayList;
-import java.util.Deque;
+import java.util.Arrays;
+import java.util.BitSet;
 import java.util.HashMap;
-import java.util.HashSet;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
+import java.util.NoSuchElementException;
 import java.util.Set;
 
 /**
  * Données complètes d'une carte créée avec l'outil de création de carte.
  * Sérialisée en JSON (un fichier par carte) dans un dossier dédié du serveur.
+ * Format v2 (compact : terrain en plages, bonbons en tableaux) écrit à la
+ * sauvegarde ; les fichiers v1 historiques restent lisibles.
  */
 public class CarteDonnees {
     public static final int ELEVATION_MIN = -15;
     public static final int ELEVATION_MAX = 15;
     public static final int LONGUEUR_MAX_NOM = 32;
     /** Dimension maximale d'une carte (borne anti-DoS au décodage). */
-    public static final int DIMENSION_MAX = 512;
+    public static final int DIMENSION_MAX = 2500;
     /** Nombre maximal de blocs stockés dans une carte (borne anti-DoS au décodage). */
     public static final int BLOCS_MAX = DIMENSION_MAX * DIMENSION_MAX;
+    /** Version du format d'écriture (2 = terrain en plages + bonbons compacts). */
+    private static final int VERSION_FORMAT = 2;
 
     public String nom = "";
     public int largeur = 1;
@@ -82,57 +88,62 @@ public class CarteDonnees {
      * Calcule l'ensemble des cellules strictement à l'intérieur du périmètre Limite.
      * Méthode : remplissage depuis l'extérieur de l'aire (les cellules hors aire sont « extérieures »),
      * bloqué par les blocs Limite. Les cellules non atteintes et non-Limite sont l'intérieur.
+     * L'ensemble retourné est adossé à un BitSet (index = z·largeur + x) : appartenance en O(1)
+     * sans millions de Long boxés, indispensable aux grandes cartes (jusqu'à 2500×2500).
      */
     public Set<Long> calculerInterieurLimite() {
-        Set<Long> exterieur = new HashSet<>();
-        Deque<long[]> pile = new ArrayDeque<>();
-
-        // Amorcer avec toutes les cellules du bord de l'aire qui ne sont pas des Limite
-        for (int x = 0; x < largeur; x++) {
-            amorcerExterieur(pile, exterieur, x, 0);
-            amorcerExterieur(pile, exterieur, x, hauteur - 1);
-        }
-        for (int z = 0; z < hauteur; z++) {
-            amorcerExterieur(pile, exterieur, 0, z);
-            amorcerExterieur(pile, exterieur, largeur - 1, z);
-        }
-
-        // Remplissage (4-adjacence)
-        while (!pile.isEmpty()) {
-            long[] pos = pile.pop();
-            int x = (int) pos[0];
-            int z = (int) pos[1];
-            int[][] voisins = {{x + 1, z}, {x - 1, z}, {x, z + 1}, {x, z - 1}};
-            for (int[] voisin : voisins) {
-                amorcerExterieur(pile, exterieur, voisin[0], voisin[1]);
-            }
-        }
-
-        Set<Long> interieur = new HashSet<>();
-        for (int x = 0; x < largeur; x++) {
-            for (int z = 0; z < hauteur; z++) {
-                long c = cle(x, z);
-                if (!exterieur.contains(c) && obtenirBloc(x, z).type != TypeElementCarte.LIMITE) {
-                    interieur.add(c);
+        int total = largeur * hauteur;
+        BitSet limites = new BitSet(total);
+        for (Map.Entry<Long, BlocCarte> entree : blocs.entrySet()) {
+            if (entree.getValue().type == TypeElementCarte.LIMITE) {
+                int x = cleX(entree.getKey());
+                int z = cleZ(entree.getKey());
+                if (estDansAire(x, z)) {
+                    limites.set(z * largeur + x);
                 }
             }
         }
-        return interieur;
+
+        // Remplissage extérieur (4-adjacence) amorcé sur tout le bord de l'aire
+        BitSet exterieur = new BitSet(total);
+        PileIndices pile = new PileIndices();
+        for (int x = 0; x < largeur; x++) {
+            amorcerExterieur(pile, exterieur, limites, x, 0);
+            amorcerExterieur(pile, exterieur, limites, x, hauteur - 1);
+        }
+        for (int z = 0; z < hauteur; z++) {
+            amorcerExterieur(pile, exterieur, limites, 0, z);
+            amorcerExterieur(pile, exterieur, limites, largeur - 1, z);
+        }
+        while (!pile.estVide()) {
+            int index = pile.depiler();
+            int x = index % largeur;
+            int z = index / largeur;
+            amorcerExterieur(pile, exterieur, limites, x + 1, z);
+            amorcerExterieur(pile, exterieur, limites, x - 1, z);
+            amorcerExterieur(pile, exterieur, limites, x, z + 1);
+            amorcerExterieur(pile, exterieur, limites, x, z - 1);
+        }
+
+        BitSet interieur = new BitSet(total);
+        if (total > 0) {
+            interieur.set(0, total);
+        }
+        interieur.andNot(exterieur);
+        interieur.andNot(limites);
+        return new EnsembleCellules(largeur, hauteur, interieur);
     }
 
-    private void amorcerExterieur(Deque<long[]> pile, Set<Long> exterieur, int x, int z) {
+    private void amorcerExterieur(PileIndices pile, BitSet exterieur, BitSet limites, int x, int z) {
         if (!estDansAire(x, z)) {
             return;
         }
-        long c = cle(x, z);
-        if (exterieur.contains(c)) {
+        int index = z * largeur + x;
+        if (exterieur.get(index) || limites.get(index)) {
             return;
         }
-        if (obtenirBloc(x, z).type == TypeElementCarte.LIMITE) {
-            return;
-        }
-        exterieur.add(c);
-        pile.push(new long[]{x, z});
+        exterieur.set(index);
+        pile.empiler(index);
     }
 
     /**
@@ -140,33 +151,37 @@ public class CarteDonnees {
      * des blocs non-Limite (au moins un bloc intérieur, et chaque bloc Limite touche l'intérieur).
      */
     public boolean limiteEstBoucleFermeeValide() {
-        Set<Long> cellulesLimite = new HashSet<>();
-        for (Map.Entry<Long, BlocCarte> entree : blocs.entrySet()) {
-            if (entree.getValue().type == TypeElementCarte.LIMITE) {
-                cellulesLimite.add(entree.getKey());
+        boolean aLimite = false;
+        for (BlocCarte bloc : blocs.values()) {
+            if (bloc.type == TypeElementCarte.LIMITE) {
+                aLimite = true;
+                break;
             }
         }
-        if (cellulesLimite.isEmpty()) {
+        if (!aLimite) {
             return false;
         }
 
-        Set<Long> interieur = calculerInterieurLimite();
+        EnsembleCellules interieur = (EnsembleCellules) calculerInterieurLimite();
         if (interieur.isEmpty()) {
             return false; // Rien d'entouré : pas une boucle fermée utile
         }
 
         // Il ne peut exister qu'un seul périmètre : tous les blocs Limite doivent
         // participer à la boucle qui entoure l'intérieur (adjacents 8-directions à l'intérieur)
-        for (long c : cellulesLimite) {
-            int x = cleX(c);
-            int z = cleZ(c);
+        for (Map.Entry<Long, BlocCarte> entree : blocs.entrySet()) {
+            if (entree.getValue().type != TypeElementCarte.LIMITE) {
+                continue;
+            }
+            int x = cleX(entree.getKey());
+            int z = cleZ(entree.getKey());
             boolean toucheInterieur = false;
             for (int dx = -1; dx <= 1 && !toucheInterieur; dx++) {
                 for (int dz = -1; dz <= 1 && !toucheInterieur; dz++) {
                     if (dx == 0 && dz == 0) {
                         continue;
                     }
-                    if (interieur.contains(cle(x + dx, z + dz))) {
+                    if (interieur.contientXZ(x + dx, z + dz)) {
                         toucheInterieur = true;
                     }
                 }
@@ -177,24 +192,32 @@ public class CarteDonnees {
         }
 
         // L'intérieur doit être connexe (un seul périmètre par carte)
-        Set<Long> visites = new HashSet<>();
-        Deque<Long> pile = new ArrayDeque<>();
-        long premier = interieur.iterator().next();
-        pile.push(premier);
-        visites.add(premier);
-        while (!pile.isEmpty()) {
-            long c = pile.pop();
-            int x = cleX(c);
-            int z = cleZ(c);
-            long[] voisins = {cle(x + 1, z), cle(x - 1, z), cle(x, z + 1), cle(x, z - 1)};
-            for (long voisin : voisins) {
-                if (interieur.contains(voisin) && !visites.contains(voisin)) {
-                    visites.add(voisin);
-                    pile.push(voisin);
+        BitSet bitsInterieur = interieur.bits();
+        BitSet visites = new BitSet(largeur * hauteur);
+        PileIndices pile = new PileIndices();
+        int premier = bitsInterieur.nextSetBit(0);
+        pile.empiler(premier);
+        visites.set(premier);
+        int nombreVisites = 1;
+        while (!pile.estVide()) {
+            int index = pile.depiler();
+            int x = index % largeur;
+            int z = index / largeur;
+            int[] voisins = {
+                x + 1 < largeur ? index + 1 : -1,
+                x - 1 >= 0 ? index - 1 : -1,
+                z + 1 < hauteur ? index + largeur : -1,
+                z - 1 >= 0 ? index - largeur : -1
+            };
+            for (int voisin : voisins) {
+                if (voisin >= 0 && bitsInterieur.get(voisin) && !visites.get(voisin)) {
+                    visites.set(voisin);
+                    nombreVisites++;
+                    pile.empiler(voisin);
                 }
             }
         }
-        return visites.size() == interieur.size();
+        return nombreVisites == interieur.size();
     }
 
     // ==================== Validation ====================
@@ -281,56 +304,56 @@ public class CarteDonnees {
      */
     public void recalculerZones() {
         zones.clear();
-        Set<Long> visites = new HashSet<>();
         int compteurIles = 0;
         int compteurPierre = 0;
+
+        // Grille des types (index = z·largeur + x) : évite un accès Map par cellule visitée
+        byte[] types = grilleTypes();
+        BitSet visites = new BitSet(largeur * hauteur);
+        PileIndices pile = new PileIndices();
 
         // Parcours déterministe (ordre de balayage) pour un nommage stable
         for (int z = 0; z < hauteur; z++) {
             for (int x = 0; x < largeur; x++) {
-                long c = cle(x, z);
-                if (visites.contains(c)) {
+                int index = z * largeur + x;
+                if (visites.get(index)) {
                     continue;
                 }
-                BlocCarte bloc = blocs.get(c);
-                if (bloc == null || (bloc.type != TypeElementCarte.ILE && bloc.type != TypeElementCarte.PIERRE)) {
+                byte typeIci = types[index];
+                if (typeIci != CODE_ILE && typeIci != CODE_PIERRE) {
                     continue;
                 }
 
                 // Remplissage de la zone connexe du même type (8-adjacence : les diagonales comptent)
-                TypeElementCarte typeZone = bloc.type;
                 ZoneCarte zone = new ZoneCarte();
-                zone.type = typeZone;
-                Deque<Long> pile = new ArrayDeque<>();
-                pile.push(c);
-                visites.add(c);
-                while (!pile.isEmpty()) {
-                    long courant = pile.pop();
-                    int cx = cleX(courant);
-                    int cz = cleZ(courant);
+                zone.type = typeIci == CODE_ILE ? TypeElementCarte.ILE : TypeElementCarte.PIERRE;
+                pile.empiler(index);
+                visites.set(index);
+                while (!pile.estVide()) {
+                    int courant = pile.depiler();
+                    int cx = courant % largeur;
+                    int cz = courant / largeur;
                     zone.cellules.add(new int[]{cx, cz});
-                    long[] voisins = {
-                        cle(cx + 1, cz), cle(cx - 1, cz), cle(cx, cz + 1), cle(cx, cz - 1),
-                        cle(cx + 1, cz + 1), cle(cx + 1, cz - 1), cle(cx - 1, cz + 1), cle(cx - 1, cz - 1)
-                    };
-                    for (long voisin : voisins) {
-                        if (visites.contains(voisin)) {
-                            continue;
-                        }
-                        int vx = cleX(voisin);
-                        int vz = cleZ(voisin);
-                        if (!estDansAire(vx, vz)) {
-                            continue;
-                        }
-                        BlocCarte blocVoisin = blocs.get(voisin);
-                        if (blocVoisin != null && blocVoisin.type == typeZone) {
-                            visites.add(voisin);
-                            pile.push(voisin);
+                    for (int dz = -1; dz <= 1; dz++) {
+                        for (int dx = -1; dx <= 1; dx++) {
+                            if (dx == 0 && dz == 0) {
+                                continue;
+                            }
+                            int vx = cx + dx;
+                            int vz = cz + dz;
+                            if (!estDansAire(vx, vz)) {
+                                continue;
+                            }
+                            int voisin = vz * largeur + vx;
+                            if (!visites.get(voisin) && types[voisin] == typeIci) {
+                                visites.set(voisin);
+                                pile.empiler(voisin);
+                            }
                         }
                     }
                 }
 
-                if (typeZone == TypeElementCarte.ILE) {
+                if (zone.type == TypeElementCarte.ILE) {
                     zone.nom = "Île " + lettreZone(compteurIles);
                     compteurIles++;
                 } else {
@@ -340,6 +363,24 @@ public class CarteDonnees {
                 zones.add(zone);
             }
         }
+    }
+
+    // Codes de type dans la grille compacte (ordinaux de TypeElementCarte)
+    private static final byte CODE_VIDE = (byte) TypeElementCarte.VIDE.ordinal();
+    private static final byte CODE_ILE = (byte) TypeElementCarte.ILE.ordinal();
+    private static final byte CODE_PIERRE = (byte) TypeElementCarte.PIERRE.ordinal();
+
+    /** Grille des types de blocs (index = z·largeur + x, CODE_VIDE par défaut) */
+    private byte[] grilleTypes() {
+        byte[] types = new byte[largeur * hauteur];
+        for (Map.Entry<Long, BlocCarte> entree : blocs.entrySet()) {
+            int x = cleX(entree.getKey());
+            int z = cleZ(entree.getKey());
+            if (estDansAire(x, z)) {
+                types[z * largeur + x] = (byte) entree.getValue().type.ordinal();
+            }
+        }
+        return types;
     }
 
     private static String lettreZone(int index) {
@@ -374,66 +415,167 @@ public class CarteDonnees {
 
     // ==================== Sérialisation JSON ====================
 
+    /**
+     * Sérialise la carte au format v2 compact :
+     * - « terrain » : balayage rangée par rangée de toute l'aire, en plages « n:TÉ »
+     *   (n cellules consécutives du type T à l'élévation É ; T ∈ V/E/I/P/L, élévation
+     *   omise quand nulle) ;
+     * - « bonbons » : un tableau de 10 entiers par bloc porteur de bonbons ;
+     * - « zones » : cellules en plages « z,x0,longueur ».
+     * Une grande carte passe ainsi de dizaines/centaines de Mo (v1 : un objet JSON par
+     * bloc) à quelques dizaines/centaines de Ko. Les fichiers v1 restent lisibles.
+     */
     public String versJson() {
         JsonObject racine = new JsonObject();
+        racine.addProperty("version", VERSION_FORMAT);
         racine.addProperty("nom", nom);
         racine.addProperty("largeur", largeur);
         racine.addProperty("hauteur", hauteur);
         racine.addProperty("seed", seed);
         racine.addProperty("apparitionX", apparitionX);
         racine.addProperty("apparitionZ", apparitionZ);
+        racine.addProperty("terrain", encoderTerrain());
 
-        JsonArray tableauBlocs = new JsonArray();
+        JsonArray tableauBonbons = new JsonArray();
         for (Map.Entry<Long, BlocCarte> entree : blocs.entrySet()) {
             BlocCarte bloc = entree.getValue();
-            JsonObject objetBloc = new JsonObject();
-            objetBloc.addProperty("x", cleX(entree.getKey()));
-            objetBloc.addProperty("z", cleZ(entree.getKey()));
-            objetBloc.addProperty("type", bloc.type.name());
-            objetBloc.addProperty("elevation", bloc.elevation);
-            if (bloc.qteBonbonVisible > 0) {
-                objetBloc.addProperty("bonbonsVisibles", bloc.qteBonbonVisible);
-                objetBloc.addProperty("delaiVisible", bloc.delaiBonbonVisible);
-                if (bloc.typeBonbonVisible != TypeBonbonCarte.STANDARD) {
-                    objetBloc.addProperty("typeVisible", bloc.typeBonbonVisible.name());
-                }
-                if (bloc.delaiApparitionInitiale > 0) {
-                    objetBloc.addProperty("apparitionInitiale", bloc.delaiApparitionInitiale);
-                }
+            if (bloc.qteBonbonVisible <= 0 && bloc.qteBonbonNonVisible <= 0) {
+                continue;
             }
-            if (bloc.qteBonbonNonVisible > 0) {
-                objetBloc.addProperty("bonbonsNonVisibles", bloc.qteBonbonNonVisible);
-                objetBloc.addProperty("delaiNonVisible", bloc.delaiBonbonNonVisible);
-                if (bloc.typeBonbonNonVisible != TypeBonbonCarte.STANDARD) {
-                    objetBloc.addProperty("typeNonVisible", bloc.typeBonbonNonVisible.name());
-                }
-                if (bloc.delaiApparitionInitialeNonVisible > 0) {
-                    objetBloc.addProperty("apparitionInitialeNonVisible", bloc.delaiApparitionInitialeNonVisible);
-                }
-            }
-            tableauBlocs.add(objetBloc);
+            JsonArray entreeBonbon = new JsonArray();
+            entreeBonbon.add(cleX(entree.getKey()));
+            entreeBonbon.add(cleZ(entree.getKey()));
+            entreeBonbon.add(bloc.qteBonbonVisible);
+            entreeBonbon.add(bloc.delaiBonbonVisible);
+            entreeBonbon.add(codePourTypeBonbon(bloc.typeBonbonVisible));
+            entreeBonbon.add(bloc.delaiApparitionInitiale);
+            entreeBonbon.add(bloc.qteBonbonNonVisible);
+            entreeBonbon.add(bloc.delaiBonbonNonVisible);
+            entreeBonbon.add(codePourTypeBonbon(bloc.typeBonbonNonVisible));
+            entreeBonbon.add(bloc.delaiApparitionInitialeNonVisible);
+            tableauBonbons.add(entreeBonbon);
         }
-        racine.add("blocs", tableauBlocs);
+        racine.add("bonbons", tableauBonbons);
 
         JsonArray tableauZones = new JsonArray();
         for (ZoneCarte zone : zones) {
             JsonObject objetZone = new JsonObject();
             objetZone.addProperty("nom", zone.nom);
             objetZone.addProperty("type", zone.type.name());
-            JsonArray cellules = new JsonArray();
-            for (int[] cellule : zone.cellules) {
-                JsonArray paire = new JsonArray();
-                paire.add(cellule[0]);
-                paire.add(cellule[1]);
-                cellules.add(paire);
-            }
-            objetZone.add("cellules", cellules);
+            objetZone.addProperty("plages", encoderPlagesZone(zone));
             tableauZones.add(objetZone);
         }
         racine.add("zones", tableauZones);
 
         Gson gson = new GsonBuilder().create();
         return gson.toJson(racine);
+    }
+
+    /** Terrain en plages : grille compacte (type + élévation) puis fusion des cellules consécutives égales */
+    private String encoderTerrain() {
+        int total = largeur * hauteur;
+        int[] grille = new int[total];
+        for (Map.Entry<Long, BlocCarte> entree : blocs.entrySet()) {
+            int x = cleX(entree.getKey());
+            int z = cleZ(entree.getKey());
+            BlocCarte bloc = entree.getValue();
+            if (!estDansAire(x, z) || bloc.type == TypeElementCarte.VIDE) {
+                continue; // Un bloc vide porteur de bonbons est décrit par « bonbons » seulement
+            }
+            grille[z * largeur + x] = (bloc.type.ordinal() << 8) | (bloc.elevation + 128);
+        }
+
+        StringBuilder sb = new StringBuilder();
+        int i = 0;
+        while (i < total) {
+            int valeur = grille[i];
+            int debut = i;
+            do {
+                i++;
+            } while (i < total && grille[i] == valeur);
+            if (sb.length() > 0) {
+                sb.append(';');
+            }
+            sb.append(i - debut).append(':');
+            if (valeur == 0) {
+                sb.append('V');
+            } else {
+                sb.append(carPourType(valeur >> 8));
+                int elevation = (valeur & 0xFF) - 128;
+                if (elevation != 0) {
+                    sb.append(elevation);
+                }
+            }
+        }
+        return sb.toString();
+    }
+
+    /** Cellules d'une zone en plages « z,x0,longueur » (tri par index de balayage puis fusion) */
+    private String encoderPlagesZone(ZoneCarte zone) {
+        long[] indices = new long[zone.cellules.size()];
+        int n = 0;
+        for (int[] cellule : zone.cellules) {
+            indices[n++] = (long) cellule[1] * largeur + cellule[0];
+        }
+        Arrays.sort(indices);
+
+        StringBuilder sb = new StringBuilder();
+        int i = 0;
+        while (i < indices.length) {
+            int debut = i;
+            // Fusionner les cellules consécutives sans franchir la fin d'une rangée
+            while (i + 1 < indices.length && indices[i + 1] == indices[i] + 1
+                && indices[i + 1] % largeur != 0) {
+                i++;
+            }
+            int z = (int) (indices[debut] / largeur);
+            int x0 = (int) (indices[debut] % largeur);
+            if (sb.length() > 0) {
+                sb.append(';');
+            }
+            sb.append(z).append(',').append(x0).append(',').append(i - debut + 1);
+            i++;
+        }
+        return sb.toString();
+    }
+
+    private static char carPourType(int ordinalType) {
+        return switch (TypeElementCarte.values()[ordinalType]) {
+            case EAU -> 'E';
+            case ILE -> 'I';
+            case PIERRE -> 'P';
+            case LIMITE -> 'L';
+            default -> 'V';
+        };
+    }
+
+    private static TypeElementCarte typePourCar(char car) {
+        return switch (car) {
+            case 'V' -> TypeElementCarte.VIDE;
+            case 'E' -> TypeElementCarte.EAU;
+            case 'I' -> TypeElementCarte.ILE;
+            case 'P' -> TypeElementCarte.PIERRE;
+            case 'L' -> TypeElementCarte.LIMITE;
+            default -> throw new IllegalArgumentException("Type de terrain inconnu : " + car);
+        };
+    }
+
+    /** Codes stables des types de bonbon dans le format v2 (indépendants de l'ordre de l'enum) */
+    private static int codePourTypeBonbon(TypeBonbonCarte type) {
+        return switch (type) {
+            case STANDARD -> 0;
+            case BLEU -> 1;
+            case ROUGE -> 2;
+        };
+    }
+
+    private static TypeBonbonCarte typeBonbonPourCode(int code) {
+        return switch (code) {
+            case 0 -> TypeBonbonCarte.STANDARD;
+            case 1 -> TypeBonbonCarte.BLEU;
+            case 2 -> TypeBonbonCarte.ROUGE;
+            default -> throw new IllegalArgumentException("Code de type de bonbon inconnu : " + code);
+        };
     }
 
     public static CarteDonnees depuisJson(String json) {
@@ -451,11 +593,27 @@ public class CarteDonnees {
         carte.apparitionX = racine.has("apparitionX") ? racine.get("apparitionX").getAsInt() : -1;
         carte.apparitionZ = racine.has("apparitionZ") ? racine.get("apparitionZ").getAsInt() : -1;
 
+        int version = racine.has("version") ? racine.get("version").getAsInt() : 1;
+        if (version >= 2) {
+            if (racine.has("terrain")) {
+                decoderTerrain(carte, racine.get("terrain").getAsString());
+            }
+            if (racine.has("bonbons")) {
+                decoderBonbons(carte, racine.getAsJsonArray("bonbons"));
+            }
+            if (racine.has("zones")) {
+                decoderZonesV2(carte, racine.getAsJsonArray("zones"));
+            }
+            return carte;
+        }
+
+        // ----- Format v1 historique : un objet JSON par bloc -----
         if (racine.has("blocs")) {
             JsonArray blocsJson = racine.getAsJsonArray("blocs");
             if (blocsJson.size() > BLOCS_MAX) {
                 throw new IllegalArgumentException("Trop de blocs dans la carte: " + blocsJson.size());
             }
+            carte.blocs = new HashMap<>(Math.max(16, (int) (blocsJson.size() / 0.75f) + 1));
             for (JsonElement element : blocsJson) {
                 JsonObject objetBloc = element.getAsJsonObject();
                 int x = objetBloc.get("x").getAsInt();
@@ -494,6 +652,168 @@ public class CarteDonnees {
         }
 
         return carte;
+    }
+
+    /** Décode la chaîne de plages « n:TÉ;… » du format v2 (balayage rangée par rangée de toute l'aire) */
+    private static void decoderTerrain(CarteDonnees carte, String terrain) {
+        int total = carte.largeur * carte.hauteur;
+
+        // Pré-dimensionner la table des blocs : sur les très grandes cartes, les
+        // redimensionnements successifs de la HashMap dominent le temps de décodage
+        long nonVides = 0;
+        for (int i = 0; i < terrain.length(); ) {
+            int deuxPoints = terrain.indexOf(':', i);
+            if (deuxPoints < 0) {
+                break; // La boucle de décodage signalera la malformation
+            }
+            int fin = terrain.indexOf(';', deuxPoints + 1);
+            if (fin < 0) {
+                fin = terrain.length();
+            }
+            if (terrain.charAt(deuxPoints + 1) != 'V') {
+                try {
+                    nonVides += Long.parseLong(terrain.substring(i, deuxPoints));
+                } catch (NumberFormatException e) {
+                    break; // Idem : malformation gérée par la boucle de décodage
+                }
+            }
+            i = fin + 1;
+        }
+        if (nonVides > 0 && nonVides <= total) {
+            carte.blocs = new HashMap<>(Math.max(16, (int) (nonVides / 0.75f) + 1));
+        }
+
+        int index = 0;
+        int i = 0;
+        int n = terrain.length();
+        while (i < n) {
+            int deuxPoints = terrain.indexOf(':', i);
+            if (deuxPoints < 0) {
+                throw new IllegalArgumentException("Plage de terrain mal formée");
+            }
+            int nombre = Integer.parseInt(terrain.substring(i, deuxPoints));
+            int fin = terrain.indexOf(';', deuxPoints + 1);
+            if (fin < 0) {
+                fin = n;
+            }
+            char carType = terrain.charAt(deuxPoints + 1);
+            TypeElementCarte type = typePourCar(carType);
+            int elevation = deuxPoints + 2 < fin ? Integer.parseInt(terrain.substring(deuxPoints + 2, fin)) : 0;
+
+            if (nombre < 1 || index + nombre > total) {
+                throw new IllegalArgumentException("Plage de terrain hors bornes");
+            }
+            if (elevation < ELEVATION_MIN || elevation > ELEVATION_MAX) {
+                throw new IllegalArgumentException("Élévation hors bornes: " + elevation);
+            }
+            if (type != TypeElementCarte.VIDE) {
+                for (int k = 0; k < nombre; k++) {
+                    int cellule = index + k;
+                    carte.blocs.put(cle(cellule % carte.largeur, cellule / carte.largeur),
+                        new BlocCarte(type, elevation));
+                }
+            }
+            index += nombre;
+            i = fin + 1;
+        }
+        if (index != total) {
+            throw new IllegalArgumentException(
+                "Terrain incomplet: " + index + " cellules décrites sur " + total);
+        }
+    }
+
+    /** Décode le tableau « bonbons » du format v2 (10 entiers par bloc porteur de bonbons) */
+    private static void decoderBonbons(CarteDonnees carte, JsonArray bonbonsJson) {
+        if (bonbonsJson.size() > BLOCS_MAX) {
+            throw new IllegalArgumentException("Trop de blocs à bonbons: " + bonbonsJson.size());
+        }
+        for (JsonElement element : bonbonsJson) {
+            JsonArray entree = element.getAsJsonArray();
+            if (entree.size() < 10) {
+                throw new IllegalArgumentException("Entrée de bonbons incomplète");
+            }
+            int x = entree.get(0).getAsInt();
+            int z = entree.get(1).getAsInt();
+            if (!carte.estDansAire(x, z)) {
+                throw new IllegalArgumentException("Bloc à bonbons hors de l'aire: (" + x + ", " + z + ")");
+            }
+            long c = cle(x, z);
+            BlocCarte bloc = carte.blocs.get(c);
+            if (bloc == null) {
+                bloc = new BlocCarte(); // Bonbons sur bloc vide (données v1 héritées)
+                carte.blocs.put(c, bloc);
+            }
+            bloc.qteBonbonVisible = entree.get(2).getAsInt();
+            bloc.delaiBonbonVisible = entree.get(3).getAsInt();
+            bloc.typeBonbonVisible = typeBonbonPourCode(entree.get(4).getAsInt());
+            bloc.delaiApparitionInitiale = entree.get(5).getAsInt();
+            bloc.qteBonbonNonVisible = entree.get(6).getAsInt();
+            bloc.delaiBonbonNonVisible = entree.get(7).getAsInt();
+            bloc.typeBonbonNonVisible = typeBonbonPourCode(entree.get(8).getAsInt());
+            bloc.delaiApparitionInitialeNonVisible = entree.get(9).getAsInt();
+        }
+    }
+
+    /** Décode les zones v2 (cellules en plages « z,x0,longueur ») */
+    private static void decoderZonesV2(CarteDonnees carte, JsonArray zonesJson) {
+        long totalCellules = 0;
+        for (JsonElement element : zonesJson) {
+            JsonObject objetZone = element.getAsJsonObject();
+            ZoneCarte zone = new ZoneCarte();
+            zone.nom = objetZone.get("nom").getAsString();
+            zone.type = TypeElementCarte.valueOf(objetZone.get("type").getAsString());
+            String plages = objetZone.has("plages") ? objetZone.get("plages").getAsString() : "";
+            int i = 0;
+            int n = plages.length();
+            while (i < n) {
+                int fin = plages.indexOf(';', i);
+                if (fin < 0) {
+                    fin = n;
+                }
+                int virgule1 = plages.indexOf(',', i);
+                int virgule2 = virgule1 < 0 ? -1 : plages.indexOf(',', virgule1 + 1);
+                if (virgule1 < 0 || virgule2 < 0 || virgule2 >= fin) {
+                    throw new IllegalArgumentException("Plage de zone mal formée");
+                }
+                int z = Integer.parseInt(plages.substring(i, virgule1));
+                int x0 = Integer.parseInt(plages.substring(virgule1 + 1, virgule2));
+                int longueur = Integer.parseInt(plages.substring(virgule2 + 1, fin));
+                if (longueur < 1 || z < 0 || z >= carte.hauteur
+                    || x0 < 0 || x0 + longueur > carte.largeur) {
+                    throw new IllegalArgumentException("Plage de zone hors bornes");
+                }
+                totalCellules += longueur;
+                if (totalCellules > BLOCS_MAX) {
+                    throw new IllegalArgumentException("Trop de cellules de zones");
+                }
+                for (int k = 0; k < longueur; k++) {
+                    zone.cellules.add(new int[]{x0 + k, z});
+                }
+                i = fin + 1;
+            }
+            carte.zones.add(zone);
+        }
+    }
+
+    /**
+     * Extrait la seed d'un JSON de carte sans construire l'arbre complet (lecture en
+     * flux : les gros champs comme « terrain » ou « blocs » sont sautés). Retourne 0
+     * si la seed est absente ou le JSON illisible.
+     */
+    public static long seedDepuisJson(String json) {
+        try (com.google.gson.stream.JsonReader lecteur =
+                 new com.google.gson.stream.JsonReader(new java.io.StringReader(json))) {
+            lecteur.beginObject();
+            while (lecteur.hasNext()) {
+                if ("seed".equals(lecteur.nextName())) {
+                    return lecteur.nextLong();
+                }
+                lecteur.skipValue();
+            }
+        } catch (Exception e) {
+            // JSON illisible ou seed absente : traité comme « pas de seed »
+        }
+        return 0;
     }
 
     /** Assainit un nom de carte : espaces remplacés par des underscores */
@@ -559,5 +879,90 @@ public class CarteDonnees {
             }
         }
         return total;
+    }
+
+    // ==================== Structures compactes ====================
+
+    /**
+     * Ensemble immuable de cellules adossé à un BitSet (index = z·largeur + x).
+     * Vu comme un Set&lt;Long&gt; de clés cle(x, z) par les appelants existants :
+     * appartenance en O(1) et itération sans stocker des millions de Long boxés.
+     */
+    private static final class EnsembleCellules extends AbstractSet<Long> {
+        private final int largeur;
+        private final int hauteur;
+        private final BitSet cellules;
+        private final int cardinal;
+
+        EnsembleCellules(int largeur, int hauteur, BitSet cellules) {
+            this.largeur = largeur;
+            this.hauteur = hauteur;
+            this.cellules = cellules;
+            this.cardinal = cellules.cardinality();
+        }
+
+        BitSet bits() {
+            return cellules;
+        }
+
+        boolean contientXZ(int x, int z) {
+            return x >= 0 && x < largeur && z >= 0 && z < hauteur && cellules.get(z * largeur + x);
+        }
+
+        @Override
+        public boolean contains(Object objet) {
+            if (!(objet instanceof Long valeur)) {
+                return false;
+            }
+            return contientXZ(cleX(valeur), cleZ(valeur));
+        }
+
+        @Override
+        public int size() {
+            return cardinal;
+        }
+
+        @Override
+        public Iterator<Long> iterator() {
+            return new Iterator<>() {
+                private int prochain = cellules.nextSetBit(0);
+
+                @Override
+                public boolean hasNext() {
+                    return prochain >= 0;
+                }
+
+                @Override
+                public Long next() {
+                    if (prochain < 0) {
+                        throw new NoSuchElementException();
+                    }
+                    int index = prochain;
+                    prochain = cellules.nextSetBit(index + 1);
+                    return cle(index % largeur, index / largeur);
+                }
+            };
+        }
+    }
+
+    /** Pile d'indices de cellules en primitifs (remplissages sans boxing) */
+    private static final class PileIndices {
+        private int[] valeurs = new int[1024];
+        private int taille = 0;
+
+        void empiler(int valeur) {
+            if (taille == valeurs.length) {
+                valeurs = Arrays.copyOf(valeurs, valeurs.length * 2);
+            }
+            valeurs[taille++] = valeur;
+        }
+
+        int depiler() {
+            return valeurs[--taille];
+        }
+
+        boolean estVide() {
+            return taille == 0;
+        }
     }
 }

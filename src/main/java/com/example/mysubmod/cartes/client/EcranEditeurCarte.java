@@ -160,8 +160,10 @@ public class EcranEditeurCarte extends Screen {
     private boolean toastErreur = false;
     private long toastExpiration = 0;
 
-    // Statistiques de la carte pour l'inspecteur (recalculées après chaque action)
+    // Statistiques de la carte pour l'inspecteur (recalculées après une action,
+    // au plus toutes les 500 ms — voir rafraichirStatsCarte)
     private boolean statsObsoletes = true;
+    private long statsDernierCalcul = 0;
     private boolean statLimiteFermee = false;
     private int statBonbonsVisibles = 0;
     private int statBonbonsNonVisibles = 0;
@@ -1067,6 +1069,11 @@ public class EcranEditeurCarte extends Screen {
             afficherMessage("Redimensionnement refusé", "Taille minimale : 1×1 bloc");
             return;
         }
+        if (nouvelleLargeur > CarteDonnees.DIMENSION_MAX || nouvelleHauteur > CarteDonnees.DIMENSION_MAX) {
+            afficherMessage("Redimensionnement refusé",
+                "Taille maximale : " + CarteDonnees.DIMENSION_MAX + "×" + CarteDonnees.DIMENSION_MAX + " blocs");
+            return;
+        }
         if (nouvelleLargeur == carte.largeur && nouvelleHauteur == carte.hauteur) {
             return;
         }
@@ -1614,7 +1621,8 @@ public class EcranEditeurCarte extends Screen {
     }
 
     private void envoyerSauvegarde(String json, boolean ecraserConfirme) {
-        byte[] donnees = json.getBytes(StandardCharsets.UTF_8);
+        byte[] donnees = com.example.mysubmod.cartes.reseau.UtilitaireCompressionCarte
+            .compresser(json.getBytes(StandardCharsets.UTF_8));
         UUID idTransfert = UUID.randomUUID();
         int nombreTotalMorceaux = Math.max(1, (int) Math.ceil((double) donnees.length / TAILLE_MORCEAU_RESEAU));
 
@@ -1812,7 +1820,8 @@ public class EcranEditeurCarte extends Screen {
     private void zoomer(double facteur, double pivotX, double pivotY) {
         double celluleX = ecranVersCelluleX(pivotX);
         double celluleZ = ecranVersCelluleZ(pivotY);
-        double tailleMin = Math.max(0.2, Math.min(3, tailleCelluleAjustee()));
+        // Plancher très bas : une carte 2500×2500 doit pouvoir tenir entière dans la vue
+        double tailleMin = Math.max(0.05, Math.min(3, tailleCelluleAjustee()));
         tailleCellule = Math.max(tailleMin, Math.min(48, tailleCellule * facteur));
         decalageX = pivotX - grilleGaucheEcran() - celluleX * tailleCellule;
         decalageY = pivotY - hautGrille - celluleZ * tailleCellule;
@@ -1825,7 +1834,7 @@ public class EcranEditeurCarte extends Screen {
 
     /** Bouton « Ajuster » : cadre toute la carte, centrée dans la vue */
     private void ajusterVue() {
-        tailleCellule = Math.max(0.2, Math.min(48, tailleCelluleAjustee()));
+        tailleCellule = Math.max(0.05, Math.min(48, tailleCelluleAjustee()));
         decalageX = (grilleDroiteEcran() - grilleGaucheEcran() - carte.largeur * tailleCellule) / 2;
         decalageY = (basGrille() - hautGrille - carte.hauteur * tailleCellule) / 2;
     }
@@ -1983,21 +1992,25 @@ public class EcranEditeurCarte extends Screen {
 
         int taille = Math.max(1, (int) Math.floor(tailleCellule));
 
-        // 1) Couleurs de base par plages horizontales de même couleur
-        //    (rapide même en dézoom complet sur de très grandes cartes)
-        for (int cz = czMin; cz <= czMax; cz++) {
+        // 1) Couleurs de base par plages horizontales de même couleur. Sous 1 px par
+        //    cellule, une cellule est échantillonnée par pixel : le coût par image reste
+        //    proportionnel à l'écran et non à l'aire (indispensable en 2500×2500 dézoomé)
+        int pasEchantillon = Math.max(1, (int) Math.ceil(1.0 / tailleCellule));
+        for (int cz = czMin; cz <= czMax; cz += pasEchantillon) {
+            int czFin = Math.min(cz + pasEchantillon, czMax + 1);
             int y0 = (int) Math.floor(haut + decalageY + cz * tailleCellule);
-            int y1 = (int) Math.floor(haut + decalageY + (cz + 1) * tailleCellule);
+            int y1 = (int) Math.floor(haut + decalageY + czFin * tailleCellule);
             if (y1 <= y0) {
                 y1 = y0 + 1;
             }
             int debutPlage = cxMin;
             int couleurPlage = couleurBloc(carte.obtenirBlocOuNull(cxMin, cz));
-            for (int cx = cxMin + 1; cx <= cxMax + 1; cx++) {
+            for (int cx = cxMin + pasEchantillon; cx <= cxMax + pasEchantillon; cx += pasEchantillon) {
                 int couleur = cx <= cxMax ? couleurBloc(carte.obtenirBlocOuNull(cx, cz)) : 0;
                 if (cx > cxMax || couleur != couleurPlage) {
+                    int cxFin = Math.min(cx, cxMax + 1);
                     int x0 = (int) Math.floor(gauche + decalageX + debutPlage * tailleCellule);
-                    int x1 = (int) Math.floor(gauche + decalageX + cx * tailleCellule);
+                    int x1 = (int) Math.floor(gauche + decalageX + cxFin * tailleCellule);
                     if (x1 <= x0) {
                         x1 = x0 + 1;
                     }
@@ -2154,11 +2167,17 @@ public class EcranEditeurCarte extends Screen {
 
     // ==================== Inspecteur (panneau latéral droit) ====================
 
-    /** Rafraîchit les statistiques affichées par l'inspecteur (après chaque action sur la carte) */
+    /**
+     * Rafraîchit les statistiques affichées par l'inspecteur après une action sur la
+     * carte, au plus toutes les 500 ms : sur une très grande carte, le calcul du
+     * périmètre (remplissage de toute l'aire) ne doit pas s'exécuter à chaque coup
+     * de pinceau.
+     */
     private void rafraichirStatsCarte() {
-        if (!statsObsoletes) {
+        if (!statsObsoletes || net.minecraft.Util.getMillis() - statsDernierCalcul < 500) {
             return;
         }
+        statsDernierCalcul = net.minecraft.Util.getMillis();
         statsObsoletes = false;
         statLimiteFermee = carte.limiteEstBoucleFermeeValide();
         int visibles = 0;
