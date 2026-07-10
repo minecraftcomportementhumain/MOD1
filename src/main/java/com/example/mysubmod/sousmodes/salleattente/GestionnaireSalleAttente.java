@@ -26,6 +26,18 @@ public class GestionnaireSalleAttente {
     private static final int TAILLE_PLATEFORME = 20;
     private static final int HAUTEUR_PLATEFORME = 3;
 
+    /**
+     * Emprise au sol protégée de la plateforme (marge incluse), en coordonnées monde :
+     * {minX, minZ, maxX, maxZ}. La plateforme est à Y 100, en plein dans la bande de la
+     * cage du Sous-mode 3 : l'effaceur de carte doit épargner cette emprise, sans quoi
+     * il détruirait le plancher de la salle d'attente sous les joueurs.
+     */
+    public static int[] obtenirEmpriseProtegee() {
+        int demi = TAILLE_PLATEFORME / 2 + 2;
+        return new int[]{CENTRE_PLATEFORME.getX() - demi, CENTRE_PLATEFORME.getZ() - demi,
+            CENTRE_PLATEFORME.getX() + demi, CENTRE_PLATEFORME.getZ() + demi};
+    }
+
     private GestionnaireSalleAttente() {}
 
     public static GestionnaireSalleAttente getInstance() {

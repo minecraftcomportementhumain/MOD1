@@ -765,18 +765,24 @@ public class GenerateurCarteSousMode3 {
      * par sections. Si {@code cellulesInterieur} est fourni, seules les cellules à au plus
      * {@link #MARGE_EFFACEMENT} cellules de l'intérieur du périmètre sont touchées (murs
      * Limite et feuillage débordant couverts, terrain naturel épargné) ; sinon toute la
-     * bande du chunk est essuyée (nettoyage de secours). Utilisé par
-     * {@link EffaceurCarteSousMode3}, qui étale le travail sur plusieurs ticks.
+     * bande du chunk est essuyée (nettoyage de secours). {@code exclusion} (facultatif,
+     * {minX, minZ, maxX, maxZ} en monde) épargne une emprise — celle de la plateforme de
+     * la salle d'attente, qui vit dans la bande. Utilisé par {@link EffaceurCarteSousMode3},
+     * qui étale le travail sur plusieurs ticks.
      * @return le nombre de blocs effacés
      */
     static long essuyerBandeChunk(ServerLevel niveau, LevelChunk chunk,
-                                  Set<Long> cellulesInterieur, int origineX, int origineZ) {
+                                  Set<Long> cellulesInterieur, int origineX, int origineZ, int[] exclusion) {
         long effaces = 0;
         boolean modifie = false;
         List<BlockPos> semencesLumiere = new ArrayList<>();
         ChunkPos pos = chunk.getPos();
         for (int mondeX = pos.getMinBlockX(); mondeX <= pos.getMaxBlockX(); mondeX++) {
             for (int mondeZ = pos.getMinBlockZ(); mondeZ <= pos.getMaxBlockZ(); mondeZ++) {
+                if (exclusion != null && mondeX >= exclusion[0] && mondeX <= exclusion[2]
+                    && mondeZ >= exclusion[1] && mondeZ <= exclusion[3]) {
+                    continue;
+                }
                 if (cellulesInterieur != null
                     && !procheInterieur(cellulesInterieur, mondeX - origineX, mondeZ - origineZ)) {
                     continue;
@@ -857,6 +863,20 @@ public class GenerateurCarteSousMode3 {
 
             MonSubMod.JOURNALISEUR.info("Nettoyage de la région résiduelle du Sous-mode 3 : ({}, {}) à ({}, {})",
                 minX, minZ, maxX, maxZ);
+
+            // L'emprise de la salle d'attente (dans la bande, au centre) est exclue du
+            // balayage asynchrone : l'essuyer tout de suite en synchrone (quelques chunks)
+            // pour que la plateforme, reconstruite au démarrage de la salle d'attente,
+            // repose sur un terrain propre. Ignoré si la région enregistrée est plus
+            // petite que l'emprise (le plein essuyage toucherait du terrain naturel).
+            int[] emprise = com.example.mysubmod.sousmodes.salleattente.GestionnaireSalleAttente.obtenirEmpriseProtegee();
+            if (minX <= emprise[0] && minZ <= emprise[1] && maxX >= emprise[2] && maxZ >= emprise[3]) {
+                for (int chunkZ = emprise[1] >> 4; chunkZ <= emprise[3] >> 4; chunkZ++) {
+                    for (int chunkX = emprise[0] >> 4; chunkX <= emprise[2] >> 4; chunkX++) {
+                        essuyerBandeChunk(niveau, niveau.getChunk(chunkX, chunkZ), null, 0, 0, null);
+                    }
+                }
+            }
 
             // Balayage de toute la bande de la cage, étalé sur plusieurs ticks (la carte
             // d'origine est inconnue après un arrêt brutal). Un balayage synchrone d'une

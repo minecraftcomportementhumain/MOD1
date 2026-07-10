@@ -608,6 +608,12 @@ public class GestionnaireSousMode3 {
                 if (monde != null) {
                     if (generation != null) {
                         retirerItemsDansCage(monde);
+                        // La plateforme de la salle d'attente (Y 100) vit dans la bande de la
+                        // cage, au centre de la carte : essuyer son emprise tout de suite
+                        // (4 chunks, synchrone) pour que l'activation de la salle d'attente,
+                        // qui suit immédiatement, reconstruise sur un terrain propre —
+                        // l'effaceur asynchrone épargne ensuite cette emprise.
+                        essuyerEmpriseSalleAttente(monde);
                         // Balayage de la bande de la cage étalé sur plusieurs ticks (couvre la
                         // carte générée, les bonbons réapparus et les blocs posés par les
                         // joueurs) : un effacement synchrone d'une grande carte dépasserait
@@ -665,6 +671,24 @@ public class GestionnaireSousMode3 {
             config = new ConfigPartieSousMode3();
 
             MonSubMod.JOURNALISEUR.info("Désactivation du SousMode3 terminée");
+        }
+    }
+
+    /**
+     * Essuie immédiatement (synchrone) la bande de la cage sous l'emprise de la
+     * plateforme de la salle d'attente : quelques chunks seulement, pour que la
+     * plateforme reconstruite juste après repose sur un terrain déjà nettoyé.
+     */
+    private void essuyerEmpriseSalleAttente(ServerLevel monde) {
+        if (generation == null) {
+            return;
+        }
+        int[] emprise = com.example.mysubmod.sousmodes.salleattente.GestionnaireSalleAttente.obtenirEmpriseProtegee();
+        for (int chunkZ = emprise[1] >> 4; chunkZ <= emprise[3] >> 4; chunkZ++) {
+            for (int chunkX = emprise[0] >> 4; chunkX <= emprise[2] >> 4; chunkX++) {
+                GenerateurCarteSousMode3.essuyerBandeChunk(monde, monde.getChunk(chunkX, chunkZ),
+                    generation.cellulesInterieur, generation.origineX, generation.origineZ, null);
+            }
         }
     }
 

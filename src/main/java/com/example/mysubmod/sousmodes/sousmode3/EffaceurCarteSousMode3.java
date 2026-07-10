@@ -47,6 +47,10 @@ public class EffaceurCarteSousMode3 {
     private static Set<Long> cellulesInterieur;
     private static int origineX;
     private static int origineZ;
+    // Emprise de la salle d'attente (Y 100, dans la bande) : jamais essuyée — la
+    // plateforme est reconstruite par l'activation de la salle d'attente AVANT la fin
+    // du balayage, et l'effacer ferait tomber les joueurs dans le vide
+    private static int[] exclusionSalleAttente;
     private static long blocsEffaces;
     private static int chunksChargesReference = -1;
     private static int ticksEnPause;
@@ -141,6 +145,8 @@ public class EffaceurCarteSousMode3 {
         ticksEnPause = 0;
         nomCarte = nom != null ? nom : "";
         dernierPourcentEnvoye = -1;
+        exclusionSalleAttente = com.example.mysubmod.sousmodes.salleattente.GestionnaireSalleAttente
+            .obtenirEmpriseProtegee();
         MonSubMod.JOURNALISEUR.info("Effacement de la carte du Sous-mode 3 : {} chunks à balayer", chunks.size());
         if (chunks.isEmpty()) {
             terminer();
@@ -181,7 +187,8 @@ public class EffaceurCarteSousMode3 {
                     return; // chargement/génération en cours sur les threads de worldgen
                 }
                 blocsEffaces += GenerateurCarteSousMode3.essuyerBandeChunk(
-                    niveau, niveau.getChunk(pos.x, pos.z), cellulesInterieur, origineX, origineZ);
+                    niveau, niveau.getChunk(pos.x, pos.z), cellulesInterieur, origineX, origineZ,
+                    exclusionSalleAttente);
                 libererTicket(index);
                 index++;
                 chunksCeTick++;
