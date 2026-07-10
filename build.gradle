@@ -52,6 +52,24 @@ repositories {
 dependencies {
     minecraft 'net.minecraftforge:forge:1.20.1-47.3.39'
     annotationProcessor 'org.spongepowered:mixin:0.8.5:processor'
+
+    // Tests unitaires du domaine « cartes » (classes sans dépendance Minecraft)
+    testImplementation platform('org.junit:junit-bom:5.10.2')
+    testImplementation 'org.junit.jupiter:junit-jupiter'
+    testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
+    testImplementation 'com.google.code.gson:gson:2.10.1'
+}
+
+// Les tests s'exécutent avec `gradlew test` et font partie de `gradlew build` :
+// la CI (release.yml) refuse donc de publier un jar dont les tests échouent.
+test {
+    useJUnitPlatform()
+    // Le test de charge construit une carte 1800×1800 pleine (~3,2 M de blocs)
+    maxHeapSize = '3g'
+    testLogging {
+        events 'failed', 'skipped'
+        exceptionFormat 'full'
+    }
 }
 
 mixin {
