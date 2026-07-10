@@ -23,8 +23,10 @@ public class HUDZonesSousMode3 {
 
     public static class ZoneClient {
         public final String nom;
-        public final double centreX;
-        public final double centreZ;
+        /** Point visé par la flèche : barycentre des bonbons restants de la zone
+         *  (recalculé par le serveur, mis à jour avec les compteurs) */
+        public double centreX;
+        public double centreZ;
         public int bonbonsVisibles;
         public int bonbonsNonVisibles;
         public int bonbonsBleus;   // Détail par type (Sous-mode 2 sur carte)
@@ -79,6 +81,9 @@ public class HUDZonesSousMode3 {
                     zone.bonbonsNonVisibles = maj.bonbonsNonVisibles;
                     zone.bonbonsBleus = maj.bonbonsBleus;
                     zone.bonbonsRouges = maj.bonbonsRouges;
+                    // Le point de navigation suit les bonbons restants
+                    zone.centreX = maj.centreX;
+                    zone.centreZ = maj.centreZ;
                 }
             }
         }
@@ -181,10 +186,16 @@ public class HUDZonesSousMode3 {
         return "§e" + zone.bonbonsVisibles + " vis.§7, §d" + zone.bonbonsNonVisibles + " invis.";
     }
 
+    /** Distance (blocs) au point visé sous laquelle la flèche s'éteint : assez près
+     *  pour repérer les bonbons à l'œil sans révéler leur position exacte */
+    private static final double RAYON_ARRIVEE = 15.0;
+
     /**
-     * Flèche dynamique pointant vers le centre géométrique de la zone sélectionnée.
-     * Visible en permanence, tourne selon la position et l'orientation du joueur.
-     * Se désactive automatiquement quand le joueur entre dans les limites de la zone.
+     * Flèche dynamique pointant vers le barycentre des bonbons restants de la zone
+     * sélectionnée (le point suit les ramassages et réapparitions). Visible en
+     * permanence, tourne selon la position et l'orientation du joueur. Se désactive
+     * automatiquement à l'approche du point visé — et non plus à l'entrée de la zone,
+     * qui laissait le joueur sans repère sur une grande île.
      */
     private static void afficherFleche(GuiGraphics guiGraphics, int largeurEcran, int hauteurEcran) {
         String cible = zoneCiblee;
@@ -197,14 +208,15 @@ public class HUDZonesSousMode3 {
             return;
         }
 
-        // Désactivation automatique quand le joueur entre dans les limites de la zone
-        if (zone.contientPosition(mc.player.getX(), mc.player.getZ())) {
+        double dx = zone.centreX - mc.player.getX();
+        double dz = zone.centreZ - mc.player.getZ();
+
+        // Désactivation automatique à l'approche du point visé
+        if (Math.sqrt(dx * dx + dz * dz) <= RAYON_ARRIVEE) {
             zoneCiblee = null;
             return;
         }
 
-        double dx = zone.centreX - mc.player.getX();
-        double dz = zone.centreZ - mc.player.getZ();
         float lacet = (float) Math.toRadians(mc.player.getYRot());
 
         // Composantes avant / droite par rapport au regard du joueur

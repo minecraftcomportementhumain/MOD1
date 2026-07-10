@@ -43,8 +43,13 @@ public class GestionnaireBonbonsSousMode3 {
     /** Données d'une zone pour le HUD (coordonnées monde) */
     public static class DonneesZone {
         public final String nom;
-        public final double centreX;
-        public final double centreZ;
+        /** Point visé par la flèche de navigation : barycentre des bonbons restants de la
+         *  zone, recalculé avant chaque envoi ({@link #recalculerCentresNavigation()}) ;
+         *  retombe sur le centre géométrique quand la zone est momentanément vide */
+        public double centreX;
+        public double centreZ;
+        public final double centreGeometriqueX;
+        public final double centreGeometriqueZ;
         /** Plages de cellules monde triées « z, x0, longueur » — jamais développées
          *  cellule par cellule (des millions sur une grande carte) */
         public final List<int[]> plagesMonde;
@@ -58,6 +63,8 @@ public class GestionnaireBonbonsSousMode3 {
             this.nom = nom;
             this.centreX = centreX;
             this.centreZ = centreZ;
+            this.centreGeometriqueX = centreX;
+            this.centreGeometriqueZ = centreZ;
             this.plagesMonde = plagesMonde;
         }
     }
@@ -650,8 +657,50 @@ public class GestionnaireBonbonsSousMode3 {
         return zones;
     }
 
+    /**
+     * Recalcule le point visé par la flèche de chaque zone : le barycentre, pondéré par
+     * les quantités, des bonbons restants — objets visibles au sol et blocs non-visibles
+     * encore en place. Une zone momentanément vide retombe sur son centre géométrique
+     * (les réapparitions la regarniront). Appelé avant chaque envoi de zones au client ;
+     * coût O(bonbons restants), négligeable au rythme des ramassages.
+     */
+    private void recalculerCentresNavigation() {
+        Map<String, double[]> sommes = new HashMap<>(); // nom -> {sommeX, sommeZ, poids}
+        for (Long cle : entitesBonbonsVisibles.values()) {
+            InfoCelluleVisible info = cellulesVisibles.get(cle);
+            if (info == null || info.zoneNom == null) {
+                continue;
+            }
+            double[] somme = sommes.computeIfAbsent(info.zoneNom, n -> new double[3]);
+            somme[0] += info.mondeX + 0.5;
+            somme[1] += info.mondeZ + 0.5;
+            somme[2] += 1;
+        }
+        for (Map.Entry<BlockPos, InfoBonbonCache> entree : blocsBonbonsCaches.entrySet()) {
+            InfoBonbonCache info = entree.getValue();
+            if (info.zoneNom == null) {
+                continue;
+            }
+            double[] somme = sommes.computeIfAbsent(info.zoneNom, n -> new double[3]);
+            somme[0] += (entree.getKey().getX() + 0.5) * info.quantite;
+            somme[1] += (entree.getKey().getZ() + 0.5) * info.quantite;
+            somme[2] += info.quantite;
+        }
+        for (DonneesZone zone : zones) {
+            double[] somme = sommes.get(zone.nom);
+            if (somme != null && somme[2] > 0) {
+                zone.centreX = somme[0] / somme[2];
+                zone.centreZ = somme[1] / somme[2];
+            } else {
+                zone.centreX = zone.centreGeometriqueX;
+                zone.centreZ = zone.centreGeometriqueZ;
+            }
+        }
+    }
+
     /** Envoie la liste complète des zones (avec cellules) à un joueur, en parties si nécessaire */
     public void envoyerZonesCompletesAJoueur(ServerPlayer joueur, boolean reinitialiser) {
+        recalculerCentresNavigation();
         for (PaquetZonesSousMode3 partie : PaquetZonesSousMode3.completEnParties(zones, reinitialiser)) {
             GestionnaireReseau.INSTANCE.send(PacketDistributor.PLAYER.with(() -> joueur), partie);
         }
@@ -663,6 +712,7 @@ public class GestionnaireBonbonsSousMode3 {
         if (serveur == null) {
             return;
         }
+        recalculerCentresNavigation();
         // Construire les parties une seule fois (l'empaquetage en plages d'une grande
         // carte a un coût réel) : les mêmes paquets sont envoyés à chaque joueur
         List<PaquetZonesSousMode3> parties = PaquetZonesSousMode3.completEnParties(zones, reinitialiser);
@@ -679,6 +729,7 @@ public class GestionnaireBonbonsSousMode3 {
         if (serveur == null) {
             return;
         }
+        recalculerCentresNavigation();
         PaquetZonesSousMode3 paquet = PaquetZonesSousMode3.compteurs(zones);
         for (ServerPlayer joueur : UtilitaireFiltreJoueurs.obtenirJoueursAuthentifies(serveur)) {
             GestionnaireReseau.INSTANCE.send(PacketDistributor.PLAYER.with(() -> joueur), paquet);

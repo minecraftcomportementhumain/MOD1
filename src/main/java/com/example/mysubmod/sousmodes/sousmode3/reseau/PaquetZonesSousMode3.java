@@ -13,9 +13,11 @@ import java.util.function.Supplier;
 
 /**
  * Paquet serveur -> client : zones de la carte pour le HUD du Sous-mode 3
- * (nom, centre géométrique, cellules, compteurs de bonbons visibles / non-visibles).
+ * (nom, point de navigation — barycentre des bonbons restants —, cellules,
+ * compteurs de bonbons visibles / non-visibles).
  * Version « complète » (avec cellules) à l'initialisation / reconnexion ;
- * version « compteurs » (sans cellules) pour les mises à jour en temps réel.
+ * version « compteurs » (sans cellules) pour les mises à jour en temps réel,
+ * qui rafraîchit aussi le point de navigation.
  *
  * <p>Les cellules voyagent et restent stockées en plages triées « z, x0, longueur »
  * (jamais développées cellule par cellule : une zone d'une grande carte peut en
