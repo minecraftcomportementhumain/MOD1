@@ -74,7 +74,7 @@ public class GenerateurCarteSousMode3 {
          * Blocs suivis hors génération de masse (bonbons réapparus, blocs posés par les
          * joueurs). La carte elle-même n'y est plus suivie bloc par bloc : l'effacement
          * balaie la bande de la cage ({@link #effacerCarte}) — suivre 100 M de positions
-         * dans un HashSet coûterait plusieurs Go sur une carte 2500×2500.
+         * dans un HashSet coûterait plusieurs Go sur une grande carte.
          */
         public final Set<BlockPos> blocsPlaces = new HashSet<>();
         public Set<Long> cellulesInterieur = new HashSet<>();
@@ -140,7 +140,7 @@ public class GenerateurCarteSousMode3 {
         private static final int FENETRE_PRECHARGEMENT = 32;
         /**
          * Contre-pression : sans plafond, l'écriture (rapide) distancerait le déchargement
-         * des chunks et le moteur d'éclairage — sur une carte 2500×2500 (~24 600 chunks),
+         * des chunks et le moteur d'éclairage — sur une grande carte (des milliers de chunks),
          * les chunks chargés et la file d'éclairage s'accumulaient en plusieurs Go et
          * épuisaient la mémoire du serveur.
          */
@@ -522,7 +522,7 @@ public class GenerateurCarteSousMode3 {
     /**
      * Cellules Île/Pierre submergées (élévation < 0) connectées à un bloc Eau :
      * l'eau remplit automatiquement l'espace au-dessus jusqu'au niveau de la mer.
-     * BitSet indexé cz·largeur + cx : les ensembles boxés coûtaient ~0,5 Go à 2500×2500.
+     * BitSet indexé cz·largeur + cx : les ensembles boxés coûtaient des centaines de Mo sur une grande carte.
      */
     private static java.util.BitSet calculerRemplissageEau(CarteDonnees carte, Set<Long> interieur) {
         int largeur = carte.largeur;

@@ -28,8 +28,12 @@ public class CarteDonnees {
     public static final int ELEVATION_MIN = -15;
     public static final int ELEVATION_MAX = 15;
     public static final int LONGUEUR_MAX_NOM = 32;
-    /** Dimension maximale d'une carte (borne anti-DoS au décodage). */
-    public static final int DIMENSION_MAX = 2500;
+    /**
+     * Dimension maximale d'une carte (borne anti-DoS au décodage). 1800×1800 = 3,24 M
+     * de cellules : le modèle en mémoire (Map de BlocCarte) d'une carte pleine reste
+     * sous ~400 Mo, jouable sans augmenter la mémoire du serveur.
+     */
+    public static final int DIMENSION_MAX = 1800;
     /** Nombre maximal de blocs stockés dans une carte (borne anti-DoS au décodage). */
     public static final int BLOCS_MAX = DIMENSION_MAX * DIMENSION_MAX;
     /** Version du format d'écriture (2 = terrain en plages + bonbons compacts). */
@@ -89,7 +93,7 @@ public class CarteDonnees {
      * Méthode : remplissage depuis l'extérieur de l'aire (les cellules hors aire sont « extérieures »),
      * bloqué par les blocs Limite. Les cellules non atteintes et non-Limite sont l'intérieur.
      * L'ensemble retourné est adossé à un BitSet (index = z·largeur + x) : appartenance en O(1)
-     * sans millions de Long boxés, indispensable aux grandes cartes (jusqu'à 2500×2500).
+     * sans millions de Long boxés, indispensable aux grandes cartes (jusqu'à 1800×1800).
      */
     public Set<Long> calculerInterieurLimite() {
         return interieurLimite();

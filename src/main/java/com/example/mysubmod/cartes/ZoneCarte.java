@@ -10,8 +10,8 @@ import java.util.List;
  * sauvegarde de la carte (ex. « Île A », « Zone Pierre 1 »).
  *
  * <p>Les cellules sont stockées en plages triées « z, x0, longueur » (coordonnées de
- * carte) et ne sont jamais développées cellule par cellule : une zone d'une carte
- * 2500×2500 peut compter des millions de cellules, que des listes de paires [x, z]
+ * carte) et ne sont jamais développées cellule par cellule : une zone d'une grande
+ * carte peut compter des millions de cellules, que des listes de paires [x, z]
  * feraient peser des centaines de Mo.</p>
  */
 public class ZoneCarte {

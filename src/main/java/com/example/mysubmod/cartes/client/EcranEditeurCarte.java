@@ -1594,7 +1594,7 @@ public class EcranEditeurCarte extends Screen {
     }
 
     /** Au-delà de ce nombre de blocs, un remplissage n'est plus annulable (l'action
-     *  d'annulation copierait deux BlocCarte par cellule : gigaoctets sur une carte 2500×2500) */
+     *  d'annulation copierait deux BlocCarte par cellule : gigaoctets sur une grande carte) */
     private static final int MAX_BLOCS_REMPLISSAGE_ANNULABLE = 500_000;
 
     /**
@@ -1862,7 +1862,7 @@ public class EcranEditeurCarte extends Screen {
     private void zoomer(double facteur, double pivotX, double pivotY) {
         double celluleX = ecranVersCelluleX(pivotX);
         double celluleZ = ecranVersCelluleZ(pivotY);
-        // Plancher très bas : une carte 2500×2500 doit pouvoir tenir entière dans la vue
+        // Plancher très bas : une carte 1800×1800 doit pouvoir tenir entière dans la vue
         double tailleMin = Math.max(0.05, Math.min(3, tailleCelluleAjustee()));
         tailleCellule = Math.max(tailleMin, Math.min(48, tailleCellule * facteur));
         decalageX = pivotX - grilleGaucheEcran() - celluleX * tailleCellule;
@@ -2036,7 +2036,7 @@ public class EcranEditeurCarte extends Screen {
 
         // 1) Couleurs de base par plages horizontales de même couleur. Sous 1 px par
         //    cellule, une cellule est échantillonnée par pixel : le coût par image reste
-        //    proportionnel à l'écran et non à l'aire (indispensable en 2500×2500 dézoomé)
+        //    proportionnel à l'écran et non à l'aire (indispensable en 1800×1800 dézoomé)
         int pasEchantillon = Math.max(1, (int) Math.ceil(1.0 / tailleCellule));
         for (int cz = czMin; cz <= czMax; cz += pasEchantillon) {
             int czFin = Math.min(cz + pasEchantillon, czMax + 1);

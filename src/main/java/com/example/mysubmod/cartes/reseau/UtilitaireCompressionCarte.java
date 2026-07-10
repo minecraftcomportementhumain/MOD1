@@ -15,8 +15,8 @@ public final class UtilitaireCompressionCarte {
 
     /**
      * Taille décompressée maximale acceptée (borne anti-bombe de décompression).
-     * Doit rester supérieure au JSON v2 maximal d'une carte légale : à 2500×2500,
-     * BLOCS_MAX entrées de bonbons représentent ~190 Mo — 256 Mio laisse de la marge.
+     * Doit rester supérieure au JSON v2 maximal d'une carte légale : à 1800×1800,
+     * BLOCS_MAX entrées de bonbons représentent ~100 Mo — 256 Mio laisse de la marge.
      */
     public static final int TAILLE_DECOMPRESSEE_MAX = 256 * 1024 * 1024;
 

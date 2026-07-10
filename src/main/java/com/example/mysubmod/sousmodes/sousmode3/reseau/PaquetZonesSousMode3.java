@@ -18,7 +18,7 @@ import java.util.function.Supplier;
  * version « compteurs » (sans cellules) pour les mises à jour en temps réel.
  *
  * <p>Les cellules voyagent et restent stockées en plages triées « z, x0, longueur »
- * (jamais développées cellule par cellule : une zone d'une carte 2500×2500 peut en
+ * (jamais développées cellule par cellule : une zone d'une grande carte peut en
  * compter des millions), et l'appartenance se teste par recherche binaire. La liste
  * complète est découpée en plusieurs parties sous la limite de trame (~2 Mio) ; une
  * zone géante est scindée en segments marqués « suite », refusionnés à la réception.</p>
