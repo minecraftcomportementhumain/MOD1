@@ -143,7 +143,7 @@ public class GestionnaireBonbonsSousMode3 {
      *  concerné, purement navigationnelle : la sélection de zone de départ s'appuie
      *  sur carte.zones, qui ne la contient pas */
     private DonneesZone zoneHors;
-    public static final String NOM_ZONE_HORS = "Hors zone";
+    public static final String NOM_ZONE_HORS = "Hors parcelle";
     private final List<ApparitionDifferee> apparitionsDifferees = new ArrayList<>();
     private final List<ApparitionDiffereeCache> apparitionsDiffereesCachees = new ArrayList<>();
     private Timer minuterieReapparition;

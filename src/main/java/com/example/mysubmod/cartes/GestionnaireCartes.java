@@ -145,18 +145,15 @@ public class GestionnaireCartes {
                 }
             }
 
-            // Zones : conservées telles quelles si dessinées manuellement dans l'éditeur
-            // (versJson les redérive des blocs), sinon nommées automatiquement
-            if (!carte.zonesManuelles) {
-                carte.recalculerZones();
-            }
+            // Parcelles : exclusivement manuelles (dessinées dans l'éditeur) —
+            // versJson les dérive des blocs, aucun recalcul automatique
 
             Path fichier = UtilitaireCheminSecurise.resoudreConfine(Paths.get(REPERTOIRE_CARTES), carte.nom + ".json");
             if (fichier == null) {
                 return "Nom de carte invalide";
             }
             Files.writeString(fichier, carte.versJson(), StandardCharsets.UTF_8);
-            MonSubMod.JOURNALISEUR.info("Carte sauvegardée : {} ({}x{}, {} blocs, {} zones)",
+            MonSubMod.JOURNALISEUR.info("Carte sauvegardée : {} ({}x{}, {} blocs, {} parcelles)",
                 carte.nom, carte.largeur, carte.hauteur, carte.blocs.size(), carte.zones.size());
             return null;
         } catch (Exception e) {

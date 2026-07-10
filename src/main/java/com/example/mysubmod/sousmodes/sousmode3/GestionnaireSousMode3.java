@@ -205,7 +205,7 @@ public class GestionnaireSousMode3 {
             problemes.add("(visibles et non-visibles) doivent être typés Bleu ou Rouge.");
         }
         if (c.selectionZoneDepart && !carteAZonesIle()) {
-            problemes.add("Choix de zone de départ : la carte n'a aucune zone Île.");
+            problemes.add("Choix de parcelle de départ : la carte n'a aucune parcelle contenant de l'Île.");
         }
         return problemes;
     }
@@ -372,7 +372,7 @@ public class GestionnaireSousMode3 {
         }
         if (selectionZonesEnCours) {
             if (admin != null) {
-                admin.sendSystemMessage(Component.literal("§cLa sélection des zones de départ est déjà en cours"));
+                admin.sendSystemMessage(Component.literal("§cLa sélection des parcelles de départ est déjà en cours"));
             }
             return false;
         }
@@ -1137,7 +1137,7 @@ public class GestionnaireSousMode3 {
             }
         }, TEMPS_SELECTION_ZONES_SECONDES * 1000L);
 
-        diffuserMessage(serveur, "§eChoisissez votre zone de départ ! Temps restant: "
+        diffuserMessage(serveur, "§eChoisissez votre parcelle de départ ! Temps restant: "
             + TEMPS_SELECTION_ZONES_SECONDES + " secondes");
     }
 
@@ -1199,7 +1199,7 @@ public class GestionnaireSousMode3 {
                 zonesChoisies.put(idJoueur, zone);
                 ServerPlayer joueur = serveur.getPlayerList().getPlayer(idJoueur);
                 if (joueur != null) {
-                    joueur.sendSystemMessage(Component.literal("§eZone assignée automatiquement: " + zone));
+                    joueur.sendSystemMessage(Component.literal("§eParcelle assignée automatiquement: " + zone));
                     if (enregistreurDonnees != null) {
                         enregistreurDonnees.enregistrerSelectionZone(joueur, zone, "AUTOMATIQUE");
                     }

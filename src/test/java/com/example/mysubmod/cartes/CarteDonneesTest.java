@@ -592,10 +592,10 @@ class CarteDonneesTest {
         assertFalse(ZoneCarte.plagesContiennent(plages, 6, 5));
     }
 
-    // ==================== Zones manuelles ====================
+    // ==================== Parcelles (zonage manuel) ====================
 
     @Test
-    void zonesManuellesRoundTrip() {
+    void parcellesRoundTrip() {
         CarteDonnees carte = new CarteDonnees();
         carte.nom = "zones_manuelles";
         carte.largeur = 8;
@@ -628,12 +628,10 @@ class CarteDonneesTest {
         }
         carte.blocs.get(CarteDonnees.cle(4, 3)).zone = 2;
         carte.blocs.get(CarteDonnees.cle(5, 3)).zone = 2;
-        carte.zonesManuelles = true;
 
         CarteDonnees relue = CarteDonnees.depuisJson(carte.versJson());
 
-        assertTrue(relue.zonesManuelles);
-        // La zone jamais peinte n'est pas sérialisée
+        // La parcelle jamais peinte n'est pas sérialisée
         assertEquals(2, relue.zones.size());
         assertEquals("Plage nord", relue.zones.get(0).nom);
         assertEquals("Récif", relue.zones.get(1).nom);
@@ -651,18 +649,39 @@ class CarteDonneesTest {
 
         // Second aller-retour : état stable
         CarteDonnees relue2 = CarteDonnees.depuisJson(relue.versJson());
-        assertTrue(relue2.zonesManuelles);
         assertEquals(2, relue2.zones.size());
         assertEquals(ensembleDepuisPlages(relue.zones.get(0).plages),
             ensembleDepuisPlages(relue2.zones.get(0).plages));
     }
 
+    /** Chaque bonbon doit appartenir à une parcelle pour que la carte soit sauvegardable */
     @Test
-    void carteSansZonesManuellesResteAutomatique() {
-        CarteDonnees carte = carteVariee(24, 18, 4242L);
-        carte.recalculerZones();
-        CarteDonnees relue = CarteDonnees.depuisJson(carte.versJson());
-        assertFalse(relue.zonesManuelles);
-        assertEquals(carte.zones.size(), relue.zones.size());
+    void validationRefuseBonbonHorsParcelle() {
+        CarteDonnees carte = new CarteDonnees();
+        carte.nom = "test_parcelles";
+        carte.largeur = 8;
+        carte.hauteur = 6;
+        for (int x = 0; x < 8; x++) {
+            for (int z = 0; z < 6; z++) {
+                boolean bord = x == 0 || z == 0 || x == 7 || z == 5;
+                carte.blocs.put(CarteDonnees.cle(x, z),
+                    new BlocCarte(bord ? TypeElementCarte.LIMITE : TypeElementCarte.ILE, 0));
+            }
+        }
+        carte.apparitionX = 4;
+        carte.apparitionZ = 3;
+        carte.blocs.get(CarteDonnees.cle(2, 2)).qteBonbonVisible = 1;
+
+        // Bonbon hors de toute parcelle : sauvegarde refusée
+        assertTrue(carte.validerPourSauvegarde().stream()
+            .anyMatch(e -> e.contains("hors de toute parcelle")));
+
+        // Une parcelle couvrant le bloc à bonbon : carte valide
+        ZoneCarte parcelle = new ZoneCarte();
+        parcelle.nom = "Ile_centrale";
+        parcelle.type = TypeElementCarte.ILE;
+        carte.zones.add(parcelle);
+        carte.blocs.get(CarteDonnees.cle(2, 2)).zone = 1;
+        assertEquals(List.of(), carte.validerPourSauvegarde());
     }
 }

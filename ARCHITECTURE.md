@@ -66,14 +66,15 @@ phases. À maintenir à chaque changement structurel.
   l'auto-mise à jour ne redémarre jamais le serveur).
 - **Verrou éditeur** : un seul admin à la fois (`GestionnaireCartes`), libéré à la
   fermeture de l'écran et à la déconnexion.
-- **Zonage** : par défaut les zones sont recalculées à la sauvegarde (une par île,
-  `recalculerZones`). Si la carte est en **zonage manuel** (`zonesManuelles: true`,
-  outil Zone de l'éditeur), elles sont conservées telles quelles : `versJson` les
-  redérive du champ `zone` des blocs (plages nommées, zones vides omises, type Île
-  dès qu'une cellule Île est présente — prérequis du choix de zone de départ) et le
-  serveur ne les recalcule pas. Le champ `BlocCarte.zone` n'est jamais sérialisé
-  directement ; il est reconstruit des plages au décodage. Les bonbons hors de toute
-  zone tombent dans la pseudo-zone HUD « Hors zone » (navigation seulement).
+- **Parcelles** (« zones » dans le code et le format de fichier) : zonage
+  **exclusivement manuel** (outil Parcelle de l'éditeur) — aucun recalcul
+  automatique, nulle part (`recalculerZones` n'est plus qu'un utilitaire de test).
+  `versJson` dérive les plages nommées du champ `zone` des blocs (parcelles vides
+  omises, type Île dès qu'une cellule Île est présente — prérequis du choix de
+  parcelle de départ) ; `depuisJson` fait l'inverse. Le champ `BlocCarte.zone`
+  n'est jamais sérialisé directement. **Validation bloquante à la sauvegarde :
+  chaque bonbon doit appartenir à une parcelle.** Les bonbons hors parcelle d'une
+  vieille carte tombent en jeu dans la pseudo-zone HUD « Hors parcelle ».
 - **Transitions de mode atomiques** : `changerSousMode` refuse toute demande **humaine**
   tant qu'une activation (génération de carte comprise) ou le nettoyage de la carte
   précédente est en cours ; les transitions du serveur lui-même (démarrage, fin de

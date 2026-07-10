@@ -124,9 +124,9 @@ public class EcranConfigurationPartieSousMode3 extends Screen {
             v -> config.specialisation = v);
         caseSpecialisation.active = FaitsCarteClientSousMode3.aBonbonsTypes();
 
-        titre(xB, yb, "§e§lZone de départ");
+        titre(xB, yb, "§e§lParcelle de départ");
         if (!FaitsCarteClientSousMode3.aZonesIle()) {
-            config.selectionZoneDepart = false; // la carte n'a aucune zone Île sélectionnable
+            config.selectionZoneDepart = false; // la carte n'a aucune parcelle avec Île sélectionnable
         }
         Checkbox caseZone = caseAcocher(xB, yb, "Choix par joueur", config.selectionZoneDepart,
             v -> config.selectionZoneDepart = v);

@@ -158,7 +158,7 @@ public class HUDZonesSousMode3 {
             y += 12;
         }
 
-        guiGraphics.drawString(police, "§6Zones :", x, y, 0xFFFFFF);
+        guiGraphics.drawString(police, "§6Parcelles :", x, y, 0xFFFFFF);
         y += 13;
 
         for (ZoneClient zone : zones) {
@@ -169,7 +169,7 @@ public class HUDZonesSousMode3 {
             y += hauteurLigne;
         }
 
-        guiGraphics.drawString(police, "§8[N] cibler une zone", x, y + 2, 0xFFFFFF);
+        guiGraphics.drawString(police, "§8[N] cibler une parcelle", x, y + 2, 0xFFFFFF);
 
         // Flèche de navigation
         afficherFleche(guiGraphics, largeurEcran, hauteurEcran);

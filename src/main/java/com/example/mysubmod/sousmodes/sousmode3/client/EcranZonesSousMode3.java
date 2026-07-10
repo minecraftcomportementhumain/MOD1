@@ -21,7 +21,7 @@ public class EcranZonesSousMode3 extends Screen {
     private static final int ESPACEMENT = 23;
 
     public EcranZonesSousMode3() {
-        super(Component.literal("Zones de la carte"));
+        super(Component.literal("Parcelles de la carte"));
     }
 
     @Override
@@ -69,7 +69,7 @@ public class EcranZonesSousMode3 extends Screen {
         this.renderBackground(guiGraphics);
         guiGraphics.drawCenteredString(this.font, this.title, this.width / 2, 20, 0xFFFFFF);
         guiGraphics.drawCenteredString(this.font,
-            "§7Cliquez sur une zone pour activer la flèche de navigation", this.width / 2, 32, 0xAAAAAA);
+            "§7Cliquez sur une parcelle pour activer la flèche de navigation", this.width / 2, 32, 0xAAAAAA);
         super.render(guiGraphics, sourisX, sourisY, tickPartiel);
     }
 

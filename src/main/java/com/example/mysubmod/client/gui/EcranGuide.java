@@ -182,7 +182,7 @@ public class EcranGuide extends Screen {
 
         titre(l, "Les touches essentielles");
         puce(l, "§e[M]§r — menu de contrôle : mode, cartes, journaux (surtout pour les admins).");
-        puce(l, "§e[N]§r — avant la partie (admin) : régler et lancer ; pendant la partie (joueur) : viser une zone.");
+        puce(l, "§e[N]§r — avant la partie (admin) : régler et lancer ; pendant la partie (joueur) : viser une parcelle.");
         puce(l, "§e[Guide]§r — ouvre ce guide à tout moment (H par défaut, voir Options › Commandes).");
 
         titre(l, "Deux rôles");
@@ -215,11 +215,11 @@ public class EcranGuide extends Screen {
         puce(l, "§eBonbons non-visibles§r — cachés dans des blocs : minez le bloc pour les faire tomber.");
         para(l, "§7Vous pouvez replacer les blocs minés. Selon la carte, les bonbons peuvent réapparaître.");
 
-        titre(l, "5. Se repérer : zones et flèche");
-        para(l, "Le panneau en haut à droite liste les zones et leurs bonbons restants. Appuyez sur §e[N]§r "
-            + "et choisissez une zone : la flèche pointe vers ses bonbons restants (le point visé suit "
-            + "les ramassages et réapparitions) et disparaît à une quinzaine de blocs du but. Les bonbons "
-            + "posés sur l'eau, hors de toute zone, sont regroupés sous l'entrée §eEau§r.");
+        titre(l, "5. Se repérer : parcelles et flèche");
+        para(l, "Le panneau en haut à droite liste les parcelles de la carte et leurs bonbons restants. "
+            + "Appuyez sur §e[N]§r et choisissez une parcelle : la flèche pointe vers ses bonbons "
+            + "restants (le point visé suit les ramassages et réapparitions) et disparaît à une "
+            + "quinzaine de blocs du but.");
 
         titre(l, "6. Mort, fin et classement");
         para(l, "À 0 cœur, vous passez spectateur (mort définitive, sauf si la réapparition est activée). "
@@ -251,7 +251,7 @@ public class EcranGuide extends Screen {
 
         titre(l, "Créer une carte (éditeur)");
         para(l, "Vous dessinez sur une grille. Palette : §eEau, Île, Pierre, Limite§r (mur, en boucle fermée), "
-            + "§eZone§r, §eBonbon visible, Bonbon non-visible, Apparition§r.");
+            + "§eParcelle§r, §eBonbon visible, Bonbon non-visible, Apparition§r.");
         puce(l, "§eClic gauche§r peint / ajoute · §eClic droit§r retire / décrémente.");
         puce(l, "§ePinceau§r (rangée §e− / + §rde la palette, ou §eMaj+molette§r) : agrandit l'aire "
             + "d'application des outils Eau, Île, Pierre et Bonbons, de 1×1 à 15×15 — Limite et "
@@ -262,10 +262,11 @@ public class EcranGuide extends Screen {
         puce(l, "§eSélection§r : tracer un rectangle sur le terrain (Île/Pierre) et les bonbons. "
             + "§eCtrl+molette§r élève/abaisse tout le terrain sélectionné d'un coup ; pour les bonbons, "
             + "régler les délais et le §etype§r (Standard/Bleu/Rouge), puis §eAppliquer§r.");
-        puce(l, "§eZone§r : découpez la carte en zones nommées — la navigation en jeu ([N] + flèche) "
-            + "pointe les bonbons zone par zone. Créez une zone dans le panneau de droite, peignez ses "
-            + "cellules, renommez-la ; sans zones dessinées, une zone par île est créée automatiquement "
-            + "à la sauvegarde.");
+        puce(l, "§eParcelle§r : découpez la carte en parcelles nommées — la navigation en jeu "
+            + "([N] + flèche) pointe les bonbons parcelle par parcelle, et le choix de l'île de départ "
+            + "se fait parmi les parcelles contenant de l'Île. Créez une parcelle dans le panneau de "
+            + "droite, peignez ses cellules (Eau comprise), renommez-la. §cChaque bonbon doit "
+            + "appartenir à une parcelle§7 — la sauvegarde est refusée sinon.");
         para(l, "§7Le panneau de droite montre le bloc survolé, l'état de la carte (limite fermée, apparition, "
             + "totaux de bonbons) et la légende ; la barre du bas rappelle les contrôles de l'outil actif. "
             + "Un point §6●§7 sur le bouton Sauvegarder signale des modifications non sauvegardées.");
@@ -281,7 +282,7 @@ public class EcranGuide extends Screen {
         para(l, "En Sous-mode 3, après la génération, appuyez sur §e[N]§r : le menu de lancement s'ouvre "
             + "(cases à cocher et sélecteurs, par groupes — voir l'onglet §eRéférence§r). Les défauts "
             + "reproduisent le jeu classique ; le bouton §ePar défaut§r réinitialise. Certaines options sont "
-            + "grisées selon la carte. Au clic §eLancer§r : décompte, ou phase de choix de zone si activée.");
+            + "grisées selon la carte. Au clic §eLancer§r : décompte, ou phase de choix de parcelle si activée.");
 
         titre(l, "Journaux de données");
         para(l, "Chaque partie écrit un dossier §edonnees_monsubmod/sousmode3_partie_<date>/§r :");
@@ -295,7 +296,7 @@ public class EcranGuide extends Screen {
 
         titre(l, "Touches");
         puce(l, "§e[M]§r — menu de contrôle (admins).");
-        puce(l, "§e[N]§r — joueur : viser une zone · admin : lancer une partie.");
+        puce(l, "§e[N]§r — joueur : viser une parcelle · admin : lancer une partie.");
         puce(l, "§e[Guide]§r — ce guide (H par défaut).");
         puce(l, "§eClic sur le panneau§r — passer spectateur (sur la plateforme).");
 
@@ -304,7 +305,7 @@ public class EcranGuide extends Screen {
         puce(l, "§bSanté§r : Dégradation oui · ½ cœur / 10 s · Vie max 10 cœurs · Régén. non · Réapparition non.");
         puce(l, "§bEnvironnement§r : Jour permanent oui · Chute non · Noyade mortelle oui · Faim non · PvP non · Pluie non.");
         puce(l, "§bMode§r : Spécialisation Bleu/Rouge non §7(carte à bonbons typés requise)§r.");
-        puce(l, "§bZone de départ§r : Choix par joueur non §7(zone Île requise)§r.");
+        puce(l, "§bParcelle de départ§r : Choix par joueur non §7(parcelle avec Île requise)§r.");
         puce(l, "§bInteractions§r : Crafting non · Destruction oui · Placement oui · Jeter non · Drop à la mort non · Manger à vie max non · Bonus sprint non.");
         puce(l, "§bFin de partie§r : Éliminés classés par Survie · Dernier survivant non.");
 

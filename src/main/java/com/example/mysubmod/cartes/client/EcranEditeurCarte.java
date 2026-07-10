@@ -46,7 +46,7 @@ public class EcranEditeurCarte extends Screen {
         ILE("Île"),
         PIERRE("Pierre"),
         LIMITE("Limite"),
-        ZONE("Zone"),
+        ZONE("Parcelle"),
         BONBON_VISIBLE("Bonbon visible"),
         BONBON_NON_VISIBLE("Bonbon non-visible"),
         APPARITION("Apparition des joueurs");
@@ -171,20 +171,19 @@ public class EcranEditeurCarte extends Screen {
     private String nomEnvoi = "";
     private boolean fermetureConfirmee = false;
 
-    // ----- Zonage manuel (outil Zone) -----
-    /** Zone active de l'outil Zone : 0 = aucune, sinon 1 + index dans carte.zones */
+    // ----- Parcelles (outil Parcelle ; « zones » dans le code et le format) -----
+    /** Parcelle active de l'outil : 0 = aucune, sinon 1 + index dans carte.zones */
     private int zoneActive = 0;
-    /** Le registre des zones (création / renommage) a changé depuis la sauvegarde —
+    /** Le registre des parcelles (création / renommage) a changé depuis la sauvegarde —
      *  ces opérations ne passent pas par la pile d'annulation, d'où ce drapeau à part */
     private boolean zonesRegistreModifie = false;
-    /** Rangées cliquables du panneau Zones, reconstruites à chaque image : {y0, y1, id} */
+    /** Rangées cliquables du panneau Parcelles, reconstruites à chaque image : {y0, y1, id} */
     private final List<int[]> lignesZonesInspecteur = new ArrayList<>();
-    /** Comptes de cellules par zone (index 0 inutilisé), rafraîchis avec les stats */
+    /** Comptes de cellules par parcelle (index 0 inutilisé), rafraîchis avec les stats */
     private int[] comptesZones = new int[1];
     private EditBox champNomZone;
     private Button boutonNouvelleZone;
     private Button boutonSupprimerZone;
-    private Button boutonZonesAuto;
 
     // Notification non bloquante (refus de placement / succès)
     private String toastTexte = null;
@@ -398,12 +397,12 @@ public class EcranEditeurCarte extends Screen {
             .build();
         addRenderableWidget(boutonRetablir);
 
-        // ----- Panneau Zones (inspecteur, visible quand l'outil Zone est actif) :
+        // ----- Panneau Parcelles (inspecteur, visible quand l'outil Parcelle est actif) :
         // positions et visibilité posées par mettreAJourPanneauZones() -----
         int xPanneauZones = this.width - largeurPanneauDroit + 6;
         int largeurPanneauZones = largeurPanneauDroit - 12;
         champNomZone = new EditBox(this.font, xPanneauZones, 0, largeurPanneauZones, 14,
-            Component.literal("Nom de la zone active"));
+            Component.literal("Nom de la parcelle active"));
         champNomZone.setMaxLength(24);
         champNomZone.setResponder(texte -> {
             if (zoneActive >= 1 && zoneActive <= carte.zones.size()) {
@@ -411,37 +410,28 @@ public class EcranEditeurCarte extends Screen {
                 if (!texte.equals(zone.nom)) {
                     zone.nom = texte;
                     zonesRegistreModifie = true;
-                    carte.zonesManuelles = true;
                     surCarteModifiee();
                 }
             }
         });
         champNomZone.setTooltip(net.minecraft.client.gui.components.Tooltip.create(
-            Component.literal("Nom de la zone active — affiché dans le HUD des joueurs en jeu")));
+            Component.literal("Nom de la parcelle active — affiché dans le HUD des joueurs en jeu")));
         addRenderableWidget(champNomZone);
 
-        boutonNouvelleZone = Button.builder(Component.literal("+ Nouvelle zone"), b -> creerZone())
+        boutonNouvelleZone = Button.builder(Component.literal("+ Nouvelle parcelle"), b -> creerZone())
             .bounds(xPanneauZones, 0, largeurPanneauZones, 16)
             .tooltip(net.minecraft.client.gui.components.Tooltip.create(Component.literal(
-                "Ajoute une zone et la rend active : peignez ensuite ses cellules sur la grille")))
+                "Ajoute une parcelle et la rend active : peignez ensuite ses cellules sur la grille")))
             .build();
         addRenderableWidget(boutonNouvelleZone);
 
         boutonSupprimerZone = Button.builder(Component.literal("Supprimer"), b -> supprimerZoneActive())
             .bounds(xPanneauZones, 0, largeurPanneauZones, 16)
             .tooltip(net.minecraft.client.gui.components.Tooltip.create(Component.literal(
-                "Retire toutes les cellules de la zone active (annulable) ; une zone restée vide "
-                    + "disparaît du fichier à la sauvegarde")))
+                "Retire toutes les cellules de la parcelle active (annulable) ; une parcelle restée "
+                    + "vide disparaît du fichier à la sauvegarde")))
             .build();
         addRenderableWidget(boutonSupprimerZone);
-
-        boutonZonesAuto = Button.builder(Component.literal("Zonage auto"), b -> confirmerZonageAuto())
-            .bounds(xPanneauZones, 0, largeurPanneauZones, 16)
-            .tooltip(net.minecraft.client.gui.components.Tooltip.create(Component.literal(
-                "Abandonne le zonage manuel : les zones seront recalculées automatiquement "
-                    + "(une par île) à la sauvegarde")))
-            .build();
-        addRenderableWidget(boutonZonesAuto);
         mettreAJourPanneauZones();
 
         // ----- Inspecteur (panneau latéral droit), état sélection : deux cartes
@@ -578,9 +568,9 @@ public class EcranEditeurCarte extends Screen {
             Component.literal(etiquette), b -> selectionnerOutil(outil),
             pastille, couleurPastille, () -> outilActif == outil, COULEUR_ACCENT);
         String infobulle = outil == OutilPalette.ZONE
-            ? "Découpe la carte en zones nommées pour la navigation : peignez les cellules de la "
-                + "zone active (panneau de droite). La carte passe alors en zonage manuel — sinon "
-                + "les zones sont recalculées automatiquement (une par île) à la sauvegarde"
+            ? "Découpe la carte en parcelles nommées : peignez les cellules de la parcelle active "
+                + "(panneau de droite). La navigation en jeu pointe les bonbons parcelle par "
+                + "parcelle, et chaque bonbon doit appartenir à une parcelle pour sauvegarder"
             : outil.nomAffichage;
         bouton.setTooltip(net.minecraft.client.gui.components.Tooltip.create(Component.literal(infobulle)));
         addRenderableWidget(bouton);
@@ -616,12 +606,11 @@ public class EcranEditeurCarte extends Screen {
         mettreAJourPanneauZones();
     }
 
-    // ==================== Zonage manuel (outil Zone) ====================
+    // ==================== Parcelles (outil Parcelle) ====================
 
-    /** Met à jour visibilité et positions des widgets du panneau Zones */
+    /** Met à jour visibilité et positions des widgets du panneau Parcelles */
     private void mettreAJourPanneauZones() {
-        if (champNomZone == null || boutonNouvelleZone == null
-            || boutonSupprimerZone == null || boutonZonesAuto == null) {
+        if (champNomZone == null || boutonNouvelleZone == null || boutonSupprimerZone == null) {
             return;
         }
         boolean visible = outilActif == OutilPalette.ZONE && !modeSelection;
@@ -632,8 +621,6 @@ public class EcranEditeurCarte extends Screen {
         boutonNouvelleZone.active = visible;
         boutonSupprimerZone.visible = visible && zoneValide;
         boutonSupprimerZone.active = visible && zoneValide;
-        boutonZonesAuto.visible = visible && carte.zonesManuelles;
-        boutonZonesAuto.active = visible && carte.zonesManuelles;
         if (!visible) {
             return;
         }
@@ -641,13 +628,11 @@ public class EcranEditeurCarte extends Screen {
         int x = this.width - largeurPanneauDroit + 6;
         int largeur = largeurPanneauDroit - 12;
         int yBas = basGrille() - 4;
-        boutonZonesAuto.setPosition(x, yBas - 16);
-        boutonZonesAuto.setWidth(largeur);
-        boutonSupprimerZone.setPosition(x, yBas - 34);
+        boutonSupprimerZone.setPosition(x, yBas - 16);
         boutonSupprimerZone.setWidth(largeur);
-        boutonNouvelleZone.setPosition(x, yBas - 52);
+        boutonNouvelleZone.setPosition(x, yBas - 34);
         boutonNouvelleZone.setWidth(largeur);
-        champNomZone.setPosition(x, yBas - 70);
+        champNomZone.setPosition(x, yBas - 52);
         champNomZone.setWidth(largeur);
         if (zoneValide) {
             String nom = carte.zones.get(zoneActive - 1).nom;
@@ -659,17 +644,16 @@ public class EcranEditeurCarte extends Screen {
 
     private void creerZone() {
         com.example.mysubmod.cartes.ZoneCarte zone = new com.example.mysubmod.cartes.ZoneCarte();
-        zone.nom = "Zone " + (carte.zones.size() + 1);
+        zone.nom = "Parcelle " + (carte.zones.size() + 1);
         zone.type = TypeElementCarte.ILE; // provisoire : redérivé des cellules à la sauvegarde
         carte.zones.add(zone);
         zoneActive = carte.zones.size();
-        carte.zonesManuelles = true;
         zonesRegistreModifie = true;
         surCarteModifiee();
         mettreAJourPanneauZones();
     }
 
-    /** Retire toutes les cellules de la zone active (une action annulable). L'entrée
+    /** Retire toutes les cellules de la parcelle active (une action annulable). L'entrée
      *  reste dans la liste (ids stables pour l'annulation) et disparaît du fichier à
      *  la sauvegarde si elle reste vide. */
     private void supprimerZoneActive() {
@@ -677,33 +661,13 @@ public class EcranEditeurCarte extends Screen {
             return;
         }
         desassignerCellules(zoneActive);
-        carte.zonesManuelles = true;
         zonesRegistreModifie = true;
         surCarteModifiee();
         afficherToast("Cellules de « " + carte.zones.get(zoneActive - 1).nom + " » retirées", false);
     }
 
-    private void confirmerZonageAuto() {
-        afficherConfirmation("Repasser en zonage automatique",
-            List.of("Les zones dessinées seront abandonnées et les zones seront",
-                "recalculées automatiquement (une par île) à la sauvegarde.",
-                "Voulez-vous continuer ?"),
-            this::repasserZonageAuto, null);
-    }
-
-    private void repasserZonageAuto() {
-        desassignerCellules(0);
-        carte.zones.clear();
-        zoneActive = 0;
-        carte.zonesManuelles = false;
-        zonesRegistreModifie = true;
-        surCarteModifiee();
-        mettreAJourPanneauZones();
-        afficherToast("Zonage automatique rétabli (appliqué à la sauvegarde)", false);
-    }
-
-    /** Retire les cellules de la zone {@code id} (0 = toutes les zones) — même
-     *  garde-fou d'annulation que les autres actions de masse */
+    /** Retire les cellules de la parcelle {@code id} (0 = toutes) — même garde-fou
+     *  d'annulation que les autres actions de masse */
     private void desassignerCellules(int id) {
         List<Long> cibles = new ArrayList<>();
         for (Map.Entry<Long, BlocCarte> entree : carte.blocs.entrySet()) {
@@ -740,36 +704,36 @@ public class EcranEditeurCarte extends Screen {
             pileRetablissement.clear();
             reperePileSauvegarde = new ActionEditeur(carte);
             surCarteModifiee();
-            afficherToast("Zone retirée de " + cibles.size() + " blocs (trop volumineux pour l'annulation)", false);
+            afficherToast("Parcelle retirée de " + cibles.size() + " blocs (trop volumineux pour l'annulation)", false);
         }
     }
 
-    /** Nom d'une zone pour l'affichage (tronqué, « ? » si l'id ne correspond plus) */
+    /** Nom d'une parcelle pour l'affichage (tronqué, « ? » si l'id ne correspond plus) */
     private String nomZoneAffiche(int id) {
         if (id < 1 || id > carte.zones.size()) {
             return "?";
         }
         String nom = carte.zones.get(id - 1).nom;
         if (nom == null || nom.isBlank()) {
-            return "Zone " + id;
+            return "Parcelle " + id;
         }
         return nom.length() > 18 ? nom.substring(0, 17) + "…" : nom;
     }
 
-    /** Panneau de l'inspecteur en mode Zone : liste cliquable des zones + zone survolée */
+    /** Panneau de l'inspecteur en mode Parcelle : liste cliquable + parcelle survolée */
     private void dessinerPanneauZones(GuiGraphics guiGraphics, int[] celluleSurvolee) {
         rafraichirStatsCarte();
         int x = this.width - largeurPanneauDroit + 6;
         int largeur = largeurPanneauDroit - 12;
         lignesZonesInspecteur.clear();
 
-        guiGraphics.drawString(this.font, "§6Zones : §7" + carte.zones.size()
-            + (carte.zonesManuelles ? " §8manuel" : " §8auto"), x + 2, hautGrille + 6, 0xFFFFFF);
+        guiGraphics.drawString(this.font, "§6Parcelles : §7" + carte.zones.size(),
+            x + 2, hautGrille + 6, 0xFFFFFF);
         int y = hautGrille + 18;
-        int yLimite = basGrille() - 4 - 70 - 14; // au-dessus du champ de renommage
+        int yLimite = basGrille() - 4 - 52 - 14; // au-dessus du champ de renommage
 
         if (carte.zones.isEmpty()) {
-            guiGraphics.drawString(this.font, "§7Aucune zone définie.", x + 2, y, 0xFFFFFF);
+            guiGraphics.drawString(this.font, "§7Aucune parcelle définie.", x + 2, y, 0xFFFFFF);
             y += 11;
             guiGraphics.drawString(this.font, "§7Créez-en une, puis", x + 2, y, 0xFFFFFF);
             y += 11;
@@ -792,12 +756,12 @@ public class EcranEditeurCarte extends Screen {
             }
         }
 
-        // La zone du bloc survolé reste consultable pendant la peinture
+        // La parcelle du bloc survolé reste consultable pendant la peinture
         if (celluleSurvolee != null) {
             BlocCarte bloc = carte.obtenirBlocOuNull(celluleSurvolee[0], celluleSurvolee[1]);
             int zoneSurvolee = bloc != null ? bloc.zone : 0;
             guiGraphics.drawString(this.font, "§7Survolé : "
-                + (zoneSurvolee > 0 ? "§f" + nomZoneAffiche(zoneSurvolee) : "§8aucune zone"),
+                + (zoneSurvolee > 0 ? "§f" + nomZoneAffiche(zoneSurvolee) : "§8aucune parcelle"),
                 x + 2, yLimite + 3, 0xFFFFFF);
         }
     }
@@ -1047,17 +1011,16 @@ public class EcranEditeurCarte extends Screen {
             case ZONE -> {
                 if (!existant.type.estElementDeBase()) {
                     if (!silencieux) {
-                        afficherToast("Une zone ne peut couvrir que des blocs Eau, Île ou Pierre", true);
+                        afficherToast("Une parcelle ne peut couvrir que des blocs Eau, Île ou Pierre", true);
                     }
                     return;
                 }
                 if (zoneActive <= 0 || zoneActive > carte.zones.size()) {
                     if (!silencieux) {
-                        afficherToast("Créez ou choisissez d'abord une zone dans le panneau de droite", true);
+                        afficherToast("Créez ou choisissez d'abord une parcelle dans le panneau de droite", true);
                     }
                     return;
                 }
-                carte.zonesManuelles = true;
                 apres.zone = zoneActive;
             }
             case LIMITE -> {
@@ -1313,7 +1276,7 @@ public class EcranEditeurCarte extends Screen {
             return;
         }
 
-        // Outil Zone : clic droit retire la cellule de sa zone (le reste du bloc est intact)
+        // Outil Parcelle : clic droit retire la cellule de sa parcelle (bloc intact)
         if (outilActif == OutilPalette.ZONE) {
             if (existant == null || existant.zone == 0) {
                 return;
@@ -1321,7 +1284,6 @@ public class EcranEditeurCarte extends Screen {
             BlocCarte avant = existant.copier();
             BlocCarte apres = existant.copier();
             apres.zone = 0;
-            carte.zonesManuelles = true;
             appliquerChangement(cx, cz, avant, apres);
             return;
         }
@@ -2242,7 +2204,7 @@ public class EcranEditeurCarte extends Screen {
             return true;
         }
 
-        // Panneau Zones : cliquer sur une rangée rend cette zone active
+        // Panneau Parcelles : cliquer sur une rangée rend cette parcelle active
         if (outilActif == OutilPalette.ZONE && bouton == 0
             && sourisX >= this.width - largeurPanneauDroit) {
             for (int[] ligne : lignesZonesInspecteur) {
@@ -2929,7 +2891,7 @@ public class EcranEditeurCarte extends Screen {
         int xCarte = this.width - largeurPanneauDroit + 6;
         int largeurCarte = largeurPanneauDroit - 12;
 
-        // Outil Zone actif : le panneau des zones remplace l'inspecteur standard
+        // Outil Parcelle actif : le panneau des parcelles remplace l'inspecteur standard
         if (outilActif == OutilPalette.ZONE && !modeSelection) {
             dessinerPanneauZones(guiGraphics, celluleSurvolee);
             return;
@@ -3012,7 +2974,7 @@ public class EcranEditeurCarte extends Screen {
                 bloc.elevation < 0 ? 0xFF9FD3FF : 0xFFFFFFFF));
         }
         if (bloc.zone > 0) {
-            lignes.add(new LigneInspecteur("Zone",
+            lignes.add(new LigneInspecteur("Parcelle",
                 bloc.zone <= carte.zones.size() ? carte.zones.get(bloc.zone - 1).nom : "?",
                 couleurZone(bloc.zone)));
         }
@@ -3173,7 +3135,8 @@ public class EcranEditeurCarte extends Screen {
             case EAU, ILE, PIERRE ->
                 "glisser : peindre · clic droit : retirer · Ctrl+molette : élévation · Maj+molette : pinceau";
             case LIMITE -> "glisser : peindre · clic droit : retirer";
-            case ZONE -> "glisser : peindre la zone active · clic droit : retirer de sa zone · Maj+molette : pinceau";
+            case ZONE ->
+                "glisser : peindre la parcelle active · clic droit : retirer de sa parcelle · Maj+molette : pinceau";
             case BONBON_VISIBLE, BONBON_NON_VISIBLE ->
                 "clic : +1 bonbon · clic droit : −1 · Ctrl+molette : élévation · Maj+molette : pinceau";
             case APPARITION -> "clic : placer le point d'apparition · clic droit : retirer";

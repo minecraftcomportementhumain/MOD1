@@ -28,7 +28,7 @@ public class EcranSelectionZoneDepart extends Screen {
     private int compteurTicks = 0;
 
     public EcranSelectionZoneDepart(List<String> zones, List<Integer> tailles, int tempsInitial) {
-        super(Component.literal("Sélection de la zone de départ"));
+        super(Component.literal("Sélection de la parcelle de départ"));
         this.zones = zones;
         this.tailles = tailles;
         this.tempsRestant = tempsInitial;
@@ -87,7 +87,7 @@ public class EcranSelectionZoneDepart extends Screen {
         guiGraphics.drawCenteredString(this.font, Component.literal(texteTemps), centreX, 28, couleurTemps);
 
         guiGraphics.drawCenteredString(this.font,
-            Component.literal("Choisissez votre zone de départ"), centreX, 40, 0xAAAAAA);
+            Component.literal("Choisissez votre parcelle de départ"), centreX, 40, 0xAAAAAA);
 
         super.render(guiGraphics, sourisX, sourisY, tickPartiel);
     }

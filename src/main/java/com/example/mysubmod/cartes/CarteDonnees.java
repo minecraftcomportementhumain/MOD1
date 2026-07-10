@@ -285,6 +285,21 @@ public class CarteDonnees {
             erreurs.add(bonbonsSansBase + " bonbon(s) présents sur un bloc sans élément de base");
         }
 
+        // Chaque bonbon doit appartenir à une parcelle : la navigation en jeu (HUD,
+        // flèche, compteurs) fonctionne parcelle par parcelle
+        int bonbonsSansParcelle = 0;
+        for (Map.Entry<Long, BlocCarte> entree : blocs.entrySet()) {
+            BlocCarte bloc = entree.getValue();
+            if ((bloc.qteBonbonVisible > 0 || bloc.qteBonbonNonVisible > 0)
+                && (bloc.zone <= 0 || bloc.zone > zones.size())) {
+                bonbonsSansParcelle++;
+            }
+        }
+        if (bonbonsSansParcelle > 0) {
+            erreurs.add(bonbonsSansParcelle + " bonbon(s) hors de toute parcelle "
+                + "(outil Parcelle : peignez une parcelle sur chaque bloc à bonbons)");
+        }
+
         // Un bonbon visible sur un bloc à l'élévation maximale est inatteignable
         // (sa surface touche le plafond de la cage)
         int bonbonsInatteignables = 0;
@@ -304,21 +319,14 @@ public class CarteDonnees {
         return erreurs;
     }
 
-    // ==================== Zones ====================
+    // ==================== Parcelles (« zones » dans le format de fichier) ====================
 
     /**
-     * Vrai si les zones ont été dessinées manuellement dans l'éditeur (outil Zone) :
-     * elles sont alors conservées telles quelles à la sauvegarde au lieu d'être
-     * recalculées automatiquement. Sérialisé dans le JSON (« zonesManuelles »).
-     */
-    public boolean zonesManuelles = false;
-
-    /**
-     * Reconstruit les plages et le type de chaque zone depuis le champ {@code zone} des
-     * blocs (zonage manuel) : une passe sur les blocs vers une grille d'ids, puis un
-     * balayage row-major qui émet les plages triées. Le type devient Île si la zone
-     * contient au moins une cellule Île (prérequis du choix de zone de départ), sinon
-     * Pierre. Un nom vide est remplacé par « Zone n ».
+     * Reconstruit les plages et le type de chaque parcelle depuis le champ {@code zone}
+     * des blocs : une passe sur les blocs vers une grille d'ids, puis un balayage
+     * row-major qui émet les plages triées. Le type devient Île si la parcelle contient
+     * au moins une cellule Île (prérequis du choix de parcelle de départ), sinon
+     * Pierre. Un nom vide est remplacé par « Parcelle n ».
      */
     public void reconstruireZonesDepuisBlocs() {
         int nombreZones = zones.size();
@@ -365,7 +373,7 @@ public class CarteDonnees {
             zone.plages = plagesParZone.get(i);
             zone.type = contientIle[i + 1] ? TypeElementCarte.ILE : TypeElementCarte.PIERRE;
             if (zone.nom == null || zone.nom.isBlank()) {
-                zone.nom = "Zone " + (i + 1);
+                zone.nom = "Parcelle " + (i + 1);
             }
         }
     }
@@ -392,9 +400,10 @@ public class CarteDonnees {
     }
 
     /**
-     * Recalcule les zones (îles logiques et zones de pierre) et leur assigne des noms
-     * automatiques : « Île A », « Île B », ..., « Zone Pierre 1 », « Zone Pierre 2 », ...
-     * Appelé à la sauvegarde de la carte (sauf zonage manuel).
+     * UTILITAIRE (tests / outillage) : découpe la carte en parcelles automatiques (une
+     * par masse de terre connexe) nommées « Île A », ..., « Zone Pierre 1 », ... et les
+     * matérialise dans les blocs. N'est PLUS appelé à la sauvegarde : le zonage est
+     * exclusivement manuel (outil Parcelle de l'éditeur).
      */
     public void recalculerZones() {
         zones.clear();
@@ -464,6 +473,8 @@ public class CarteDonnees {
                 zones.add(zone);
             }
         }
+        // Cohérence avec le modèle manuel : les blocs portent l'id de leur parcelle
+        assignerZonesAuxBlocs();
     }
 
     // Codes de type dans la grille compacte (ordinaux de TypeElementCarte)
@@ -564,15 +575,12 @@ public class CarteDonnees {
         }
         racine.add("bonbons", tableauBonbons);
 
-        if (zonesManuelles) {
-            // Zonage manuel : les plages sont dérivées de l'état courant des blocs, et
-            // les zones vides (jamais peintes ou effacées) ne sont pas sérialisées
-            reconstruireZonesDepuisBlocs();
-            racine.addProperty("zonesManuelles", true);
-        }
+        // Les parcelles sont toujours dérivées de l'état courant des blocs (zonage
+        // exclusivement manuel) ; celles restées vides ne sont pas sérialisées
+        reconstruireZonesDepuisBlocs();
         JsonArray tableauZones = new JsonArray();
         for (ZoneCarte zone : zones) {
-            if (zonesManuelles && zone.plages.isEmpty()) {
+            if (zone.plages.isEmpty()) {
                 continue;
             }
             JsonObject objetZone = new JsonObject();
@@ -717,11 +725,9 @@ public class CarteDonnees {
             if (racine.has("zones")) {
                 decoderZonesV2(carte, racine.getAsJsonArray("zones"));
             }
-            carte.zonesManuelles = racine.has("zonesManuelles")
-                && racine.get("zonesManuelles").getAsBoolean();
-            if (carte.zonesManuelles) {
-                carte.assignerZonesAuxBlocs();
-            }
+            // Les blocs portent l'id de leur parcelle (source de vérité à l'édition
+            // comme à la re-sérialisation)
+            carte.assignerZonesAuxBlocs();
             return carte;
         }
 
@@ -771,7 +777,7 @@ public class CarteDonnees {
                     totalCellules++;
                     if (totalCellules > BLOCS_MAX) {
                         // Même garde anti-DoS que les zones v2
-                        throw new IllegalArgumentException("Trop de cellules de zones");
+                        throw new IllegalArgumentException("Trop de cellules de parcelles");
                     }
                     JsonArray paire = elementCellule.getAsJsonArray();
                     cellules.add(new int[]{paire.get(0).getAsInt(), paire.get(1).getAsInt()});
@@ -781,6 +787,7 @@ public class CarteDonnees {
             }
         }
 
+        carte.assignerZonesAuxBlocs();
         return carte;
     }
 
@@ -923,7 +930,7 @@ public class CarteDonnees {
                 int virgule1 = plages.indexOf(',', i);
                 int virgule2 = virgule1 < 0 ? -1 : plages.indexOf(',', virgule1 + 1);
                 if (virgule1 < 0 || virgule2 < 0 || virgule2 >= fin) {
-                    throw new IllegalArgumentException("Plage de zone mal formée");
+                    throw new IllegalArgumentException("Plage de parcelle mal formée");
                 }
                 int z = Integer.parseInt(plages.substring(i, virgule1));
                 int x0 = Integer.parseInt(plages.substring(virgule1 + 1, virgule2));
@@ -931,11 +938,11 @@ public class CarteDonnees {
                 // Comparaison en long : « x0 + longueur » en int serait contournable par débordement
                 if (longueur < 1 || z < 0 || z >= carte.hauteur
                     || x0 < 0 || (long) x0 + longueur > carte.largeur) {
-                    throw new IllegalArgumentException("Plage de zone hors bornes");
+                    throw new IllegalArgumentException("Plage de parcelle hors bornes");
                 }
                 totalCellules += longueur;
                 if (totalCellules > BLOCS_MAX) {
-                    throw new IllegalArgumentException("Trop de cellules de zones");
+                    throw new IllegalArgumentException("Trop de cellules de parcelles");
                 }
                 zone.plages.add(new int[]{z, x0, longueur});
                 i = fin + 1;
