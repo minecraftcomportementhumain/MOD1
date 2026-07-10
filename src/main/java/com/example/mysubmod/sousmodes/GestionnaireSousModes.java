@@ -61,6 +61,28 @@ public class GestionnaireSousModes {
             return false;
         }
 
+        // Transitions atomiques : aucun changement de sous-mode (salle d'attente comprise)
+        // tant qu'une activation (génération de la carte) ou que le nettoyage de la carte
+        // précédente n'est pas terminé. Les transitions déclenchées par le serveur lui-même
+        // (démarrage, fin de partie) restent permises : elles font partie de ces processus.
+        if (joueurDemandeur != null) {
+            String occupation = null;
+            if (GestionnaireSousMode3.getInstance().estGenerationEnCours()
+                || com.example.mysubmod.cartes.jeu.PiloteChargementCarte.estEnCours()) {
+                occupation = "La génération de la carte est encore en cours.";
+            } else if (com.example.mysubmod.sousmodes.sousmode3.EffaceurCarteSousMode3.estEnCours()) {
+                occupation = "Le nettoyage de la carte précédente est encore en cours.";
+            }
+            if (occupation != null) {
+                MonSubMod.JOURNALISEUR.warn("Changement de sous-mode refusé ({}) : {}",
+                    joueurDemandeur.getName().getString(), occupation);
+                refuserLancement(joueurDemandeur, "Veuillez patienter",
+                    java.util.List.of(occupation,
+                        "Réessayez quand la barre de progression aura disparu."));
+                return false;
+            }
+        }
+
         // Sous-mode 3 : carte obligatoire
         boolean carteSelectionnee = com.example.mysubmod.cartes.GestionnaireCartes.getInstance().aCarteSelectionnee();
         if (nouveauMode == SousMode.SOUS_MODE_3 && !carteSelectionnee) {

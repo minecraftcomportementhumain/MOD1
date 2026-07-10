@@ -66,6 +66,10 @@ phases. À maintenir à chaque changement structurel.
   l'auto-mise à jour ne redémarre jamais le serveur).
 - **Verrou éditeur** : un seul admin à la fois (`GestionnaireCartes`), libéré à la
   fermeture de l'écran et à la déconnexion.
+- **Transitions de mode atomiques** : `changerSousMode` refuse toute demande **humaine**
+  tant qu'une activation (génération de carte comprise) ou le nettoyage de la carte
+  précédente est en cours ; les transitions du serveur lui-même (démarrage, fin de
+  partie) restent permises car elles font partie de ces processus.
 
 ## Tests
 
