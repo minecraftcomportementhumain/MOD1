@@ -243,16 +243,23 @@ public class EcranGuide extends Screen {
         puce(l, "§eSalle d'attente§r — y ramène tout le monde.");
         puce(l, "§eSous-mode 3§r §7(+📊)§r — lance le mode (carte requise) ; 📊 = journaux.");
         puce(l, "§eCartes et parcelles§r — sélectionner la carte active, ou ouvrir l'éditeur.");
+        para(l, "§7Pendant la génération d'une carte ou le nettoyage de la précédente (barre de "
+            + "progression à l'écran), tout changement de mode est refusé — réessayez quand la "
+            + "barre a disparu.");
 
         titre(l, "Créer une carte (éditeur)");
         para(l, "Vous dessinez sur une grille. Palette : §eEau, Île, Pierre, Limite§r (mur, en boucle fermée), "
             + "§eBonbon visible, Bonbon non-visible, Apparition§r.");
         puce(l, "§eClic gauche§r peint / ajoute · §eClic droit§r retire / décrémente.");
+        puce(l, "§ePinceau§r (rangée §e− / + §rde la palette, ou §eMaj+molette§r) : agrandit l'aire "
+            + "d'application des outils Eau, Île, Pierre et Bonbons, de 1×1 à 15×15 — Limite et "
+            + "Apparition restent au bloc près.");
         puce(l, "§eCtrl + molette§r sur Île/Pierre : élévation d'un cran (−15 à +15).");
         puce(l, "§eMolette§r ou §e− / + / Ajuster§r (barre du bas) : zoom · §eclic milieu / flèches§r : déplacer "
             + "la vue · §eCtrl+Z / Ctrl+Y§r : annuler / rétablir.");
-        puce(l, "§eSélection§r : régler les délais et le §etype§r (Standard/Bleu/Rouge) des bonbons visibles "
-            + "et non-visibles, puis §eAppliquer§r.");
+        puce(l, "§eSélection§r : tracer un rectangle sur le terrain (Île/Pierre) et les bonbons. "
+            + "§eCtrl+molette§r élève/abaisse tout le terrain sélectionné d'un coup ; pour les bonbons, "
+            + "régler les délais et le §etype§r (Standard/Bleu/Rouge), puis §eAppliquer§r.");
         para(l, "§7Le panneau de droite montre le bloc survolé, l'état de la carte (limite fermée, apparition, "
             + "totaux de bonbons) et la légende ; la barre du bas rappelle les contrôles de l'outil actif. "
             + "Un point §6●§7 sur le bouton Sauvegarder signale des modifications non sauvegardées.");
