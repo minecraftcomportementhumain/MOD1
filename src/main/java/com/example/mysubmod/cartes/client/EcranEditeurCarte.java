@@ -94,6 +94,15 @@ public class EcranEditeurCarte extends Screen {
     private double selectionDebutY;
     private double selectionCouranteX;
     private double selectionCouranteY;
+    // Taille du pinceau : côté du carré N×N (impair) appliqué par les outils terrain
+    // (sauf Limite, qui reste au bloc près) et bonbons. 1 = comportement historique.
+    private static final int TAILLE_BROSSE_MAX = 15;
+    private int tailleBrosse = 1;
+    private int xValeurBrosse = -1; // Centre du texte « N×N » de la palette (peint chaque image)
+    private int yValeurBrosse = -1;
+    /** Action collectrice d'un tampon de pinceau hors peinture (clic bonbon, clic droit) */
+    private ActionEditeur actionGroupe = null;
+
     private final Set<Long> cellulesSelectionnees = new HashSet<>();
     // Résumé de la sélection, recalculé quand elle change — jamais obsolète : annuler/rétablir
     // vident la sélection, et Appliquer/l'élévation groupée ne changent pas la présence des
@@ -301,12 +310,12 @@ public class EcranEditeurCarte extends Screen {
             .build());
 
         // ----- Palette (panneau latéral gauche) : trois sections titrées.
-        // Compactage sur les écrans courts : 3 titres + 9 rangées (7 outils + Sélection +
-        // Annuler/Rétablir) doivent tenir entre le haut de la palette et la barre d'état -----
+        // Compactage sur les écrans courts : 3 titres + 10 rangées (7 outils + Pinceau +
+        // Sélection + Annuler/Rétablir) doivent tenir entre le haut de la palette et la barre d'état -----
         int yPalette = hautGrille + 4;
         int hauteurTitre = 10;
         int pasPalette = Math.max(14, Math.min(22,
-            (this.height - HAUTEUR_BARRE_ETAT - yPalette - 3 * hauteurTitre - 4) / 9));
+            (this.height - HAUTEUR_BARRE_ETAT - yPalette - 3 * hauteurTitre - 4) / 10));
         int hauteurBoutonPalette = pasPalette - 2;
 
         yPalette = ajouterTitrePalette("Terrain", yPalette, hauteurTitre);
@@ -322,6 +331,31 @@ public class EcranEditeurCarte extends Screen {
         }
 
         yPalette = ajouterTitrePalette("Édition", yPalette, hauteurTitre);
+
+        // Rangée « Pinceau » : − / taille N×N / + (la valeur est peinte chaque image)
+        int largeurBoutonBrosse = 16;
+        int largeurValeurBrosse = 36;
+        int xMoinsBrosse = largeurPalette - 6 - 2 * largeurBoutonBrosse - largeurValeurBrosse;
+        int yTexteBrosse = yPalette + (hauteurBoutonPalette - 8) / 2 + 1;
+        if (!laterauxCompacts) {
+            textesPeints.add(new TextePeint(6, yTexteBrosse, "Pinceau", COULEUR_ETIQUETTE));
+        }
+        addRenderableWidget(Button.builder(Component.literal("−"), b -> ajusterTailleBrosse(-2))
+            .bounds(xMoinsBrosse, yPalette, largeurBoutonBrosse, hauteurBoutonPalette)
+            .tooltip(net.minecraft.client.gui.components.Tooltip.create(Component.literal(
+                "Réduit la taille du pinceau (aussi Maj+molette)")))
+            .build());
+        addRenderableWidget(Button.builder(Component.literal("+"), b -> ajusterTailleBrosse(2))
+            .bounds(xMoinsBrosse + largeurBoutonBrosse + largeurValeurBrosse, yPalette,
+                largeurBoutonBrosse, hauteurBoutonPalette)
+            .tooltip(net.minecraft.client.gui.components.Tooltip.create(Component.literal(
+                "Agrandit l'aire d'application des outils Eau, Île, Pierre et Bonbons "
+                    + "jusqu'à " + TAILLE_BROSSE_MAX + "×" + TAILLE_BROSSE_MAX + " (aussi Maj+molette)")))
+            .build());
+        xValeurBrosse = xMoinsBrosse + largeurBoutonBrosse + largeurValeurBrosse / 2;
+        yValeurBrosse = yTexteBrosse;
+        yPalette += pasPalette;
+
         boutonSelection = new BoutonPalette(6, yPalette, largeurPalette - 12, hauteurBoutonPalette,
             Component.literal("Sélection"), b -> basculerModeSelection(),
             BoutonPalette.Pastille.SELECTION, 0, () -> modeSelection, COULEUR_SELECTION);
@@ -827,14 +861,92 @@ public class EcranEditeurCarte extends Screen {
             return; // Aucun changement
         }
 
+        appliquerChangement(cx, cz, avant, apres);
+    }
+
+    /** Applique le changement d'une cellule dans l'action collectrice en cours
+     *  (trait de peinture, tampon du pinceau) ou comme action autonome sinon */
+    private void appliquerChangement(int cx, int cz, BlocCarte avant, BlocCarte apres) {
         if (peintureEnCours && actionPeinture != null) {
-            // Tout le trait du pinceau forme une seule action annulable
             actionPeinture.ajouterChangement(cx, cz, avant, apres);
+            carte.definirBloc(cx, cz, apres);
+        } else if (actionGroupe != null) {
+            actionGroupe.ajouterChangement(cx, cz, avant, apres);
             carte.definirBloc(cx, cz, apres);
         } else {
             ActionEditeur action = new ActionEditeur(carte);
             action.ajouterChangement(cx, cz, avant, apres);
             carte.definirBloc(cx, cz, apres);
+            enregistrerAction(action);
+        }
+    }
+
+    /** Outils auxquels la taille de pinceau s'applique (aire N×N) : terrain sauf Limite, et bonbons */
+    private boolean estOutilBrosse() {
+        return outilActif == OutilPalette.EAU || outilActif == OutilPalette.ILE
+            || outilActif == OutilPalette.PIERRE || outilActif == OutilPalette.BONBON_VISIBLE
+            || outilActif == OutilPalette.BONBON_NON_VISIBLE;
+    }
+
+    private int rayonBrosse() {
+        return estOutilBrosse() ? (tailleBrosse - 1) / 2 : 0;
+    }
+
+    private void ajusterTailleBrosse(int delta) {
+        tailleBrosse = Math.max(1, Math.min(TAILLE_BROSSE_MAX, tailleBrosse + delta));
+    }
+
+    /**
+     * Applique l'outil sur l'aire du pinceau centrée sur (cx, cz). Hors peinture, les
+     * cellules du tampon s'accumulent dans une seule action annulable. Seule la cellule
+     * centrale a droit aux messages de refus : les refus en périphérie (bloc Limite,
+     * bonbon non-visible sous l'Eau…) sont ignorés en silence.
+     */
+    private void placerZone(int cxCentre, int czCentre, boolean silencieux) {
+        int rayon = rayonBrosse();
+        if (rayon == 0) {
+            placerElement(cxCentre, czCentre, silencieux);
+            return;
+        }
+        boolean groupeLocal = !peintureEnCours && actionGroupe == null;
+        if (groupeLocal) {
+            actionGroupe = new ActionEditeur(carte);
+        }
+        for (int cx = cxCentre - rayon; cx <= cxCentre + rayon; cx++) {
+            for (int cz = czCentre - rayon; cz <= czCentre + rayon; cz++) {
+                if (!carte.estDansAire(cx, cz)) {
+                    continue;
+                }
+                placerElement(cx, cz, silencieux || cx != cxCentre || cz != czCentre);
+            }
+        }
+        if (groupeLocal) {
+            ActionEditeur action = actionGroupe;
+            actionGroupe = null;
+            if (!action.estVide()) {
+                enregistrerAction(action);
+            }
+        }
+    }
+
+    /** Clic droit : retrait sur l'aire du pinceau centrée sur (cx, cz), en une seule action */
+    private void retirerZone(int cxCentre, int czCentre) {
+        int rayon = rayonBrosse();
+        if (rayon == 0) {
+            retirerElement(cxCentre, czCentre);
+            return;
+        }
+        actionGroupe = new ActionEditeur(carte);
+        for (int cx = cxCentre - rayon; cx <= cxCentre + rayon; cx++) {
+            for (int cz = czCentre - rayon; cz <= czCentre + rayon; cz++) {
+                if (carte.estDansAire(cx, cz)) {
+                    retirerElement(cx, cz);
+                }
+            }
+        }
+        ActionEditeur action = actionGroupe;
+        actionGroupe = null;
+        if (!action.estVide()) {
             enregistrerAction(action);
         }
     }
@@ -853,7 +965,7 @@ public class EcranEditeurCarte extends Screen {
         // Mettre en cache l'intérieur du périmètre : le trait d'Eau ne modifie pas la Limite
         limiteValidePeinture = outilActif == OutilPalette.EAU && carte.limiteEstBoucleFermeeValide();
         interieurPeinture = limiteValidePeinture ? carte.calculerInterieurLimite() : null;
-        placerElement(cx, cz, false); // Premier bloc : messages d'erreur autorisés
+        placerZone(cx, cz, false); // Premier tampon : messages d'erreur autorisés au centre
     }
 
     /** Peint tous les blocs entre deux cellules (mouvements rapides de la souris) */
@@ -863,7 +975,7 @@ public class EcranEditeurCarte extends Screen {
             int cx = deCx + Math.round((float) (versCx - deCx) * i / etapes);
             int cz = deCz + Math.round((float) (versCz - deCz) * i / etapes);
             if (carte.estDansAire(cx, cz)) {
-                placerElement(cx, cz, true); // Pendant le trait : silencieux
+                placerZone(cx, cz, true); // Pendant le trait : silencieux
             }
         }
     }
@@ -871,7 +983,18 @@ public class EcranEditeurCarte extends Screen {
     private void terminerPeinture() {
         peintureEnCours = false;
         if (actionPeinture != null && !actionPeinture.estVide()) {
-            enregistrerAction(actionPeinture);
+            if (actionPeinture.nombreChangements() <= MAX_BLOCS_ACTION_ANNULABLE) {
+                enregistrerAction(actionPeinture);
+            } else {
+                // Trait géant (pinceau large sur une grande carte) : même traitement que les
+                // remplissages géants — historique vidé, ● maintenu par un repère jamais empilé
+                int nombre = actionPeinture.nombreChangements();
+                pileAnnulation.clear();
+                pileRetablissement.clear();
+                reperePileSauvegarde = new ActionEditeur(carte);
+                surCarteModifiee();
+                afficherToast("Trait de " + nombre + " blocs appliqué (trop volumineux pour l'annulation)", false);
+            }
         }
         actionPeinture = null;
         interieurPeinture = null;
@@ -906,10 +1029,7 @@ public class EcranEditeurCarte extends Screen {
             } else {
                 return;
             }
-            ActionEditeur action = new ActionEditeur(carte);
-            action.ajouterChangement(cx, cz, avant, apres);
-            carte.definirBloc(cx, cz, apres);
-            enregistrerAction(action);
+            appliquerChangement(cx, cz, avant, apres);
             return;
         }
 
@@ -953,10 +1073,7 @@ public class EcranEditeurCarte extends Screen {
             return;
         }
 
-        ActionEditeur action = new ActionEditeur(carte);
-        action.ajouterChangement(cx, cz, avant, apres);
-        carte.definirBloc(cx, cz, apres);
-        enregistrerAction(action);
+        appliquerChangement(cx, cz, avant, apres);
     }
 
     /** Bornes d'élévation [min, max] du bloc, ou null si son type n'en a pas (Vide / Limite) */
@@ -1839,11 +1956,11 @@ public class EcranEditeurCarte extends Screen {
                     if (estOutilPinceau()) {
                         commencerPeinture(cellule[0], cellule[1]); // Pinceau : peinture par glissement
                     } else {
-                        placerElement(cellule[0], cellule[1], false);
+                        placerZone(cellule[0], cellule[1], false);
                     }
                     return true;
                 } else if (bouton == 1) {
-                    retirerElement(cellule[0], cellule[1]);
+                    retirerZone(cellule[0], cellule[1]);
                     return true;
                 }
             }
@@ -1945,6 +2062,12 @@ public class EcranEditeurCarte extends Screen {
             if (cellule != null) {
                 changerElevation(cellule[0], cellule[1], delta > 0 ? 1 : -1);
             }
+            return true;
+        }
+
+        // Maj+molette : taille du pinceau (outils terrain et bonbons)
+        if (hasShiftDown() && estOutilBrosse()) {
+            ajusterTailleBrosse(delta > 0 ? 2 : -2);
             return true;
         }
 
@@ -2094,6 +2217,11 @@ public class EcranEditeurCarte extends Screen {
         // Étiquettes de groupes / titres de sections et séparateurs verticaux
         for (TextePeint texte : textesPeints) {
             guiGraphics.drawString(this.font, texte.texte(), texte.x(), texte.y(), texte.couleur());
+        }
+        if (xValeurBrosse >= 0) {
+            String valeurBrosse = tailleBrosse + "×" + tailleBrosse;
+            guiGraphics.drawString(this.font, valeurBrosse,
+                xValeurBrosse - this.font.width(valeurBrosse) / 2, yValeurBrosse, 0xFFE8EBE4);
         }
         for (int[] separateur : separateursPeints) {
             guiGraphics.fill(separateur[0], separateur[1], separateur[0] + 1, separateur[2], 0xFF3A4046);
@@ -2282,12 +2410,19 @@ public class EcranEditeurCarte extends Screen {
         int aireY1 = (int) Math.floor(haut + decalageY + carte.hauteur * tailleCellule);
         dessinerCadre(guiGraphics, aireX0, aireY0, aireX1, aireY1, 0xFFFFFFFF);
 
-        // Cellule survolée
+        // Cellule survolée — étendue à l'aire du pinceau pour les outils terrain / bonbons
         int[] cellule = celluleSousSouris(sourisX, sourisY);
         if (cellule != null && !modalActif) {
-            int ecranX = (int) Math.floor(gauche + decalageX + cellule[0] * tailleCellule);
-            int ecranY = (int) Math.floor(haut + decalageY + cellule[1] * tailleCellule);
-            dessinerCadre(guiGraphics, ecranX, ecranY, ecranX + taille, ecranY + taille, 0xFFFFFFFF);
+            int rayon = modeSelection ? 0 : rayonBrosse();
+            int cxMinBrosse = Math.max(0, cellule[0] - rayon);
+            int czMinBrosse = Math.max(0, cellule[1] - rayon);
+            int cxMaxBrosse = Math.min(carte.largeur - 1, cellule[0] + rayon);
+            int czMaxBrosse = Math.min(carte.hauteur - 1, cellule[1] + rayon);
+            int ecranX0 = (int) Math.floor(gauche + decalageX + cxMinBrosse * tailleCellule);
+            int ecranY0 = (int) Math.floor(haut + decalageY + czMinBrosse * tailleCellule);
+            int ecranX1 = (int) Math.floor(gauche + decalageX + (cxMaxBrosse + 1) * tailleCellule);
+            int ecranY1 = (int) Math.floor(haut + decalageY + (czMaxBrosse + 1) * tailleCellule);
+            dessinerCadre(guiGraphics, ecranX0, ecranY0, ecranX1, ecranY1, 0xFFFFFFFF);
         }
 
         guiGraphics.disableScissor();
@@ -2608,9 +2743,11 @@ public class EcranEditeurCarte extends Screen {
             return "choisissez un outil · molette : zoom · clic milieu : déplacer la vue";
         }
         return switch (outilActif) {
-            case EAU, ILE, PIERRE -> "glisser : peindre · clic droit : retirer · Ctrl+molette : élévation";
+            case EAU, ILE, PIERRE ->
+                "glisser : peindre · clic droit : retirer · Ctrl+molette : élévation · Maj+molette : pinceau";
             case LIMITE -> "glisser : peindre · clic droit : retirer";
-            case BONBON_VISIBLE, BONBON_NON_VISIBLE -> "clic : +1 bonbon · clic droit : −1 · Ctrl+molette : élévation";
+            case BONBON_VISIBLE, BONBON_NON_VISIBLE ->
+                "clic : +1 bonbon · clic droit : −1 · Ctrl+molette : élévation · Maj+molette : pinceau";
             case APPARITION -> "clic : placer le point d'apparition · clic droit : retirer";
         };
     }
@@ -2868,6 +3005,11 @@ public class EcranEditeurCarte extends Screen {
             return blocsApres.isEmpty()
                 && largeurAvant == largeurApres && hauteurAvant == hauteurApres
                 && apparitionAvantX == apparitionApresX && apparitionAvantZ == apparitionApresZ;
+        }
+
+        /** Nombre de cellules distinctes touchées (chaque cellule n'est comptée qu'une fois) */
+        int nombreChangements() {
+            return blocsApres.size();
         }
 
         void retablir(CarteDonnees carte) {
