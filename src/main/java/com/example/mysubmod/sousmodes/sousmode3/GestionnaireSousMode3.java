@@ -297,9 +297,13 @@ public class GestionnaireSousMode3 {
 
         // Lancer la génération étalée. La suite (bonbons, zones, journalisation, message
         // « En attente du lancement ») s'exécute dans terminerActivation() une fois la carte posée.
+        // Si l'effacement de la carte précédente est encore en cours, la génération attend
+        // sa fin (sinon elle écrirait dans des chunks en train d'être essuyés).
         GenerateurCarteSousMode3.Tache tacheGeneration = new GenerateurCarteSousMode3.Tache(monde, carte, true);
         generation = tacheGeneration.resultat(); // suivi immédiat : nettoyable même si interrompu
-        PiloteChargementCarte.demarrer(serveur, tacheGeneration, carte.nom, () -> terminerActivation(serveur));
+        String nomCarteGeneration = carte.nom;
+        EffaceurCarteSousMode3.puisExecuter(() ->
+            PiloteChargementCarte.demarrer(serveur, tacheGeneration, nomCarteGeneration, () -> terminerActivation(serveur)));
     }
 
     /**
@@ -604,9 +608,11 @@ public class GestionnaireSousMode3 {
                 if (monde != null) {
                     if (generation != null) {
                         retirerItemsDansCage(monde);
-                        // Balayage de la bande de la cage : couvre la carte générée, les blocs
-                        // bonbons réapparus et les blocs posés par les joueurs (tous dans la cage)
-                        GenerateurCarteSousMode3.effacerCarte(monde, generation);
+                        // Balayage de la bande de la cage étalé sur plusieurs ticks (couvre la
+                        // carte générée, les bonbons réapparus et les blocs posés par les
+                        // joueurs) : un effacement synchrone d'une grande carte dépasserait
+                        // les 60 s du watchdog. Seuls les chunks réellement écrits sont visés.
+                        EffaceurCarteSousMode3.demarrer(monde, generation);
                         effacerPlateformeSpectateur(monde);
                     } else {
                         // Nettoyage de secours après un arrêt inattendu du serveur

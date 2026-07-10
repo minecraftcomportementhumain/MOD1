@@ -145,8 +145,16 @@ public class GenerateurCarteSousMode3 {
          * épuisaient la mémoire du serveur.
          */
         private static final int MAX_CHUNKS_PAR_TICK = 6;
-        /** Pause de la génération tant que le serveur n'a pas déchargé sous ce seuil */
-        private static final int MAX_CHUNKS_CHARGES = 3000;
+        /**
+         * Croissance maximale du nombre de holders de chunks par rapport à la référence
+         * prise au démarrage de la génération. Le compteur du serveur inclut les chunks
+         * du spawn et de la distance de vue (et leurs pyramides de voisins) : un seuil
+         * absolu se déclencherait en permanence sur certains serveurs et gèlerait la
+         * génération à 0 % — seule la croissance due à la génération est bornée.
+         */
+        private static final int MARGE_CHUNKS_CHARGES = 2000;
+        /** Après cette durée de pause, la référence est reprise (autre source de chargement) */
+        private static final int TICKS_PAUSE_MAX = 100;
 
         private final ServerLevel niveau;
         private final CarteDonnees carte;
@@ -158,6 +166,8 @@ public class GenerateurCarteSousMode3 {
         private List<ChunkPos> chunksCibles;
         private int indexChunk;
         private int prochainTicket; // premier chunk sans ticket de préchargement
+        private int chunksChargesReference = -1; // holders chargés avant la génération
+        private int ticksEnPause;
         private final List<BlockPos> semencesLumiere = new ArrayList<>();
         private List<Long> clesArbres;
         private int indexArbre;
@@ -217,12 +227,26 @@ public class GenerateurCarteSousMode3 {
                     break;
                 }
                 if (!synchrone) {
-                    // Contre-pression : laisser le déchargement des chunks et le moteur
-                    // d'éclairage suivre le rythme avant de continuer à écrire
-                    if (chunksCeTick >= MAX_CHUNKS_PAR_TICK
-                        || niveau.getChunkSource().getLoadedChunksCount() > MAX_CHUNKS_CHARGES) {
+                    if (chunksCeTick >= MAX_CHUNKS_PAR_TICK) {
                         return false;
                     }
+                    // Contre-pression : borne la CROISSANCE des chunks chargés par rapport
+                    // au niveau d'avant-génération, le temps que le déchargement et le
+                    // moteur d'éclairage suivent le rythme
+                    int charges = niveau.getChunkSource().getLoadedChunksCount();
+                    if (chunksChargesReference < 0) {
+                        chunksChargesReference = charges;
+                    }
+                    if (charges > chunksChargesReference + MARGE_CHUNKS_CHARGES) {
+                        if (++ticksEnPause > TICKS_PAUSE_MAX) {
+                            // Pause trop longue : la charge vient d'ailleurs (joueurs qui
+                            // explorent...), reprendre la référence pour ne pas geler à 0 %
+                            chunksChargesReference = charges;
+                            ticksEnPause = 0;
+                        }
+                        return false;
+                    }
+                    ticksEnPause = 0;
                     precharger();
                     ChunkPos pos = chunksCibles.get(indexChunk);
                     if (!niveau.getChunkSource().hasChunk(pos.x, pos.z)) {
@@ -734,76 +758,57 @@ public class GenerateurCarteSousMode3 {
     // ==================== Nettoyage ====================
 
     /** Marge autour du périmètre : le feuillage des arbres peut déborder de 2 cellules */
-    private static final int MARGE_EFFACEMENT = 2;
+    static final int MARGE_EFFACEMENT = 2;
 
     /**
-     * Efface la carte générée : balayage par sections de la bande de la cage (Y 84..116),
-     * restreint aux cellules à au plus {@link #MARGE_EFFACEMENT} cellules de l'intérieur
-     * du périmètre (couvre les murs Limite, le feuillage débordant, les blocs bonbons
-     * réapparus et les blocs posés par les joueurs — tous dans la cage). Le terrain
-     * naturel hors du périmètre n'est pas touché.
+     * Essuie la bande de la cage (Y 84..116) d'un chunk, colonne par colonne, en écriture
+     * par sections. Si {@code cellulesInterieur} est fourni, seules les cellules à au plus
+     * {@link #MARGE_EFFACEMENT} cellules de l'intérieur du périmètre sont touchées (murs
+     * Limite et feuillage débordant couverts, terrain naturel épargné) ; sinon toute la
+     * bande du chunk est essuyée (nettoyage de secours). Utilisé par
+     * {@link EffaceurCarteSousMode3}, qui étale le travail sur plusieurs ticks.
+     * @return le nombre de blocs effacés
      */
-    public static void effacerCarte(ServerLevel niveau, ResultatGeneration generation) {
-        if (niveau == null || generation == null) {
-            return;
-        }
+    static long essuyerBandeChunk(ServerLevel niveau, LevelChunk chunk,
+                                  Set<Long> cellulesInterieur, int origineX, int origineZ) {
         long effaces = 0;
-        int chunksModifies = 0;
+        boolean modifie = false;
         List<BlockPos> semencesLumiere = new ArrayList<>();
-        int mondeXMin = generation.origineX - MARGE_EFFACEMENT;
-        int mondeXMax = generation.origineX + generation.largeurCarte - 1 + MARGE_EFFACEMENT;
-        int mondeZMin = generation.origineZ - MARGE_EFFACEMENT;
-        int mondeZMax = generation.origineZ + generation.hauteurCarte - 1 + MARGE_EFFACEMENT;
-
-        for (int chunkZ = mondeZMin >> 4; chunkZ <= mondeZMax >> 4; chunkZ++) {
-            for (int chunkX = mondeXMin >> 4; chunkX <= mondeXMax >> 4; chunkX++) {
-                LevelChunk chunk = niveau.getChunk(chunkX, chunkZ);
-                boolean modifie = false;
-                int xDebut = Math.max(chunkX << 4, mondeXMin);
-                int xFin = Math.min((chunkX << 4) + 15, mondeXMax);
-                int zDebut = Math.max(chunkZ << 4, mondeZMin);
-                int zFin = Math.min((chunkZ << 4) + 15, mondeZMax);
-                for (int mondeX = xDebut; mondeX <= xFin; mondeX++) {
-                    for (int mondeZ = zDebut; mondeZ <= zFin; mondeZ++) {
-                        if (!procheInterieur(generation,
-                            mondeX - generation.origineX, mondeZ - generation.origineZ)) {
-                            continue;
-                        }
-                        boolean colonneModifiee = false;
-                        for (int y = Y_PLANCHER_BARRIER; y <= Y_PLAFOND_BARRIER; y++) {
-                            if (ecrireBlocSection(chunk, mondeX, y, mondeZ, ETAT_AIR, semencesLumiere)) {
-                                colonneModifiee = true;
-                                effaces++;
-                            }
-                        }
-                        if (colonneModifiee) {
-                            modifie = true;
-                            // La bande redevient de l'air : la lumière du ciel redescend
-                            // depuis le plafond et se repropage depuis le plancher
-                            semencesLumiere.add(new BlockPos(mondeX, Y_PLANCHER_BARRIER, mondeZ));
-                            semencesLumiere.add(new BlockPos(mondeX, Y_PLAFOND_BARRIER, mondeZ));
-                        }
+        ChunkPos pos = chunk.getPos();
+        for (int mondeX = pos.getMinBlockX(); mondeX <= pos.getMaxBlockX(); mondeX++) {
+            for (int mondeZ = pos.getMinBlockZ(); mondeZ <= pos.getMaxBlockZ(); mondeZ++) {
+                if (cellulesInterieur != null
+                    && !procheInterieur(cellulesInterieur, mondeX - origineX, mondeZ - origineZ)) {
+                    continue;
+                }
+                boolean colonneModifiee = false;
+                for (int y = Y_PLANCHER_BARRIER; y <= Y_PLAFOND_BARRIER; y++) {
+                    if (ecrireBlocSection(chunk, mondeX, y, mondeZ, ETAT_AIR, semencesLumiere)) {
+                        colonneModifiee = true;
+                        effaces++;
                     }
                 }
-                if (modifie) {
-                    finaliserChunkModifie(niveau, chunk);
-                    semerLumiere(niveau, semencesLumiere);
-                    chunksModifies++;
-                } else {
-                    semencesLumiere.clear();
+                if (colonneModifiee) {
+                    modifie = true;
+                    // La bande redevient de l'air : la lumière du ciel redescend
+                    // depuis le plafond et se repropage depuis le plancher
+                    semencesLumiere.add(new BlockPos(mondeX, Y_PLANCHER_BARRIER, mondeZ));
+                    semencesLumiere.add(new BlockPos(mondeX, Y_PLAFOND_BARRIER, mondeZ));
                 }
             }
         }
-        MonSubMod.JOURNALISEUR.info("Carte Sous-mode 3 effacée : {} blocs supprimés ({} chunks)",
-            effaces, chunksModifies);
-        supprimerFichierRegion();
+        if (modifie) {
+            finaliserChunkModifie(niveau, chunk);
+            semerLumiere(niveau, semencesLumiere);
+        }
+        return effaces;
     }
 
     /** La cellule est-elle à au plus MARGE_EFFACEMENT cellules d'une cellule intérieure ? */
-    private static boolean procheInterieur(ResultatGeneration generation, int cx, int cz) {
+    private static boolean procheInterieur(Set<Long> cellulesInterieur, int cx, int cz) {
         for (int dx = -MARGE_EFFACEMENT; dx <= MARGE_EFFACEMENT; dx++) {
             for (int dz = -MARGE_EFFACEMENT; dz <= MARGE_EFFACEMENT; dz++) {
-                if (generation.cellulesInterieur.contains(CarteDonnees.cle(cx + dx, cz + dz))) {
+                if (cellulesInterieur.contains(CarteDonnees.cle(cx + dx, cz + dz))) {
                     return true;
                 }
             }
@@ -853,38 +858,12 @@ public class GenerateurCarteSousMode3 {
             MonSubMod.JOURNALISEUR.info("Nettoyage de la région résiduelle du Sous-mode 3 : ({}, {}) à ({}, {})",
                 minX, minZ, maxX, maxZ);
 
-            // Balayage par sections de toute la bande de la cage (la carte d'origine est
-            // inconnue après un arrêt brutal : toute la région enregistrée est nettoyée)
-            List<BlockPos> semencesLumiere = new ArrayList<>();
-            for (int chunkZ = (minZ - MARGE_EFFACEMENT) >> 4; chunkZ <= (maxZ + MARGE_EFFACEMENT) >> 4; chunkZ++) {
-                for (int chunkX = (minX - MARGE_EFFACEMENT) >> 4; chunkX <= (maxX + MARGE_EFFACEMENT) >> 4; chunkX++) {
-                    LevelChunk chunk = niveau.getChunk(chunkX, chunkZ);
-                    boolean modifie = false;
-                    int xDebut = Math.max(chunkX << 4, minX - MARGE_EFFACEMENT);
-                    int xFin = Math.min((chunkX << 4) + 15, maxX + MARGE_EFFACEMENT);
-                    int zDebut = Math.max(chunkZ << 4, minZ - MARGE_EFFACEMENT);
-                    int zFin = Math.min((chunkZ << 4) + 15, maxZ + MARGE_EFFACEMENT);
-                    for (int x = xDebut; x <= xFin; x++) {
-                        for (int z = zDebut; z <= zFin; z++) {
-                            boolean colonneModifiee = false;
-                            for (int y = Y_PLANCHER_BARRIER; y <= Y_PLAFOND_BARRIER; y++) {
-                                colonneModifiee |= ecrireBlocSection(chunk, x, y, z, ETAT_AIR, semencesLumiere);
-                            }
-                            if (colonneModifiee) {
-                                modifie = true;
-                                semencesLumiere.add(new BlockPos(x, Y_PLANCHER_BARRIER, z));
-                                semencesLumiere.add(new BlockPos(x, Y_PLAFOND_BARRIER, z));
-                            }
-                        }
-                    }
-                    if (modifie) {
-                        finaliserChunkModifie(niveau, chunk);
-                        semerLumiere(niveau, semencesLumiere);
-                    } else {
-                        semencesLumiere.clear();
-                    }
-                }
-            }
+            // Balayage de toute la bande de la cage, étalé sur plusieurs ticks (la carte
+            // d'origine est inconnue après un arrêt brutal). Un balayage synchrone d'une
+            // grande région chargerait des milliers de chunks dans un seul tick et ferait
+            // tuer le serveur par le watchdog. Le fichier de région est supprimé par
+            // l'effaceur à la fin du balayage.
+            EffaceurCarteSousMode3.demarrerRegion(niveau, minX, minZ, maxX, maxZ);
 
             // Retirer les items au sol restants dans la région
             net.minecraft.world.phys.AABB boite = new net.minecraft.world.phys.AABB(
@@ -905,8 +884,7 @@ public class GenerateurCarteSousMode3 {
                     }
                 }
             }
-
-            supprimerFichierRegion();
+            // Le fichier de région est supprimé par l'effaceur une fois le balayage terminé
         } catch (Exception e) {
             MonSubMod.JOURNALISEUR.error("Erreur lors du nettoyage de la région résiduelle du Sous-mode 3", e);
         }
