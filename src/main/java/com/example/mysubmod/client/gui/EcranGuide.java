@@ -218,7 +218,8 @@ public class EcranGuide extends Screen {
         titre(l, "5. Se repérer : zones et flèche");
         para(l, "Le panneau en haut à droite liste les zones et leurs bonbons restants. Appuyez sur §e[N]§r "
             + "et choisissez une zone : la flèche pointe vers ses bonbons restants (le point visé suit "
-            + "les ramassages et réapparitions) et disparaît à une quinzaine de blocs du but.");
+            + "les ramassages et réapparitions) et disparaît à une quinzaine de blocs du but. Les bonbons "
+            + "posés sur l'eau, hors de toute zone, sont regroupés sous l'entrée §eEau§r.");
 
         titre(l, "6. Mort, fin et classement");
         para(l, "À 0 cœur, vous passez spectateur (mort définitive, sauf si la réapparition est activée). "

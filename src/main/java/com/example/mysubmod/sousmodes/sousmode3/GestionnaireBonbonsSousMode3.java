@@ -138,6 +138,11 @@ public class GestionnaireBonbonsSousMode3 {
     private final Map<BlockPos, InfoBonbonCache> blocsBonbonsCaches = new ConcurrentHashMap<>();
     private final List<DonneesZone> zones = new ArrayList<>();
     private final Map<String, DonneesZone> zonesParNom = new HashMap<>();
+    /** Pseudo-zone HUD regroupant les bonbons visibles posés sur l'Eau (hors de toute
+     *  zone de terre) — créée au premier bonbon concerné, purement navigationnelle :
+     *  la sélection de zone de départ s'appuie sur carte.zones, qui ne la contient pas */
+    private DonneesZone zoneEau;
+    public static final String NOM_ZONE_EAU = "Eau";
     private final List<ApparitionDifferee> apparitionsDifferees = new ArrayList<>();
     private final List<ApparitionDiffereeCache> apparitionsDiffereesCachees = new ArrayList<>();
     private Timer minuterieReapparition;
@@ -161,6 +166,22 @@ public class GestionnaireBonbonsSousMode3 {
 
     private static long cleCellule(int mondeX, int mondeZ) {
         return (((long) mondeX) << 32) | (mondeZ & 0xFFFFFFFFL);
+    }
+
+    /** Pseudo-zone « Eau », créée à la demande et ajoutée en fin de liste du HUD.
+     *  Son centre initial (premier bonbon trouvé) sert de repli quand elle se vide ;
+     *  le barycentre réel prend le relais dès le premier envoi. */
+    private String obtenirOuCreerZoneEau(int mondeX, int mondeZ) {
+        if (zoneEau == null) {
+            String nom = NOM_ZONE_EAU;
+            while (zonesParNom.containsKey(nom)) {
+                nom += " ·"; // une vraie zone de la carte porte déjà ce nom (improbable)
+            }
+            zoneEau = new DonneesZone(nom, mondeX + 0.5, mondeZ + 0.5, new ArrayList<>());
+            zones.add(zoneEau);
+            zonesParNom.put(nom, zoneEau);
+        }
+        return zoneEau.nom;
     }
 
     /**
@@ -213,6 +234,12 @@ public class GestionnaireBonbonsSousMode3 {
                     zoneNom = carte.zones.get(i).nom;
                     break;
                 }
+            }
+            // Bonbon visible hors de toute zone de terre (posé sur l'Eau) : rattaché à la
+            // pseudo-zone « Eau » pour que les compteurs du HUD, le ciblage [N] et la
+            // flèche de navigation le prennent en charge comme les autres
+            if (zoneNom == null && bloc.qteBonbonVisible > 0) {
+                zoneNom = obtenirOuCreerZoneEau(mondeX, mondeZ);
             }
 
             if (bloc.qteBonbonVisible > 0) {
@@ -771,6 +798,7 @@ public class GestionnaireBonbonsSousMode3 {
         blocsBonbonsCaches.clear();
         zones.clear();
         zonesParNom.clear();
+        zoneEau = null;
         apparitionsDifferees.clear();
         apparitionsDiffereesCachees.clear();
         serveurJeu = null;
