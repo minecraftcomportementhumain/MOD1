@@ -208,10 +208,20 @@ public class HUDZonesSousMode3 {
             return;
         }
 
+        // Parcelle vidée de ses bonbons : plus rien à viser, la flèche disparaît
+        if (zone.bonbonsVisibles <= 0 && zone.bonbonsNonVisibles <= 0
+            && zone.bonbonsBleus <= 0 && zone.bonbonsRouges <= 0) {
+            zoneCiblee = null;
+            return;
+        }
+
         double dx = zone.centreX - mc.player.getX();
         double dz = zone.centreZ - mc.player.getZ();
 
-        // Désactivation automatique à l'approche du point visé
+        // Désactivation automatique à l'approche du point visé — seulement quand la
+        // parcelle contient encore des bonbons (le point est alors leur barycentre, donc
+        // pertinent). Vide, le point retombe sur le centre géométrique : ne pas s'éteindre
+        // dessus, on l'a déjà écarté ci-dessus.
         if (Math.sqrt(dx * dx + dz * dz) <= RAYON_ARRIVEE) {
             zoneCiblee = null;
             return;

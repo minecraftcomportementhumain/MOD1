@@ -64,6 +64,16 @@ phases. À maintenir à chaque changement structurel.
   (`EffaceurCarteSousMode3.puisExecuter`).
 - **Timers** : tout `java.util.Timer` doit être **daemon** (sinon la JVM ne meurt pas et
   l'auto-mise à jour ne redémarre jamais le serveur).
+- **`generationEnCours`** doit TOUJOURS redescendre à `false` (`terminerActivation` en
+  `try/finally`) : sinon la garde de `changerSousMode` bloque toute transition humaine,
+  et comme le retour manuel en salle d'attente est le seul chemin vers `deactivate`,
+  c'est un deadlock jusqu'au redémarrage.
+- **Paquets réseau serveur→client** dont le `traiter` touche des classes client :
+  toujours enregistrés avec `NetworkDirection.PLAY_TO_CLIENT` (sinon un client peut les
+  renvoyer au serveur dédié et y déclencher une erreur de classe absente).
+- **Tickets FORCED** de la génération : libérés à la transition CHUNKS→ARBRES en régime
+  normal, MAIS aussi dans le `catch` de `PiloteChargementCarte` (exception en pleine
+  génération) et à l'arrêt du serveur — sinon des chunks restent chargés jusqu'au reboot.
 - **Verrou éditeur** : un seul admin à la fois (`GestionnaireCartes`), libéré à la
   fermeture de l'écran et à la déconnexion.
 - **Parcelles** (« zones » dans le code et le format de fichier) : zonage
@@ -72,7 +82,13 @@ phases. À maintenir à chaque changement structurel.
   `versJson` dérive les plages nommées du champ `zone` des blocs (parcelles vides
   omises, type Île/Pierre dérivé mais conservé pour le format seulement) ;
   `depuisJson` fait l'inverse. Le **choix de parcelle de départ propose toutes les
-  parcelles**, telles que définies sur la carte. Le champ `BlocCarte.zone`
+  parcelles**, telles que définies sur la carte. **Noms de parcelles uniques** :
+  imposé à la création/renommage dans l'éditeur ET revalidé à la sauvegarde (le
+  runtime en jeu indexe les parcelles par nom — deux homonymes se confondraient).
+  Le **spawn de parcelle ne considère que les cellules à l'intérieur du périmètre
+  Limite** (`calculerSpawnZone` filtre sur `generation.cellulesInterieur`) : une
+  parcelle peut déborder de l'anneau, mais hors périmètre le terrain n'existe pas.
+  Le champ `BlocCarte.zone`
   n'est jamais sérialisé directement. **Validation bloquante à la sauvegarde :
   chaque bonbon doit appartenir à une parcelle.** Les bonbons hors parcelle d'une
   vieille carte tombent en jeu dans la pseudo-zone HUD « Hors parcelle ».

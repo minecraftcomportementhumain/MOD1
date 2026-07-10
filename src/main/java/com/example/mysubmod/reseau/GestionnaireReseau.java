@@ -280,12 +280,16 @@ public class GestionnaireReseau {
         );
 
         // ==================== Paquets Sous-mode 3 ====================
+        // Restreints à PLAY_TO_CLIENT : leur « traiter » exécute des classes client-only.
+        // Sans direction, un client pourrait les renvoyer au serveur dédié et y provoquer
+        // une NoClassDefFoundError répétée.
         INSTANCE.registerMessage(
             idPaquet++,
             com.example.mysubmod.sousmodes.sousmode3.reseau.PaquetMinuterieJeuSousMode3.class,
             com.example.mysubmod.sousmodes.sousmode3.reseau.PaquetMinuterieJeuSousMode3::encode,
             com.example.mysubmod.sousmodes.sousmode3.reseau.PaquetMinuterieJeuSousMode3::decode,
-            com.example.mysubmod.sousmodes.sousmode3.reseau.PaquetMinuterieJeuSousMode3::traiter
+            com.example.mysubmod.sousmodes.sousmode3.reseau.PaquetMinuterieJeuSousMode3::traiter,
+            java.util.Optional.of(NetworkDirection.PLAY_TO_CLIENT)
         );
 
         INSTANCE.registerMessage(
@@ -293,7 +297,8 @@ public class GestionnaireReseau {
             com.example.mysubmod.sousmodes.sousmode3.reseau.PaquetFinPartieSousMode3.class,
             com.example.mysubmod.sousmodes.sousmode3.reseau.PaquetFinPartieSousMode3::encode,
             com.example.mysubmod.sousmodes.sousmode3.reseau.PaquetFinPartieSousMode3::decode,
-            com.example.mysubmod.sousmodes.sousmode3.reseau.PaquetFinPartieSousMode3::traiter
+            com.example.mysubmod.sousmodes.sousmode3.reseau.PaquetFinPartieSousMode3::traiter,
+            java.util.Optional.of(NetworkDirection.PLAY_TO_CLIENT)
         );
 
         INSTANCE.registerMessage(
@@ -301,7 +306,8 @@ public class GestionnaireReseau {
             com.example.mysubmod.sousmodes.sousmode3.reseau.PaquetZonesSousMode3.class,
             com.example.mysubmod.sousmodes.sousmode3.reseau.PaquetZonesSousMode3::encode,
             com.example.mysubmod.sousmodes.sousmode3.reseau.PaquetZonesSousMode3::decode,
-            com.example.mysubmod.sousmodes.sousmode3.reseau.PaquetZonesSousMode3::traiter
+            com.example.mysubmod.sousmodes.sousmode3.reseau.PaquetZonesSousMode3::traiter,
+            java.util.Optional.of(NetworkDirection.PLAY_TO_CLIENT)
         );
 
         INSTANCE.registerMessage(

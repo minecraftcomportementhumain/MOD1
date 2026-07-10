@@ -9,6 +9,7 @@ import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.server.level.TicketType;
 import net.minecraft.world.level.ChunkPos;
 import net.minecraftforge.event.TickEvent;
+import net.minecraftforge.event.server.ServerStoppingEvent;
 import net.minecraftforge.eventbus.api.SubscribeEvent;
 import net.minecraftforge.fml.common.Mod;
 import net.minecraftforge.network.PacketDistributor;
@@ -54,12 +55,39 @@ public class EffaceurCarteSousMode3 {
     private static long blocsEffaces;
     private static int chunksChargesReference = -1;
     private static int ticksEnPause;
+    /** Ticks consécutifs passés à attendre le chargement du même chunk (anti-blocage) */
+    private static int ticksBloque;
+    /** Au-delà de ce nombre de ticks bloqué sur un chunk, on le saute pour ne pas figer
+     *  l'effaceur à jamais (sinon estEnCours() resterait vrai → deadlock de changement de mode) */
+    private static final int TICKS_BLOCAGE_MAX = 200;
     private static String nomCarte = "";
     private static int dernierPourcentEnvoye = -1;
     /** Tâches à exécuter une fois l'effacement terminé (ex. génération suivante) */
     private static final List<Runnable> tachesApres = new ArrayList<>();
 
     private EffaceurCarteSousMode3() {
+    }
+
+    /** Arrêt du serveur (dont serveur intégré/LAN) : libérer les tickets restants et
+     *  réinitialiser l'état statique pour ne pas pointer un monde déchargé. */
+    @SubscribeEvent
+    public static void onServerStopping(ServerStoppingEvent event) {
+        if (niveau != null && cibles != null) {
+            for (int i = Math.max(index, 0); i < prochainTicket && i < cibles.size(); i++) {
+                try {
+                    ChunkPos pos = cibles.get(i);
+                    niveau.getChunkSource().removeRegionTicket(TicketType.FORCED, pos, 0, pos);
+                } catch (Exception ignore) {
+                    // arrêt en cours : best effort
+                }
+            }
+        }
+        niveau = null;
+        cibles = null;
+        cellulesInterieur = null;
+        index = 0;
+        prochainTicket = 0;
+        tachesApres.clear();
     }
 
     public static boolean estEnCours() {
@@ -143,6 +171,7 @@ public class EffaceurCarteSousMode3 {
         blocsEffaces = 0;
         chunksChargesReference = -1;
         ticksEnPause = 0;
+        ticksBloque = 0;
         nomCarte = nom != null ? nom : "";
         dernierPourcentEnvoye = -1;
         exclusionSalleAttente = com.example.mysubmod.sousmodes.salleattente.GestionnaireSalleAttente
@@ -184,8 +213,18 @@ public class EffaceurCarteSousMode3 {
                 precharger();
                 ChunkPos pos = cibles.get(index);
                 if (!niveau.getChunkSource().hasChunk(pos.x, pos.z)) {
+                    // Filet anti-blocage : si un chunk ne se charge jamais (worldgen calée),
+                    // le sauter après un délai plutôt que de figer l'effaceur pour toujours.
+                    if (++ticksBloque > TICKS_BLOCAGE_MAX) {
+                        MonSubMod.JOURNALISEUR.warn("Effacement : chunk {} jamais chargé, ignoré", pos);
+                        libererTicket(index);
+                        index++;
+                        ticksBloque = 0;
+                        continue;
+                    }
                     return; // chargement/génération en cours sur les threads de worldgen
                 }
+                ticksBloque = 0;
                 blocsEffaces += GenerateurCarteSousMode3.essuyerBandeChunk(
                     niveau, niveau.getChunk(pos.x, pos.z), cellulesInterieur, origineX, origineZ,
                     exclusionSalleAttente);

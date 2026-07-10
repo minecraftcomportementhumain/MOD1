@@ -684,4 +684,87 @@ class CarteDonneesTest {
         carte.blocs.get(CarteDonnees.cle(2, 2)).zone = 1;
         assertEquals(List.of(), carte.validerPourSauvegarde());
     }
+
+    /** Deux parcelles NON VIDES de même nom sont refusées (elles se confondraient en jeu). */
+    @Test
+    void validationRefuseParcellesHomonymes() {
+        CarteDonnees carte = new CarteDonnees();
+        carte.nom = "homonymes";
+        carte.largeur = 6;
+        carte.hauteur = 6;
+        for (int x = 0; x < 6; x++) {
+            for (int z = 0; z < 6; z++) {
+                boolean bord = x == 0 || z == 0 || x == 5 || z == 5;
+                carte.blocs.put(CarteDonnees.cle(x, z),
+                    new BlocCarte(bord ? TypeElementCarte.LIMITE : TypeElementCarte.ILE, 0));
+            }
+        }
+        carte.apparitionX = 3;
+        carte.apparitionZ = 3;
+
+        ZoneCarte a1 = new ZoneCarte();
+        a1.nom = "A";
+        a1.type = TypeElementCarte.ILE;
+        carte.zones.add(a1);
+        ZoneCarte a2 = new ZoneCarte();
+        a2.nom = "A"; // même nom, parcelle disjointe
+        a2.type = TypeElementCarte.ILE;
+        carte.zones.add(a2);
+        carte.blocs.get(CarteDonnees.cle(1, 1)).zone = 1;
+        carte.blocs.get(CarteDonnees.cle(4, 4)).zone = 2;
+
+        assertTrue(carte.validerPourSauvegarde().stream()
+            .anyMatch(e -> e.contains("même nom")));
+
+        // Renommer la seconde lève l'erreur d'homonymie
+        a2.nom = "B";
+        assertTrue(carte.validerPourSauvegarde().stream()
+            .noneMatch(e -> e.contains("même nom")));
+
+        // Une parcelle homonyme mais VIDE (omise à la sauvegarde) ne bloque pas
+        a2.nom = "A";
+        carte.blocs.get(CarteDonnees.cle(4, 4)).zone = 0; // parcelle 2 désormais vide
+        assertTrue(carte.validerPourSauvegarde().stream()
+            .noneMatch(e -> e.contains("même nom")));
+    }
+
+    /** Les quantités et délais de bonbons forgés sont bornés au décodage (anti-DoS). */
+    @Test
+    void decodeurBorneQuantitesBonbons() {
+        CarteDonnees carte = new CarteDonnees();
+        carte.nom = "bornage";
+        carte.largeur = 4;
+        carte.hauteur = 4;
+        carte.blocs.put(CarteDonnees.cle(1, 1), new BlocCarte(TypeElementCarte.ILE, 0));
+
+        // Forger un JSON v2 avec une quantité énorme et un délai négatif
+        String json = carte.versJson()
+            .replace("\"bonbons\":[]",
+                "\"bonbons\":[[1,1,2000000000,-5,0,0,0,0,0,0]]");
+        CarteDonnees relue = CarteDonnees.depuisJson(json);
+        BlocCarte bloc = relue.blocs.get(CarteDonnees.cle(1, 1));
+        assertEquals(CarteDonnees.QUANTITE_BONBON_MAX, bloc.qteBonbonVisible);
+        assertEquals(0, bloc.delaiBonbonVisible); // délai négatif ramené à 0
+    }
+
+    /** Un bloc à bonbons hors de l'aire dans un fichier v1 est ignoré au décodage
+     *  (sinon il bloquerait la validation « bonbon hors parcelle » sur un bloc invisible). */
+    @Test
+    void v1BlocHorsAireIgnore() {
+        JsonObject racine = new JsonObject();
+        racine.addProperty("nom", "v1_hors_aire");
+        racine.addProperty("largeur", 10);
+        racine.addProperty("hauteur", 10);
+        JsonArray blocs = new JsonArray();
+        JsonObject horsAire = new JsonObject();
+        horsAire.addProperty("x", 500);
+        horsAire.addProperty("z", 3);
+        horsAire.addProperty("type", "ILE");
+        horsAire.addProperty("bonbonsVisibles", 2);
+        blocs.add(horsAire);
+        racine.add("blocs", blocs);
+
+        CarteDonnees relue = CarteDonnees.depuisJson(new GsonBuilder().create().toJson(racine));
+        assertFalse(relue.blocs.containsKey(CarteDonnees.cle(500, 3)));
+    }
 }

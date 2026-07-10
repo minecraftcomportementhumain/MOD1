@@ -385,6 +385,12 @@ public class GestionnaireEvenementsSousMode3 {
         }
 
         if (GestionnaireSousModes.getInstance().estAdmin(joueur)) {
+            // Un admin ne doit pas ramasser de bonbon : sinon l'entité disparaît sans
+            // décrément de compteur ni réapparition (la purge la traite comme une fusion),
+            // faussant les compteurs et le barycentre de navigation pour toute la partie.
+            if (GestionnaireBonbonsSousMode3.estObjetBonbon(event.getItem().getItem())) {
+                event.setCanceled(true);
+            }
             return;
         }
 

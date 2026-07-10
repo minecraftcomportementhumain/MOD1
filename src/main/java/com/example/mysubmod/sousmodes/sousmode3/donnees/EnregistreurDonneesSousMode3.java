@@ -75,19 +75,34 @@ public class EnregistreurDonneesSousMode3 {
             String horodatage = LocalDateTime.now().format(FORMAT_HORODATAGE);
             String ligneCsv = String.format(Locale.US, "%s,%s,%s,%.2f,%.2f,%.2f,%.1f,%s\n",
                 horodatage,
-                joueur.getName().getString(),
+                echapperCsv(joueur.getName().getString()),
                 typeEvenement,
                 joueur.getX(),
                 joueur.getY(),
                 joueur.getZ(),
                 joueur.getHealth(),
-                donneesSupplementaires != null ? donneesSupplementaires : "");
+                echapperCsv(donneesSupplementaires != null ? donneesSupplementaires : ""));
             enregistreur.write(ligneCsv);
             enregistreur.flush();
         } catch (IOException e) {
             MonSubMod.JOURNALISEUR.error("Erreur lors de l'enregistrement de {} pour le joueur {}",
                 typeEvenement, joueur.getName().getString(), e);
         }
+    }
+
+    /** Échappe un champ CSV : entoure de guillemets et double les guillemets internes si
+     *  le champ contient une virgule, un guillemet ou un saut de ligne. Les données
+     *  supplémentaires peuvent contenir des noms de parcelles à caractères arbitraires,
+     *  qui casseraient sinon la structure du fichier (injection CSV). */
+    private static String echapperCsv(String champ) {
+        if (champ == null) {
+            return "";
+        }
+        if (champ.indexOf(',') < 0 && champ.indexOf('"') < 0
+            && champ.indexOf('\n') < 0 && champ.indexOf('\r') < 0) {
+            return champ;
+        }
+        return '"' + champ.replace("\"", "\"\"") + '"';
     }
 
     public void enregistrerPositionJoueur(ServerPlayer joueur) {

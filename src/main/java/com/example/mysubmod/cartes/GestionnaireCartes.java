@@ -35,6 +35,11 @@ public class GestionnaireCartes {
 
     // Réassemblage des sauvegardes envoyées en morceaux par les clients
     private final Map<UUID, ConcurrentHashMap<Integer, byte[]>> transfertsEnCours = new ConcurrentHashMap<>();
+    // Horodatage du dernier morceau reçu par transfert : les transferts abandonnés
+    // (client déconnecté en pleine sauvegarde) sont purgés après ce délai, sinon ils
+    // occupent un créneau à jamais et, au 16e, bloquent toute sauvegarde jusqu'au redémarrage
+    private final Map<UUID, Long> derniereActiviteTransfert = new ConcurrentHashMap<>();
+    private static final long EXPIRATION_TRANSFERT_MS = 60_000;
 
     private GestionnaireCartes() {
     }
@@ -249,6 +254,9 @@ public class GestionnaireCartes {
             || indexMorceau < 0 || indexMorceau >= nombreTotalMorceaux) {
             return null;
         }
+        // Purger les transferts inactifs (client déconnecté en pleine sauvegarde) avant
+        // d'appliquer le plafond, sinon des transferts fantômes bloqueraient les créneaux
+        purgerTransfertsExpires();
         if (!transfertsEnCours.containsKey(idTransfert)
             && transfertsEnCours.size() >= MAX_TRANSFERTS_SIMULTANES) {
             MonSubMod.JOURNALISEUR.warn("Trop de transferts de carte simultanés — rejet");
@@ -258,10 +266,12 @@ public class GestionnaireCartes {
         transfertsEnCours
             .computeIfAbsent(idTransfert, k -> new ConcurrentHashMap<>())
             .put(indexMorceau, donnees);
+        derniereActiviteTransfert.put(idTransfert, System.currentTimeMillis());
 
         Map<Integer, byte[]> morceaux = transfertsEnCours.get(idTransfert);
         if (morceaux.size() == nombreTotalMorceaux) {
             transfertsEnCours.remove(idTransfert);
+            derniereActiviteTransfert.remove(idTransfert);
             int tailleTotale = 0;
             for (int i = 0; i < nombreTotalMorceaux; i++) {
                 byte[] morceau = morceaux.get(i);
@@ -281,5 +291,18 @@ public class GestionnaireCartes {
             return new String(UtilitaireCompressionCarte.decompresserSiGzip(complet), StandardCharsets.UTF_8);
         }
         return null;
+    }
+
+    /** Retire les transferts dont le dernier morceau remonte à plus de EXPIRATION_TRANSFERT_MS. */
+    private void purgerTransfertsExpires() {
+        long maintenant = System.currentTimeMillis();
+        derniereActiviteTransfert.entrySet().removeIf(entree -> {
+            if (maintenant - entree.getValue() > EXPIRATION_TRANSFERT_MS) {
+                transfertsEnCours.remove(entree.getKey());
+                MonSubMod.JOURNALISEUR.warn("Transfert de carte {} expiré (inactif), purgé", entree.getKey());
+                return true;
+            }
+            return false;
+        });
     }
 }

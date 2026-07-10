@@ -8,6 +8,7 @@ import com.example.mysubmod.utilitaire.UtilitaireFiltreJoueurs;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraftforge.event.TickEvent;
+import net.minecraftforge.event.server.ServerStoppingEvent;
 import net.minecraftforge.eventbus.api.SubscribeEvent;
 import net.minecraftforge.fml.common.Mod;
 import net.minecraftforge.network.PacketDistributor;
@@ -72,6 +73,24 @@ public class PiloteChargementCarte {
         dernierPourcentEnvoye = -1;
     }
 
+    /** Arrêt du serveur (dont serveur intégré/LAN) : ne pas laisser d'état statique
+     *  périmé qui pointerait un monde déchargé au prochain chargement dans la même JVM. */
+    @SubscribeEvent
+    public static void onServerStopping(ServerStoppingEvent event) {
+        if (tache != null) {
+            try {
+                tache.abandonner();
+            } catch (Exception e) {
+                MonSubMod.JOURNALISEUR.error("Erreur en libérant les tickets à l'arrêt du serveur", e);
+            }
+        }
+        tache = null;
+        apresGeneration = null;
+        serveur = null;
+        nomCarte = null;
+        dernierPourcentEnvoye = -1;
+    }
+
     @SubscribeEvent
     public static void onServerTick(TickEvent.ServerTickEvent event) {
         if (event.phase != TickEvent.Phase.END || tache == null) {
@@ -83,6 +102,15 @@ public class PiloteChargementCarte {
             termine = tache.avancer(BUDGET_NANOS);
         } catch (Exception e) {
             MonSubMod.JOURNALISEUR.error("Erreur pendant la génération étalée de la carte", e);
+            // Libérer les tickets de préchargement encore détenus : en fonctionnement
+            // normal ils le sont à la transition CHUNKS→ARBRES, mais une exception en
+            // pleine phase CHUNKS les laisserait, gardant des chunks chargés de force
+            // jusqu'au redémarrage du serveur.
+            try {
+                tache.abandonner();
+            } catch (Exception ex) {
+                MonSubMod.JOURNALISEUR.error("Erreur en libérant les tickets après échec de génération", ex);
+            }
             termine = true; // abandonner proprement : on enchaîne quand même la suite
         }
 

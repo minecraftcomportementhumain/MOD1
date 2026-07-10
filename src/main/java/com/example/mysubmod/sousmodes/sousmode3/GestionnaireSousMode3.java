@@ -303,37 +303,44 @@ public class GestionnaireSousMode3 {
      * générée (callback de {@link PiloteChargementCarte}).
      */
     private void terminerActivation(MinecraftServer serveur) {
-        ServerLevel monde = serveur.getLevel(ServerLevel.OVERWORLD);
-        if (monde == null || carte == null || generation == null) {
-            MonSubMod.JOURNALISEUR.warn("terminerActivation ignoré (état invalide après génération)");
-            return;
-        }
-        carteGeneree = true;
-
-        // Retirer les résidus de la destruction du terrain principal (items et
-        // entités apparus pendant la génération) avant de placer les bonbons
-        retirerItemsDansCage(monde);
-
-        // Initialiser les bonbons et les zones, puis faire apparaître les bonbons visibles
-        GestionnaireBonbonsSousMode3.obtenirInstance().initialiser(serveur, carte, generation);
-        GestionnaireBonbonsSousMode3.obtenirInstance().genererBonbonsVisibles(monde, carte, generation);
-
-        // Jour permanent
-        monde.setDayTime(6000);
-
-        // Démarrer la journalisation de la session
-        enregistreurDonnees = new EnregistreurDonneesSousMode3();
-        enregistreurDonnees.demarrerNouvellePartie();
-        traiterEvenementsJournalisationEnAttente();
-
-        generationEnCours = false;
-
-        diffuserMessage(serveur, "§eCarte « " + carte.nom + " » chargée. En attente du lancement de la partie...");
-        for (ServerPlayer joueur : UtilitaireFiltreJoueurs.obtenirJoueursAuthentifies(serveur)) {
-            if (GestionnaireSousModes.getInstance().estAdmin(joueur)) {
-                envoyerFaitsCarteAJoueur(joueur);
-                joueur.sendSystemMessage(Component.literal("§6Appuyez sur N pour ouvrir le menu de lancement de partie"));
+        // generationEnCours DOIT toujours redescendre à false, sinon la garde de
+        // changerSousMode bloque toute transition humaine (y compris le retour manuel
+        // en salle d'attente, seul chemin vers deactivate) : deadlock jusqu'au
+        // redémarrage. try/finally couvre aussi l'exception avalée par le callback de
+        // PiloteChargementCarte.
+        try {
+            ServerLevel monde = serveur.getLevel(ServerLevel.OVERWORLD);
+            if (monde == null || carte == null || generation == null) {
+                MonSubMod.JOURNALISEUR.warn("terminerActivation ignoré (état invalide après génération)");
+                return;
             }
+            carteGeneree = true;
+
+            // Retirer les résidus de la destruction du terrain principal (items et
+            // entités apparus pendant la génération) avant de placer les bonbons
+            retirerItemsDansCage(monde);
+
+            // Initialiser les bonbons et les zones, puis faire apparaître les bonbons visibles
+            GestionnaireBonbonsSousMode3.obtenirInstance().initialiser(serveur, carte, generation);
+            GestionnaireBonbonsSousMode3.obtenirInstance().genererBonbonsVisibles(monde, carte, generation);
+
+            // Jour permanent
+            monde.setDayTime(6000);
+
+            // Démarrer la journalisation de la session
+            enregistreurDonnees = new EnregistreurDonneesSousMode3();
+            enregistreurDonnees.demarrerNouvellePartie();
+            traiterEvenementsJournalisationEnAttente();
+
+            diffuserMessage(serveur, "§eCarte « " + carte.nom + " » chargée. En attente du lancement de la partie...");
+            for (ServerPlayer joueur : UtilitaireFiltreJoueurs.obtenirJoueursAuthentifies(serveur)) {
+                if (GestionnaireSousModes.getInstance().estAdmin(joueur)) {
+                    envoyerFaitsCarteAJoueur(joueur);
+                    joueur.sendSystemMessage(Component.literal("§6Appuyez sur N pour ouvrir le menu de lancement de partie"));
+                }
+            }
+        } finally {
+            generationEnCours = false;
         }
     }
 
@@ -1042,8 +1049,12 @@ public class GestionnaireSousMode3 {
     /**
      * Point de départ d'une zone : surface de la cellule de TERRE (Île/Pierre) la plus
      * proche du centre géométrique (même règle que les parties sur carte des Sous-modes
-     * 1 et 2). Une zone manuelle peut inclure de l'Eau : ces cellules ne servent de
-     * repli que si la zone n'a aucune terre. Null si zone inconnue.
+     * 1 et 2). Seules les cellules réellement générées (à l'INTÉRIEUR du périmètre Limite)
+     * sont candidates : une parcelle peut déborder de l'anneau Limite, or hors périmètre
+     * le terrain n'existe pas dans le monde (le joueur y serait bloqué/étouffé). Une
+     * parcelle peut inclure de l'Eau : ces cellules ne servent de repli que si la parcelle
+     * n'a aucune terre intérieure. Null si zone inconnue OU sans aucune cellule intérieure
+     * (l'appelant retombe alors sur le point d'apparition de la carte).
      */
     private BlockPos calculerSpawnZone(String nomZone) {
         if (carte == null || generation == null || nomZone == null) {
@@ -1066,6 +1077,11 @@ public class GestionnaireSousMode3 {
                 int z = plage[0];
                 for (int k = 0; k < plage[2]; k++) {
                     int x = plage[1] + k;
+                    // Ignorer les cellules hors du périmètre Limite : elles ne sont pas
+                    // générées dans le monde (terrain vanilla, pas de spawn valide)
+                    if (!generation.cellulesInterieur.contains(CarteDonnees.cle(x, z))) {
+                        continue;
+                    }
                     double dx = x - centre[0];
                     double dz = z - centre[1];
                     double distance = dx * dx + dz * dz;
@@ -1086,6 +1102,7 @@ public class GestionnaireSousMode3 {
                 }
             }
             if (meilleureDistance == Double.MAX_VALUE) {
+                // Parcelle entièrement hors du périmètre Limite : pas de spawn valide
                 return null;
             }
             if (meilleureDistanceTerre != Double.MAX_VALUE) {

@@ -343,8 +343,12 @@ public class GestionnaireBonbonsSousMode3 {
     }
 
     private void fairApparaitreBonbonVisible(ServerLevel niveau, InfoCelluleVisible info, Random aleatoire) {
-        double decalageX = 0.3 + aleatoire.nextDouble() * 0.4;
-        double decalageZ = 0.3 + aleatoire.nextDouble() * 0.4;
+        // Aléa resserré autour du centre (0,4–0,6) : deux bonbons de cellules voisines
+        // restent alors à > 1 bloc l'un de l'autre, au-delà du rayon de fusion des
+        // ItemEntity vanilla (~0,5). Sans cela, ils fusionnent en une pile rattachée à
+        // une seule cellule → compteur de parcelle faux et réapparition perdue.
+        double decalageX = 0.4 + aleatoire.nextDouble() * 0.2;
+        double decalageZ = 0.4 + aleatoire.nextDouble() * 0.2;
 
         ItemEntity entite = new ItemEntity(niveau,
             info.mondeX + decalageX,
@@ -621,9 +625,9 @@ public class GestionnaireBonbonsSousMode3 {
                 pile = new ItemStack(ItemsMod.BONBON.get());
             }
             ItemEntity entite = new ItemEntity(niveau,
-                pos.getX() + 0.3 + aleatoire.nextDouble() * 0.4,
+                pos.getX() + 0.4 + aleatoire.nextDouble() * 0.2,
                 pos.getY() + 0.3,
-                pos.getZ() + 0.3 + aleatoire.nextDouble() * 0.4,
+                pos.getZ() + 0.4 + aleatoire.nextDouble() * 0.2,
                 pile);
             entite.setPickUpDelay(10);
             entite.setUnlimitedLifetime();

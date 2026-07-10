@@ -62,8 +62,11 @@ public class MinuterieJeu {
                     }
 
                     if (secondesRestantes <= 0) {
-                        teleporterTousVersSpectateur();
+                        // terminerPartie() AVANT la téléportation : le classement lit
+                        // joueursVivants, que teleporterVersSpectateur vide. Inversé, tous
+                        // les survivants étaient affichés « mort, survie 0 ».
                         terminerPartie();
+                        teleporterTousVersSpectateur();
                     }
                 });
             }

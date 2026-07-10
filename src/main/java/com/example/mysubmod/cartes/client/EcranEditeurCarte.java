@@ -184,6 +184,10 @@ public class EcranEditeurCarte extends Screen {
     private EditBox champNomZone;
     private Button boutonNouvelleZone;
     private Button boutonSupprimerZone;
+    /** Vrai pendant un setValue programmatique de champNomZone : le responder ignore alors
+     *  le changement (sinon sélectionner une parcelle ou charger un nom tronqué déclenche
+     *  un renommage fantôme). */
+    private boolean majProgrammatiqueChampNom = false;
 
     // Notification non bloquante (refus de placement / succès)
     private String toastTexte = null;
@@ -405,9 +409,22 @@ public class EcranEditeurCarte extends Screen {
             Component.literal("Nom de la parcelle active"));
         champNomZone.setMaxLength(24);
         champNomZone.setResponder(texte -> {
+            if (majProgrammatiqueChampNom) {
+                return; // setValue interne (sélection de parcelle) : pas un vrai renommage
+            }
             if (zoneActive >= 1 && zoneActive <= carte.zones.size()) {
                 com.example.mysubmod.cartes.ZoneCarte zone = carte.zones.get(zoneActive - 1);
                 if (!texte.equals(zone.nom)) {
+                    // Refuser un nom déjà porté par une AUTRE parcelle : deux parcelles
+                    // homonymes sont conceptuellement la même parcelle (le HUD et le spawn
+                    // en jeu les confondent). Le champ reprend l'ancien nom.
+                    if (!texte.isBlank() && nomParcelleUtilise(texte, zoneActive - 1)) {
+                        afficherToast("Une autre parcelle porte déjà le nom « " + texte + " »", true);
+                        majProgrammatiqueChampNom = true;
+                        champNomZone.setValue(zone.nom);
+                        majProgrammatiqueChampNom = false;
+                        return;
+                    }
                     zone.nom = texte;
                     zonesRegistreModifie = true;
                     surCarteModifiee();
@@ -637,20 +654,43 @@ public class EcranEditeurCarte extends Screen {
         if (zoneValide) {
             String nom = carte.zones.get(zoneActive - 1).nom;
             if (!champNomZone.getValue().equals(nom)) {
+                majProgrammatiqueChampNom = true;
                 champNomZone.setValue(nom);
+                majProgrammatiqueChampNom = false;
             }
         }
     }
 
     private void creerZone() {
         com.example.mysubmod.cartes.ZoneCarte zone = new com.example.mysubmod.cartes.ZoneCarte();
-        zone.nom = "Parcelle " + (carte.zones.size() + 1);
+        zone.nom = genererNomParcelleUnique();
         zone.type = TypeElementCarte.ILE; // provisoire : redérivé des cellules à la sauvegarde
         carte.zones.add(zone);
         zoneActive = carte.zones.size();
         zonesRegistreModifie = true;
         surCarteModifiee();
         mettreAJourPanneauZones();
+    }
+
+    /** Vrai si une parcelle AUTRE que {@code saufIndex} porte déjà ce nom (casse ignorée
+     *  laissée volontairement sensible : le HUD affiche le nom tel quel). */
+    private boolean nomParcelleUtilise(String nom, int saufIndex) {
+        for (int i = 0; i < carte.zones.size(); i++) {
+            if (i != saufIndex && carte.zones.get(i).nom.equals(nom)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /** « Parcelle N » avec le plus petit N libre (jamais un doublon même après suppressions). */
+    private String genererNomParcelleUnique() {
+        int n = carte.zones.size() + 1;
+        String nom = "Parcelle " + n;
+        while (nomParcelleUtilise(nom, -1)) {
+            nom = "Parcelle " + (++n);
+        }
+        return nom;
     }
 
     /** Retire toutes les cellules de la parcelle active (une action annulable). L'entrée
@@ -660,9 +700,10 @@ public class EcranEditeurCarte extends Screen {
         if (zoneActive < 1 || zoneActive > carte.zones.size()) {
             return;
         }
+        // desassignerCellules passe par la pile d'annulation (via enregistrerAction) qui
+        // marque déjà la carte modifiée : ne PAS armer zonesRegistreModifie (non annulable),
+        // sinon annuler la suppression laisserait le ● et une confirmation de fermeture à tort.
         desassignerCellules(zoneActive);
-        zonesRegistreModifie = true;
-        surCarteModifiee();
         afficherToast("Cellules de « " + carte.zones.get(zoneActive - 1).nom + " » retirées", false);
     }
 
@@ -1534,69 +1575,119 @@ public class EcranEditeurCarte extends Screen {
             return;
         }
 
-        ActionEditeur action = new ActionEditeur(carte);
-        action.largeurApres = nouvelleLargeur;
-        action.hauteurApres = nouvelleHauteur;
-
-        // Rétrécir : les éléments hors de la nouvelle aire sont supprimés
-        for (Map.Entry<Long, BlocCarte> entree : new HashMap<>(carte.blocs).entrySet()) {
-            int cx = CarteDonnees.cleX(entree.getKey());
-            int cz = CarteDonnees.cleZ(entree.getKey());
-            if (cx >= nouvelleLargeur || cz >= nouvelleHauteur) {
-                action.ajouterChangement(cx, cz, entree.getValue().copier(), new BlocCarte());
+        // Compter d'abord les blocs à supprimer : au-delà du seuil, l'action d'annulation
+        // (deux BlocCarte copiés par cellule) atteindrait plusieurs Go — même garde que
+        // les remplissages géants (histor. vidé, non annulable).
+        int aSupprimer = 0;
+        for (long cle : carte.blocs.keySet()) {
+            if (CarteDonnees.cleX(cle) >= nouvelleLargeur || CarteDonnees.cleZ(cle) >= nouvelleHauteur) {
+                aSupprimer++;
             }
         }
-        if (carte.aPointApparition() && (carte.apparitionX >= nouvelleLargeur || carte.apparitionZ >= nouvelleHauteur)) {
-            action.apparitionApresX = -1;
-            action.apparitionApresZ = -1;
-        }
+        boolean apparitionHors = carte.aPointApparition()
+            && (carte.apparitionX >= nouvelleLargeur || carte.apparitionZ >= nouvelleHauteur);
 
-        action.retablir(carte); // Applique le redimensionnement + suppressions
-        enregistrerAction(action);
+        if (aSupprimer <= MAX_BLOCS_ACTION_ANNULABLE) {
+            ActionEditeur action = new ActionEditeur(carte);
+            action.largeurApres = nouvelleLargeur;
+            action.hauteurApres = nouvelleHauteur;
+            for (Map.Entry<Long, BlocCarte> entree : new HashMap<>(carte.blocs).entrySet()) {
+                int cx = CarteDonnees.cleX(entree.getKey());
+                int cz = CarteDonnees.cleZ(entree.getKey());
+                if (cx >= nouvelleLargeur || cz >= nouvelleHauteur) {
+                    action.ajouterChangement(cx, cz, entree.getValue().copier(), new BlocCarte());
+                }
+            }
+            if (apparitionHors) {
+                action.apparitionApresX = -1;
+                action.apparitionApresZ = -1;
+            }
+            action.retablir(carte); // Applique le redimensionnement + suppressions
+            enregistrerAction(action);
+        } else {
+            // Redimensionnement géant : appliquer directement, sans construire l'action
+            carte.largeur = nouvelleLargeur;
+            carte.hauteur = nouvelleHauteur;
+            carte.blocs.keySet().removeIf(cle ->
+                CarteDonnees.cleX(cle) >= nouvelleLargeur || CarteDonnees.cleZ(cle) >= nouvelleHauteur);
+            if (apparitionHors) {
+                carte.apparitionX = -1;
+                carte.apparitionZ = -1;
+            }
+            pileAnnulation.clear();
+            pileRetablissement.clear();
+            reperePileSauvegarde = new ActionEditeur(carte);
+            surCarteModifiee();
+            afficherToast("Redimensionnement appliqué (" + aSupprimer
+                + " blocs supprimés, trop volumineux pour l'annulation)", false);
+        }
+        cellulesSelectionnees.clear();
+        recalculerResumeSelection();
         synchroniserChampsTaille();
+        mettreAJourPanneauDelais();
     }
 
     /** Import CSV : réinitialise complètement la carte */
     public void appliquerImportCsv(int nouvelleLargeur, int nouvelleHauteur, List<int[]> bonbons) {
-        ActionEditeur action = new ActionEditeur(carte);
-        action.largeurApres = nouvelleLargeur;
-        action.hauteurApres = nouvelleHauteur;
-        action.apparitionApresX = -1;
-        action.apparitionApresZ = -1;
-
-        // Tous les éléments présents sont effacés
-        for (Map.Entry<Long, BlocCarte> entree : carte.blocs.entrySet()) {
-            action.ajouterChangement(CarteDonnees.cleX(entree.getKey()), CarteDonnees.cleZ(entree.getKey()),
-                entree.getValue().copier(), new BlocCarte());
-        }
-
         // Nouveaux blocs : Île (élévation 0) sous chaque bonbon ; les autres blocs
-        // restent Vides (le choix de remplissage Eau/Pierre se fait à la sauvegarde)
+        // restent Vides (le choix de remplissage Eau/Pierre se fait à la sauvegarde).
+        // Quantités bornées : plusieurs lignes CSV sur la même cellule ne doivent pas
+        // déborder l'int ni dépasser le plafond anti-DoS.
         Map<Long, BlocCarte> nouveauxBlocs = new HashMap<>();
         for (int[] bonbon : bonbons) {
             int cx = bonbon[0];
             int cz = bonbon[1];
             boolean visible = bonbon[2] == 1;
-            int quantite = bonbon[3];
+            int quantite = Math.max(0, bonbon[3]);
             long cle = CarteDonnees.cle(cx, cz);
             BlocCarte bloc = nouveauxBlocs.computeIfAbsent(cle, k -> new BlocCarte(TypeElementCarte.ILE, 0));
             if (visible) {
-                bloc.qteBonbonVisible += quantite;
+                bloc.qteBonbonVisible = Math.min(CarteDonnees.QUANTITE_BONBON_MAX, bloc.qteBonbonVisible + quantite);
             } else {
-                bloc.qteBonbonNonVisible += quantite;
+                bloc.qteBonbonNonVisible = Math.min(CarteDonnees.QUANTITE_BONBON_MAX, bloc.qteBonbonNonVisible + quantite);
             }
         }
-        for (Map.Entry<Long, BlocCarte> entree : nouveauxBlocs.entrySet()) {
-            int cx = CarteDonnees.cleX(entree.getKey());
-            int cz = CarteDonnees.cleZ(entree.getKey());
-            BlocCarte avant = carte.obtenirBloc(cx, cz).copier();
-            action.ajouterChangement(cx, cz, avant, entree.getValue());
-        }
 
-        action.retablir(carte);
-        enregistrerAction(action);
+        // Au-delà du seuil (grande carte en cours effacée + nouveaux blocs), l'action
+        // d'annulation atteindrait plusieurs Go : appliquer directement, sans l'action.
+        boolean annulable = (long) carte.blocs.size() + nouveauxBlocs.size() <= MAX_BLOCS_ACTION_ANNULABLE;
+
+        if (annulable) {
+            ActionEditeur action = new ActionEditeur(carte);
+            action.largeurApres = nouvelleLargeur;
+            action.hauteurApres = nouvelleHauteur;
+            action.apparitionApresX = -1;
+            action.apparitionApresZ = -1;
+            for (Map.Entry<Long, BlocCarte> entree : carte.blocs.entrySet()) {
+                action.ajouterChangement(CarteDonnees.cleX(entree.getKey()), CarteDonnees.cleZ(entree.getKey()),
+                    entree.getValue().copier(), new BlocCarte());
+            }
+            for (Map.Entry<Long, BlocCarte> entree : nouveauxBlocs.entrySet()) {
+                int cx = CarteDonnees.cleX(entree.getKey());
+                int cz = CarteDonnees.cleZ(entree.getKey());
+                BlocCarte avant = carte.obtenirBloc(cx, cz).copier();
+                action.ajouterChangement(cx, cz, avant, entree.getValue());
+            }
+            action.retablir(carte);
+            enregistrerAction(action);
+        } else {
+            carte.largeur = nouvelleLargeur;
+            carte.hauteur = nouvelleHauteur;
+            carte.apparitionX = -1;
+            carte.apparitionZ = -1;
+            carte.blocs.clear();
+            for (Map.Entry<Long, BlocCarte> entree : nouveauxBlocs.entrySet()) {
+                carte.blocs.put(entree.getKey(), entree.getValue());
+            }
+            pileAnnulation.clear();
+            pileRetablissement.clear();
+            reperePileSauvegarde = new ActionEditeur(carte);
+            surCarteModifiee();
+            afficherToast("Import CSV appliqué (trop volumineux pour l'annulation)", false);
+        }
         synchroniserChampsTaille();
         cellulesSelectionnees.clear();
+        recalculerResumeSelection();
         mettreAJourPanneauDelais();
     }
 
@@ -1628,9 +1719,25 @@ public class EcranEditeurCarte extends Screen {
         carte.assignerZonesAuxBlocs();
         zoneActive = 0;
         zonesRegistreModifie = false;
+        // Abandonner tout geste en cours : un trait/tampon commencé sur l'ANCIENNE carte
+        // (non encore empilé) écrirait sinon sur la nouvelle, et son annulation
+        // restaurerait les dimensions/blocs de l'ancienne carte.
+        peintureEnCours = false;
+        actionPeinture = null;
+        actionGroupe = null;
+        interieurPeinture = null;
+        limiteValidePeinture = false;
+        tracageSelection = false;
+        panEnCours = false;
+        // Invalider un envoi de sauvegarde encore en vol : son accusé ne doit pas
+        // s'appliquer à la carte fraîchement chargée
+        jsonSauvegardeEnAttente = null;
+        reperePileEnvoi = null;
+        nomEnvoi = null;
         pileAnnulation.clear();
         pileRetablissement.clear();
         cellulesSelectionnees.clear();
+        recalculerResumeSelection();
         // La carte chargée devient le nouvel état « sauvegardé »
         reperePileSauvegarde = null;
         nomSauvegarde = texteNom;
@@ -2155,6 +2262,13 @@ public class EcranEditeurCarte extends Screen {
     }
 
     public void surSauvegardeReussie(String nomCarte) {
+        // Accusé périmé : une autre carte a été chargée pendant l'aller-retour réseau
+        // (le chargement met nomEnvoi à null). Ne pas appliquer les repères de l'ancien
+        // envoi à la carte fraîchement chargée.
+        if (nomEnvoi == null) {
+            afficherToast("La carte « " + nomCarte + " » a été sauvegardée", false);
+            return;
+        }
         jsonSauvegardeEnAttente = null;
         // L'état sauvegardé est celui de l'envoi : si l'utilisateur a modifié la carte
         // pendant l'aller-retour réseau, l'indicateur ● reste allumé
@@ -2194,7 +2308,11 @@ public class EcranEditeurCarte extends Screen {
     @Override
     public boolean mouseClicked(double sourisX, double sourisY, int bouton) {
         if (modalActif) {
-            gererClicModal(sourisX, sourisY);
+            // Seul le clic gauche valide un bouton de la modale : un clic milieu (réflexe
+            // de déplacement) ou droit ne doit pas confirmer un écrasement par mégarde.
+            if (bouton == 0) {
+                gererClicModal(sourisX, sourisY);
+            }
             return true;
         }
 
@@ -2418,12 +2536,20 @@ public class EcranEditeurCarte extends Screen {
         boolean champFocus = this.getFocused() instanceof EditBox champ && champ.isFocused();
 
         if (!champFocus) {
-            // Ctrl+Z : annuler, Ctrl+Y : rétablir
+            // Ctrl+Z : annuler, Ctrl+Y : rétablir — finaliser d'abord un trait en cours,
+            // sinon annuler/rétablir désynchronise l'historique (l'action du trait n'est
+            // empilée qu'au relâchement).
             if (hasControlDown() && touche == GLFW.GLFW_KEY_Z) {
+                if (peintureEnCours) {
+                    terminerPeinture();
+                }
                 annuler();
                 return true;
             }
             if (hasControlDown() && touche == GLFW.GLFW_KEY_Y) {
+                if (peintureEnCours) {
+                    terminerPeinture();
+                }
                 retablir();
                 return true;
             }
@@ -2461,6 +2587,12 @@ public class EcranEditeurCarte extends Screen {
 
     @Override
     public void onClose() {
+        // Finaliser un trait en cours (Échap relâché avant la souris) : sinon le trait,
+        // déjà appliqué à la carte, n'est pas empilé et estModifie() le manquerait,
+        // fermant l'éditeur sans avertissement.
+        if (peintureEnCours) {
+            terminerPeinture();
+        }
         // Garde-fou : confirmer la fermeture lorsque des modifications ne sont pas sauvegardées
         if (estModifie() && !fermetureConfirmee) {
             afficherConfirmation("Modifications non sauvegardées",
@@ -2705,16 +2837,20 @@ public class EcranEditeurCarte extends Screen {
             }
         }
 
-        // 4) Sélection mise en évidence
-        for (long cle : cellulesSelectionnees) {
-            int cx = CarteDonnees.cleX(cle);
-            int cz = CarteDonnees.cleZ(cle);
-            if (cx < cxMin || cx > cxMax || cz < czMin || cz > czMax) {
-                continue;
+        // 4) Sélection mise en évidence — parcourir la plage VISIBLE (bornée par l'écran)
+        // et tester l'appartenance, plutôt que d'itérer toute la sélection à chaque image :
+        // une sélection peut compter des millions de cellules (rectangle sur toute la carte).
+        if (!cellulesSelectionnees.isEmpty()) {
+            for (int cx = cxMin; cx <= cxMax; cx++) {
+                for (int cz = czMin; cz <= czMax; cz++) {
+                    if (!cellulesSelectionnees.contains(CarteDonnees.cle(cx, cz))) {
+                        continue;
+                    }
+                    int x0 = (int) Math.floor(gauche + decalageX + cx * tailleCellule);
+                    int y0 = (int) Math.floor(haut + decalageY + cz * tailleCellule);
+                    guiGraphics.fill(x0, y0, x0 + taille, y0 + taille, 0x6000FFFF);
+                }
             }
-            int x0 = (int) Math.floor(gauche + decalageX + cx * tailleCellule);
-            int y0 = (int) Math.floor(haut + decalageY + cz * tailleCellule);
-            guiGraphics.fill(x0, y0, x0 + taille, y0 + taille, 0x6000FFFF);
         }
 
         // Point d'apparition des joueurs (icône drapeau)

@@ -28,6 +28,21 @@ public class CarteDonnees {
     public static final int ELEVATION_MIN = -15;
     public static final int ELEVATION_MAX = 15;
     public static final int LONGUEUR_MAX_NOM = 32;
+    /** Quantité maximale de bonbons sur une cellule (borne anti-DoS : chaque bonbon visible
+     *  fait apparaître une ItemEntity au lancement — une valeur forgée énorme gèlerait le serveur). */
+    public static final int QUANTITE_BONBON_MAX = 999;
+    /** Délai maximal (secondes) d'un bonbon (réapparition / apparition initiale). */
+    public static final int DELAI_BONBON_MAX = 86_400;
+
+    /** Ramène une quantité de bonbons dans [0, QUANTITE_BONBON_MAX] (valeurs forgées). */
+    private static int borneQuantite(int v) {
+        return Math.max(0, Math.min(QUANTITE_BONBON_MAX, v));
+    }
+
+    /** Ramène un délai (secondes) dans [0, DELAI_BONBON_MAX] (valeurs forgées). */
+    private static int borneDelai(int v) {
+        return Math.max(0, Math.min(DELAI_BONBON_MAX, v));
+    }
     /**
      * Dimension maximale d'une carte (borne anti-DoS au décodage). 1800×1800 = 3,24 M
      * de cellules : le modèle en mémoire (Map de BlocCarte) d'une carte pleine reste
@@ -298,6 +313,28 @@ public class CarteDonnees {
         if (bonbonsSansParcelle > 0) {
             erreurs.add(bonbonsSansParcelle + " bonbon(s) hors de toute parcelle "
                 + "(outil Parcelle : peignez une parcelle sur chaque bloc à bonbons)");
+        }
+
+        // Noms de parcelles uniques : le runtime en jeu (compteurs, HUD, flèche, spawn de
+        // départ) indexe les parcelles PAR NOM — deux parcelles homonymes fausseraient
+        // tout. Deux « Parcelle A » sont conceptuellement une seule parcelle. On ne compte
+        // que les parcelles NON VIDES (les vides sont omises à la sérialisation).
+        boolean[] parcelleUtilisee = new boolean[zones.size() + 1];
+        for (BlocCarte bloc : blocs.values()) {
+            if (bloc.zone >= 1 && bloc.zone <= zones.size()) {
+                parcelleUtilisee[bloc.zone] = true;
+            }
+        }
+        java.util.Set<String> nomsVus = new java.util.HashSet<>();
+        java.util.Set<String> nomsEnDouble = new java.util.LinkedHashSet<>();
+        for (int i = 0; i < zones.size(); i++) {
+            if (parcelleUtilisee[i + 1] && !nomsVus.add(zones.get(i).nom)) {
+                nomsEnDouble.add(zones.get(i).nom);
+            }
+        }
+        if (!nomsEnDouble.isEmpty()) {
+            erreurs.add("Parcelles portant le même nom : " + String.join(", ", nomsEnDouble)
+                + " — chaque parcelle doit avoir un nom unique");
         }
 
         // Un bonbon visible sur un bloc à l'élévation maximale est inatteignable
@@ -748,19 +785,24 @@ public class CarteDonnees {
                 // pour que le ré-enregistrement en v2 (8 bits, décodeur strict) reste valide
                 int elevationV1 = objetBloc.has("elevation") ? objetBloc.get("elevation").getAsInt() : 0;
                 bloc.elevation = Math.max(ELEVATION_MIN, Math.min(ELEVATION_MAX, elevationV1));
-                bloc.qteBonbonVisible = objetBloc.has("bonbonsVisibles") ? objetBloc.get("bonbonsVisibles").getAsInt() : 0;
-                bloc.delaiBonbonVisible = objetBloc.has("delaiVisible") ? objetBloc.get("delaiVisible").getAsInt() : 0;
+                bloc.qteBonbonVisible = borneQuantite(objetBloc.has("bonbonsVisibles") ? objetBloc.get("bonbonsVisibles").getAsInt() : 0);
+                bloc.delaiBonbonVisible = borneDelai(objetBloc.has("delaiVisible") ? objetBloc.get("delaiVisible").getAsInt() : 0);
                 bloc.typeBonbonVisible = objetBloc.has("typeVisible")
                     ? TypeBonbonCarte.valueOf(objetBloc.get("typeVisible").getAsString()) : TypeBonbonCarte.STANDARD;
-                bloc.delaiApparitionInitiale = objetBloc.has("apparitionInitiale")
-                    ? objetBloc.get("apparitionInitiale").getAsInt() : 0;
-                bloc.qteBonbonNonVisible = objetBloc.has("bonbonsNonVisibles") ? objetBloc.get("bonbonsNonVisibles").getAsInt() : 0;
-                bloc.delaiBonbonNonVisible = objetBloc.has("delaiNonVisible") ? objetBloc.get("delaiNonVisible").getAsInt() : 0;
+                bloc.delaiApparitionInitiale = borneDelai(objetBloc.has("apparitionInitiale")
+                    ? objetBloc.get("apparitionInitiale").getAsInt() : 0);
+                bloc.qteBonbonNonVisible = borneQuantite(objetBloc.has("bonbonsNonVisibles") ? objetBloc.get("bonbonsNonVisibles").getAsInt() : 0);
+                bloc.delaiBonbonNonVisible = borneDelai(objetBloc.has("delaiNonVisible") ? objetBloc.get("delaiNonVisible").getAsInt() : 0);
                 bloc.typeBonbonNonVisible = objetBloc.has("typeNonVisible")
                     ? TypeBonbonCarte.valueOf(objetBloc.get("typeNonVisible").getAsString()) : TypeBonbonCarte.STANDARD;
-                bloc.delaiApparitionInitialeNonVisible = objetBloc.has("apparitionInitialeNonVisible")
-                    ? objetBloc.get("apparitionInitialeNonVisible").getAsInt() : 0;
-                carte.blocs.put(cle(x, z), bloc);
+                bloc.delaiApparitionInitialeNonVisible = borneDelai(objetBloc.has("apparitionInitialeNonVisible")
+                    ? objetBloc.get("apparitionInitialeNonVisible").getAsInt() : 0);
+                // Ignorer les blocs hors de l'aire (données v1 héritées) : versJson les
+                // filtrerait de toute façon, mais gardés ici ils bloqueraient la validation
+                // « bonbon hors parcelle » sur un bloc invisible et inatteignable dans l'éditeur
+                if (carte.estDansAire(x, z)) {
+                    carte.blocs.put(cle(x, z), bloc);
+                }
             }
         }
 
@@ -900,14 +942,16 @@ public class CarteDonnees {
                 bloc = new BlocCarte(); // Bonbons sur bloc vide (données v1 héritées)
                 carte.blocs.put(c, bloc);
             }
-            bloc.qteBonbonVisible = entree.get(2).getAsInt();
-            bloc.delaiBonbonVisible = entree.get(3).getAsInt();
+            // Bornage anti-DoS : une quantité forgée énorme ferait apparaître autant
+            // d'ItemEntity au lancement ; une valeur négative fausserait les compteurs
+            bloc.qteBonbonVisible = borneQuantite(entree.get(2).getAsInt());
+            bloc.delaiBonbonVisible = borneDelai(entree.get(3).getAsInt());
             bloc.typeBonbonVisible = typeBonbonPourCode(entree.get(4).getAsInt());
-            bloc.delaiApparitionInitiale = entree.get(5).getAsInt();
-            bloc.qteBonbonNonVisible = entree.get(6).getAsInt();
-            bloc.delaiBonbonNonVisible = entree.get(7).getAsInt();
+            bloc.delaiApparitionInitiale = borneDelai(entree.get(5).getAsInt());
+            bloc.qteBonbonNonVisible = borneQuantite(entree.get(6).getAsInt());
+            bloc.delaiBonbonNonVisible = borneDelai(entree.get(7).getAsInt());
             bloc.typeBonbonNonVisible = typeBonbonPourCode(entree.get(8).getAsInt());
-            bloc.delaiApparitionInitialeNonVisible = entree.get(9).getAsInt();
+            bloc.delaiApparitionInitialeNonVisible = borneDelai(entree.get(9).getAsInt());
         }
     }
 
