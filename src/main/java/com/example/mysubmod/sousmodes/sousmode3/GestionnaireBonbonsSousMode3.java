@@ -45,18 +45,20 @@ public class GestionnaireBonbonsSousMode3 {
         public final String nom;
         public final double centreX;
         public final double centreZ;
-        public final List<int[]> cellulesMonde;
+        /** Plages de cellules monde triées « z, x0, longueur » — jamais développées
+         *  cellule par cellule (des millions sur une grande carte) */
+        public final List<int[]> plagesMonde;
         public int bonbonsVisibles;
         public int bonbonsNonVisibles;
         // Détail par type de ressource (parties du Sous-mode 2 sur carte)
         public int bonbonsBleus;
         public int bonbonsRouges;
 
-        public DonneesZone(String nom, double centreX, double centreZ, List<int[]> cellulesMonde) {
+        public DonneesZone(String nom, double centreX, double centreZ, List<int[]> plagesMonde) {
             this.nom = nom;
             this.centreX = centreX;
             this.centreZ = centreZ;
-            this.cellulesMonde = cellulesMonde;
+            this.plagesMonde = plagesMonde;
         }
     }
 
@@ -164,19 +166,24 @@ public class GestionnaireBonbonsSousMode3 {
         this.serveurJeu = serveur;
         this.minuterieReapparition = new Timer("SousMode3-ReapparitionBonbons", true);
 
-        // Zones nommées de la carte -> coordonnées monde
-        Map<Long, String> zoneParCellule = new HashMap<>();
+        // Zones nommées de la carte -> plages triées (coordonnées carte pour retrouver la
+        // zone d'un bonbon, coordonnées monde pour le HUD). Ni cellules développées ni map
+        // cellule→zone : sur une grande carte, ces structures boxées coûtaient des
+        // centaines de Mo au serveur.
+        List<List<int[]>> plagesCarteParZone = new ArrayList<>();
         for (ZoneCarte zone : carte.zones) {
             double[] centre = zone.obtenirCentre();
-            List<int[]> cellulesMonde = new ArrayList<>();
-            for (int[] cellule : zone.cellules) {
-                cellulesMonde.add(new int[]{generation.origineX + cellule[0], generation.origineZ + cellule[1]});
-                zoneParCellule.put(CarteDonnees.cle(cellule[0], cellule[1]), zone.nom);
+            List<int[]> plagesCarte = PaquetZonesSousMode3.plagesDepuisCellules(zone.cellules);
+            plagesCarteParZone.add(plagesCarte);
+            List<int[]> plagesMonde = new ArrayList<>(plagesCarte.size());
+            for (int[] plage : plagesCarte) {
+                plagesMonde.add(new int[]{
+                    generation.origineZ + plage[0], generation.origineX + plage[1], plage[2]});
             }
             DonneesZone donnees = new DonneesZone(zone.nom,
                 generation.origineX + centre[0] + 0.5,
                 generation.origineZ + centre[1] + 0.5,
-                cellulesMonde);
+                plagesMonde);
             zones.add(donnees);
             zonesParNom.put(zone.nom, donnees);
         }
@@ -193,7 +200,13 @@ public class GestionnaireBonbonsSousMode3 {
             int cz = CarteDonnees.cleZ(cle);
             int mondeX = generation.origineX + cx;
             int mondeZ = generation.origineZ + cz;
-            String zoneNom = zoneParCellule.get(cle);
+            String zoneNom = null;
+            for (int i = 0; i < plagesCarteParZone.size(); i++) {
+                if (PaquetZonesSousMode3.plagesContiennent(plagesCarteParZone.get(i), cx, cz)) {
+                    zoneNom = carte.zones.get(i).nom;
+                    break;
+                }
+            }
 
             if (bloc.qteBonbonVisible > 0) {
                 // Sur l'Eau : au niveau de la mer ; sur Île/Pierre : à la hauteur de l'élévation du bloc

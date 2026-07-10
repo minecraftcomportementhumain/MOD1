@@ -27,9 +27,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
-import java.util.ArrayDeque;
 import java.util.ArrayList;
-import java.util.Deque;
 import java.util.EnumSet;
 import java.util.HashSet;
 import java.util.List;
@@ -140,6 +138,15 @@ public class GenerateurCarteSousMode3 {
         private static final int POIDS_CHUNK = 64; // poids d'un chunk traité (progression)
         /** Chunks demandés d'avance : leur terrain se génère sur les threads de worldgen */
         private static final int FENETRE_PRECHARGEMENT = 16;
+        /**
+         * Contre-pression : sans plafond, l'écriture (rapide) distancerait le déchargement
+         * des chunks et le moteur d'éclairage — sur une carte 2500×2500 (~24 600 chunks),
+         * les chunks chargés et la file d'éclairage s'accumulaient en plusieurs Go et
+         * épuisaient la mémoire du serveur.
+         */
+        private static final int MAX_CHUNKS_PAR_TICK = 6;
+        /** Pause de la génération tant que le serveur n'a pas déchargé sous ce seuil */
+        private static final int MAX_CHUNKS_CHARGES = 3000;
 
         private final ServerLevel niveau;
         private final CarteDonnees carte;
@@ -147,7 +154,7 @@ public class GenerateurCarteSousMode3 {
         private final ResultatGeneration resultat = new ResultatGeneration();
 
         private Phase phase = Phase.INIT;
-        private Set<Long> cellulesRemplissageEau;
+        private java.util.BitSet cellulesRemplissageEau; // index = cz·largeur + cx
         private List<ChunkPos> chunksCibles;
         private int indexChunk;
         private int prochainTicket; // premier chunk sans ticket de préchargement
@@ -202,6 +209,7 @@ public class GenerateurCarteSousMode3 {
                 phase = Phase.CHUNKS;
             }
 
+            int chunksCeTick = 0;
             while (phase == Phase.CHUNKS) {
                 if (indexChunk >= chunksCibles.size()) {
                     abandonner(); // plus aucun ticket de préchargement à conserver
@@ -209,6 +217,12 @@ public class GenerateurCarteSousMode3 {
                     break;
                 }
                 if (!synchrone) {
+                    // Contre-pression : laisser le déchargement des chunks et le moteur
+                    // d'éclairage suivre le rythme avant de continuer à écrire
+                    if (chunksCeTick >= MAX_CHUNKS_PAR_TICK
+                        || niveau.getChunkSource().getLoadedChunksCount() > MAX_CHUNKS_CHARGES) {
+                        return false;
+                    }
                     precharger();
                     ChunkPos pos = chunksCibles.get(indexChunk);
                     if (!niveau.getChunkSource().hasChunk(pos.x, pos.z)) {
@@ -218,6 +232,7 @@ public class GenerateurCarteSousMode3 {
                 ChunkPos pos = chunksCibles.get(indexChunk);
                 genererChunk(niveau.getChunk(pos.x, pos.z));
                 libererTicket(indexChunk);
+                chunksCeTick++;
                 poidsFait += POIDS_CHUNK;
                 indexChunk++;
                 if (System.nanoTime() - debut >= budgetNanos) {
@@ -378,7 +393,7 @@ public class GenerateurCarteSousMode3 {
                     semerLumiereA(mondeX, NIVEAU_MER + 1, mondeZ);
                 }
                 case ILE, PIERRE -> colonneSolide(chunk, bloc, cx, cz, mondeX, mondeZ,
-                    cellulesRemplissageEau.contains(cle));
+                    cellulesRemplissageEau.get(cz * carte.largeur + cx));
                 default -> {
                 }
             }
@@ -483,40 +498,57 @@ public class GenerateurCarteSousMode3 {
     /**
      * Cellules Île/Pierre submergées (élévation < 0) connectées à un bloc Eau :
      * l'eau remplit automatiquement l'espace au-dessus jusqu'au niveau de la mer.
+     * BitSet indexé cz·largeur + cx : les ensembles boxés coûtaient ~0,5 Go à 2500×2500.
      */
-    private static Set<Long> calculerRemplissageEau(CarteDonnees carte, Set<Long> interieur) {
-        Set<Long> remplies = new HashSet<>();
-        Deque<Long> pile = new ArrayDeque<>();
+    private static java.util.BitSet calculerRemplissageEau(CarteDonnees carte, Set<Long> interieur) {
+        int largeur = carte.largeur;
+        int total = largeur * carte.hauteur;
+        java.util.BitSet remplies = new java.util.BitSet(total);
+        java.util.BitSet visitees = new java.util.BitSet(total);
+        int[] pile = new int[1024];
+        int taille = 0;
 
         // Amorcer depuis toutes les cellules Eau intérieures
-        for (long cle : interieur) {
-            BlocCarte bloc = carte.blocs.get(cle);
-            if (bloc != null && bloc.type == TypeElementCarte.EAU) {
-                pile.push(cle);
+        for (Map.Entry<Long, BlocCarte> entree : carte.blocs.entrySet()) {
+            if (entree.getValue().type != TypeElementCarte.EAU || !interieur.contains(entree.getKey())) {
+                continue;
             }
+            int index = CarteDonnees.cleZ(entree.getKey()) * largeur + CarteDonnees.cleX(entree.getKey());
+            visitees.set(index);
+            if (taille == pile.length) {
+                pile = java.util.Arrays.copyOf(pile, taille * 2);
+            }
+            pile[taille++] = index;
         }
 
-        Set<Long> visitees = new HashSet<>(pile);
-        while (!pile.isEmpty()) {
-            long cle = pile.pop();
-            int cx = CarteDonnees.cleX(cle);
-            int cz = CarteDonnees.cleZ(cle);
-            long[] voisins = {CarteDonnees.cle(cx + 1, cz), CarteDonnees.cle(cx - 1, cz),
-                CarteDonnees.cle(cx, cz + 1), CarteDonnees.cle(cx, cz - 1)};
-            for (long voisin : voisins) {
-                if (visitees.contains(voisin) || !interieur.contains(voisin)) {
+        while (taille > 0) {
+            int index = pile[--taille];
+            int cx = index % largeur;
+            int cz = index / largeur;
+            int[][] voisins = {{cx + 1, cz}, {cx - 1, cz}, {cx, cz + 1}, {cx, cz - 1}};
+            for (int[] voisin : voisins) {
+                int vx = voisin[0];
+                int vz = voisin[1];
+                if (!carte.estDansAire(vx, vz)) {
                     continue;
                 }
-                BlocCarte blocVoisin = carte.blocs.get(voisin);
+                int indexVoisin = vz * largeur + vx;
+                if (visitees.get(indexVoisin) || !interieur.contains(CarteDonnees.cle(vx, vz))) {
+                    continue;
+                }
+                BlocCarte blocVoisin = carte.blocs.get(CarteDonnees.cle(vx, vz));
                 if (blocVoisin == null) {
                     continue;
                 }
                 boolean submerge = (blocVoisin.type == TypeElementCarte.ILE || blocVoisin.type == TypeElementCarte.PIERRE)
                     && blocVoisin.elevation < 0;
                 if (submerge) {
-                    visitees.add(voisin);
-                    remplies.add(voisin);
-                    pile.push(voisin); // L'eau continue de se propager au-dessus des blocs submergés
+                    visitees.set(indexVoisin);
+                    remplies.set(indexVoisin);
+                    if (taille == pile.length) {
+                        pile = java.util.Arrays.copyOf(pile, taille * 2);
+                    }
+                    pile[taille++] = indexVoisin; // L'eau continue de se propager au-dessus des blocs submergés
                 }
             }
         }

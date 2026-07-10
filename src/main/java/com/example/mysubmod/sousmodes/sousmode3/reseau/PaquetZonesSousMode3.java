@@ -43,10 +43,11 @@ public class PaquetZonesSousMode3 {
         /** Segment de continuation d'une zone scindée (fusionné à la réception) */
         public final boolean suite;
 
+        /** Construit une zone à partir de plages déjà triées par (z, x0) — jamais de cellules développées */
         public ZoneReseau(String nom, double centreX, double centreZ, int bonbonsVisibles,
-                          int bonbonsNonVisibles, int bonbonsBleus, int bonbonsRouges, List<int[]> cellules) {
+                          int bonbonsNonVisibles, int bonbonsBleus, int bonbonsRouges, List<int[]> plages) {
             this(nom, centreX, centreZ, bonbonsVisibles, bonbonsNonVisibles, bonbonsBleus, bonbonsRouges,
-                calculerPlages(cellules), false);
+                plages, false);
         }
 
         private ZoneReseau(String nom, double centreX, double centreZ, int bonbonsVisibles,
@@ -103,8 +104,8 @@ public class PaquetZonesSousMode3 {
         return plage[0] == cz && cx < plage[1] + plage[2];
     }
 
-    /** Cellules (coordonnées monde) -> plages triées « z, x0, longueur » */
-    private static List<int[]> calculerPlages(List<int[]> cellules) {
+    /** Cellules {x, z} -> plages triées « z, x0, longueur » (mêmes coordonnées que l'entrée) */
+    public static List<int[]> plagesDepuisCellules(List<int[]> cellules) {
         long[] indices = new long[cellules.size()];
         int n = 0;
         for (int[] cellule : cellules) {
@@ -160,7 +161,7 @@ public class PaquetZonesSousMode3 {
         for (GestionnaireBonbonsSousMode3.DonneesZone zone : zones) {
             ZoneReseau zoneReseau = new ZoneReseau(zone.nom, zone.centreX, zone.centreZ,
                 zone.bonbonsVisibles, zone.bonbonsNonVisibles,
-                zone.bonbonsBleus, zone.bonbonsRouges, zone.cellulesMonde);
+                zone.bonbonsBleus, zone.bonbonsRouges, zone.plagesMonde);
             if (zoneReseau.plages.size() <= maxPlagesParSegment) {
                 segments.add(zoneReseau);
             } else {
