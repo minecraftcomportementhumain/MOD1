@@ -95,6 +95,13 @@ public class EcranEditeurCarte extends Screen {
     private double selectionCouranteX;
     private double selectionCouranteY;
     private final Set<Long> cellulesSelectionnees = new HashSet<>();
+    // Résumé de la sélection, recalculé quand elle change — jamais obsolète : annuler/rétablir
+    // vident la sélection, et Appliquer/l'élévation groupée ne changent pas la présence des
+    // bonbons. Évite de balayer chaque image une sélection qui peut compter des millions de cellules.
+    private boolean selectionABonbonVisible = false;
+    private boolean selectionABonbonNonVisible = false;
+    private int selectionNbTerrain = 0;
+    private Integer selectionElevationCommune = null;
 
     // Pinceau (peinture continue par glissement pour Eau / Île / Pierre / Limite)
     private boolean peintureEnCours = false;
@@ -319,7 +326,8 @@ public class EcranEditeurCarte extends Screen {
             Component.literal("Sélection"), b -> basculerModeSelection(),
             BoutonPalette.Pastille.SELECTION, 0, () -> modeSelection, COULEUR_SELECTION);
         boutonSelection.setTooltip(net.minecraft.client.gui.components.Tooltip.create(
-            Component.literal("Mode sélection : tracer un rectangle pour sélectionner les blocs contenant des bonbons")));
+            Component.literal("Mode sélection : tracer un rectangle pour sélectionner le terrain (Île, Pierre) "
+                + "et les bonbons. Ctrl+molette ajuste l'élévation de toute la sélection")));
         addRenderableWidget(boutonSelection);
         yPalette += pasPalette;
 
@@ -951,13 +959,8 @@ public class EcranEditeurCarte extends Screen {
         enregistrerAction(action);
     }
 
-    /** Ctrl+molette sur un bloc : élévation d'un cran à la fois */
-    private void changerElevation(int cx, int cz, int delta) {
-        BlocCarte existant = carte.obtenirBlocOuNull(cx, cz);
-        if (existant == null) {
-            return;
-        }
-
+    /** Bornes d'élévation [min, max] du bloc, ou null si son type n'en a pas (Vide / Limite) */
+    private static int[] bornesElevation(BlocCarte existant) {
         int min = CarteDonnees.ELEVATION_MIN;
         int max = CarteDonnees.ELEVATION_MAX;
         if (existant.type == TypeElementCarte.EAU) {
@@ -970,10 +973,24 @@ public class EcranEditeurCarte extends Screen {
                 max = CarteDonnees.ELEVATION_MAX - 1; // Un bonbon visible à +15 serait inatteignable
             }
         } else {
+            return null;
+        }
+        return new int[]{min, max};
+    }
+
+    /** Ctrl+molette sur un bloc : élévation d'un cran à la fois */
+    private void changerElevation(int cx, int cz, int delta) {
+        BlocCarte existant = carte.obtenirBlocOuNull(cx, cz);
+        if (existant == null) {
+            return;
+        }
+
+        int[] bornes = bornesElevation(existant);
+        if (bornes == null) {
             return; // Pas d'élévation pour les blocs vides / Limite
         }
 
-        int nouvelleElevation = Math.max(min, Math.min(max, existant.elevation + delta));
+        int nouvelleElevation = Math.max(bornes[0], Math.min(bornes[1], existant.elevation + delta));
         if (nouvelleElevation == existant.elevation) {
             return;
         }
@@ -986,6 +1003,70 @@ public class EcranEditeurCarte extends Screen {
         action.ajouterChangement(cx, cz, avant, apres);
         carte.definirBloc(cx, cz, apres);
         enregistrerAction(action);
+    }
+
+    /**
+     * Ctrl+molette avec une sélection : élève/abaisse d'un cran tous les blocs sélectionnés
+     * qui le peuvent (chacun clampé à ses propres bornes). Une seule entrée dans la pile
+     * d'annulation ; au-delà de {@link #MAX_BLOCS_ACTION_ANNULABLE} blocs modifiés, le même
+     * traitement que les remplissages géants s'applique (historique vidé, non annulable).
+     */
+    private void changerElevationSelection(int delta) {
+        int aChanger = 0;
+        for (long cle : cellulesSelectionnees) {
+            BlocCarte existant = carte.blocs.get(cle);
+            if (existant == null) {
+                continue;
+            }
+            int[] bornes = bornesElevation(existant);
+            if (bornes == null) {
+                continue;
+            }
+            if (Math.max(bornes[0], Math.min(bornes[1], existant.elevation + delta)) != existant.elevation) {
+                aChanger++;
+            }
+        }
+        if (aChanger == 0) {
+            return; // Toute la sélection est déjà à sa borne : rien à faire
+        }
+        boolean annulable = aChanger <= MAX_BLOCS_ACTION_ANNULABLE;
+
+        ActionEditeur action = annulable ? new ActionEditeur(carte) : null;
+        for (long cle : cellulesSelectionnees) {
+            BlocCarte existant = carte.blocs.get(cle);
+            if (existant == null) {
+                continue;
+            }
+            int[] bornes = bornesElevation(existant);
+            if (bornes == null) {
+                continue;
+            }
+            int nouvelleElevation = Math.max(bornes[0], Math.min(bornes[1], existant.elevation + delta));
+            if (nouvelleElevation == existant.elevation) {
+                continue;
+            }
+            int cx = CarteDonnees.cleX(cle);
+            int cz = CarteDonnees.cleZ(cle);
+            BlocCarte apres = existant.copier();
+            apres.elevation = nouvelleElevation;
+            if (action != null) {
+                action.ajouterChangement(cx, cz, existant.copier(), apres);
+            }
+            carte.definirBloc(cx, cz, apres);
+        }
+
+        if (action != null) {
+            enregistrerAction(action);
+        } else {
+            // Même traitement que les remplissages géants : l'historique ne reflète plus
+            // l'état, on le vide, et un repère jamais empilé garde ● jusqu'à la sauvegarde
+            pileAnnulation.clear();
+            pileRetablissement.clear();
+            reperePileSauvegarde = new ActionEditeur(carte);
+            surCarteModifiee();
+            afficherToast("Élévation de " + aChanger + " blocs appliquée (trop volumineux pour l'annulation)", false);
+        }
+        recalculerResumeSelection();
     }
 
     /** Bouton « Limite › Supprimer » : retire tous les éléments Limite */
@@ -1190,23 +1271,44 @@ public class EcranEditeurCarte extends Screen {
     }
 
     private boolean selectionContientBonbonVisible() {
-        for (long cle : cellulesSelectionnees) {
-            BlocCarte bloc = carte.blocs.get(cle);
-            if (bloc != null && bloc.qteBonbonVisible > 0) {
-                return true;
-            }
-        }
-        return false;
+        return selectionABonbonVisible;
     }
 
     private boolean selectionContientBonbonNonVisible() {
+        return selectionABonbonNonVisible;
+    }
+
+    /** Une passe sur la sélection : présence des deux familles de bonbons, nombre de blocs
+     *  terrain (Île/Pierre) et leur élévation commune (null = valeurs mixtes ou aucun terrain) */
+    private void recalculerResumeSelection() {
+        selectionABonbonVisible = false;
+        selectionABonbonNonVisible = false;
+        selectionNbTerrain = 0;
+        selectionElevationCommune = null;
+        boolean elevationMixte = false;
         for (long cle : cellulesSelectionnees) {
             BlocCarte bloc = carte.blocs.get(cle);
-            if (bloc != null && bloc.qteBonbonNonVisible > 0) {
-                return true;
+            if (bloc == null) {
+                continue;
+            }
+            if (bloc.qteBonbonVisible > 0) {
+                selectionABonbonVisible = true;
+            }
+            if (bloc.qteBonbonNonVisible > 0) {
+                selectionABonbonNonVisible = true;
+            }
+            if (bloc.type == TypeElementCarte.ILE || bloc.type == TypeElementCarte.PIERRE) {
+                selectionNbTerrain++;
+                if (!elevationMixte) {
+                    if (selectionElevationCommune == null) {
+                        selectionElevationCommune = bloc.elevation;
+                    } else if (selectionElevationCommune != bloc.elevation) {
+                        selectionElevationCommune = null;
+                        elevationMixte = true;
+                    }
+                }
             }
         }
-        return false;
     }
 
     /** Met à jour la visibilité et le contenu des champs de délai selon la sélection */
@@ -1593,9 +1695,10 @@ public class EcranEditeurCarte extends Screen {
         envoyerSauvegarde(jsonSauvegardeEnAttente, false);
     }
 
-    /** Au-delà de ce nombre de blocs, un remplissage n'est plus annulable (l'action
-     *  d'annulation copierait deux BlocCarte par cellule : gigaoctets sur une grande carte) */
-    private static final int MAX_BLOCS_REMPLISSAGE_ANNULABLE = 500_000;
+    /** Au-delà de ce nombre de blocs, une action de masse (remplissage, élévation de la
+     *  sélection) n'est plus annulable (l'action d'annulation copierait deux BlocCarte
+     *  par cellule : gigaoctets sur une grande carte) */
+    private static final int MAX_BLOCS_ACTION_ANNULABLE = 500_000;
 
     /**
      * Remplit les blocs sans élément de base à l'intérieur du périmètre Limite
@@ -1617,7 +1720,7 @@ public class EcranEditeurCarte extends Screen {
             }
             aRemplir++;
         }
-        boolean annulable = aRemplir <= MAX_BLOCS_REMPLISSAGE_ANNULABLE;
+        boolean annulable = aRemplir <= MAX_BLOCS_ACTION_ANNULABLE;
 
         ActionEditeur action = annulable ? new ActionEditeur(carte) : null;
         for (long cle : interieur) {
@@ -1815,11 +1918,13 @@ public class EcranEditeurCarte extends Screen {
         for (int cx = Math.max(0, minCx); cx <= Math.min(carte.largeur - 1, maxCx); cx++) {
             for (int cz = Math.max(0, minCz); cz <= Math.min(carte.hauteur - 1, maxCz); cz++) {
                 BlocCarte bloc = carte.obtenirBlocOuNull(cx, cz);
-                if (bloc != null && (bloc.qteBonbonVisible > 0 || bloc.qteBonbonNonVisible > 0)) {
+                if (bloc != null && (bloc.qteBonbonVisible > 0 || bloc.qteBonbonNonVisible > 0
+                    || bloc.type == TypeElementCarte.ILE || bloc.type == TypeElementCarte.PIERRE)) {
                     cellulesSelectionnees.add(CarteDonnees.cle(cx, cz));
                 }
             }
         }
+        recalculerResumeSelection();
         mettreAJourPanneauDelais();
     }
 
@@ -1829,8 +1934,13 @@ public class EcranEditeurCarte extends Screen {
             return true;
         }
 
-        // Ctrl+molette sur un bloc : élévation d'un cran à la fois
+        // Ctrl+molette : élévation d'un cran — de toute la sélection s'il y en a une,
+        // sinon du bloc survolé
         if (hasControlDown()) {
+            if (modeSelection && !cellulesSelectionnees.isEmpty()) {
+                changerElevationSelection(delta > 0 ? 1 : -1);
+                return true;
+            }
             int[] cellule = celluleSousSouris(sourisX, sourisY);
             if (cellule != null) {
                 changerElevation(cellule[0], cellule[1], delta > 0 ? 1 : -1);
@@ -2291,11 +2401,29 @@ public class EcranEditeurCarte extends Screen {
         rafraichirStatsCarte();
         int y = hautGrille + 6;
 
-        // En mode sélection sans blocs sélectionnés : rappel du geste
+        // En mode sélection : rappel du geste, ou résumé de la sélection (sans bonbons,
+        // sinon le panneau des délais a déjà pris le relais plus haut)
         if (modeSelection) {
-            y = dessinerCarteLignes(guiGraphics, xCarte, y, largeurCarte, "Sélection", COULEUR_SELECTION,
-                List.of(new LigneInspecteur("", "Tracez un rectangle sur", COULEUR_ETIQUETTE),
-                    new LigneInspecteur("", "les blocs à bonbons.", COULEUR_ETIQUETTE)));
+            List<LigneInspecteur> lignesSelection;
+            if (cellulesSelectionnees.isEmpty()) {
+                lignesSelection = List.of(
+                    new LigneInspecteur("", "Tracez un rectangle sur", COULEUR_ETIQUETTE),
+                    new LigneInspecteur("", "le terrain et les bonbons.", COULEUR_ETIQUETTE));
+            } else {
+                lignesSelection = new ArrayList<>();
+                lignesSelection.add(new LigneInspecteur("Blocs",
+                    String.valueOf(cellulesSelectionnees.size()), 0xFFFFFFFF));
+                if (selectionNbTerrain > 0) {
+                    lignesSelection.add(new LigneInspecteur("Élévation",
+                        selectionElevationCommune == null ? "mixte"
+                            : (selectionElevationCommune > 0 ? "+" : "") + selectionElevationCommune,
+                        selectionElevationCommune != null && selectionElevationCommune < 0
+                            ? 0xFF9FD3FF : 0xFFFFFFFF));
+                    lignesSelection.add(new LigneInspecteur("", "Ctrl+molette : élévation", COULEUR_ETIQUETTE));
+                }
+            }
+            y = dessinerCarteLignes(guiGraphics, xCarte, y, largeurCarte, "Sélection",
+                COULEUR_SELECTION, lignesSelection);
         }
 
         List<LigneInspecteur> lignesBloc = celluleSurvolee != null ? lignesBlocSurvole(celluleSurvolee)
@@ -2471,7 +2599,10 @@ public class EcranEditeurCarte extends Screen {
     /** Rappel des contrôles souris selon l'outil actif */
     private String astuceControles() {
         if (modeSelection) {
-            return "tracer un rectangle sur les blocs à bonbons · clic ailleurs : désélectionner";
+            if (!cellulesSelectionnees.isEmpty()) {
+                return "Ctrl+molette : élévation de la sélection · clic ailleurs : désélectionner";
+            }
+            return "tracer un rectangle : sélectionner terrain et bonbons · clic ailleurs : désélectionner";
         }
         if (outilActif == null) {
             return "choisissez un outil · molette : zoom · clic milieu : déplacer la vue";
