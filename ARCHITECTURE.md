@@ -85,6 +85,10 @@ phases. À maintenir à chaque changement structurel.
   parcelles**, telles que définies sur la carte. **Noms de parcelles uniques** :
   imposé à la création/renommage dans l'éditeur ET revalidé à la sauvegarde (le
   runtime en jeu indexe les parcelles par nom — deux homonymes se confondraient).
+  **Chaque parcelle est d'un seul tenant** (connexité 8 : côtés et diagonales) :
+  la peinture refuse une cellule détachée, le panneau signale ⚠ une parcelle
+  coupée (clic droit), et `validerPourSauvegarde` refuse la carte
+  (`compterMorceauxParcelles`).
   Le **spawn de parcelle ne considère que les cellules à l'intérieur du périmètre
   Limite** (`calculerSpawnZone` filtre sur `generation.cellulesInterieur`) : une
   parcelle peut déborder de l'anneau, mais hors périmètre le terrain n'existe pas.

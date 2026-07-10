@@ -728,6 +728,41 @@ class CarteDonneesTest {
             .noneMatch(e -> e.contains("même nom")));
     }
 
+    /** Une parcelle doit être d'un seul tenant (connexité 8 : côtés ET diagonales). */
+    @Test
+    void validationRefuseParcelleFragmentee() {
+        CarteDonnees carte = new CarteDonnees();
+        carte.nom = "fragmentee";
+        carte.largeur = 8;
+        carte.hauteur = 6;
+        for (int x = 0; x < 8; x++) {
+            for (int z = 0; z < 6; z++) {
+                boolean bord = x == 0 || z == 0 || x == 7 || z == 5;
+                carte.blocs.put(CarteDonnees.cle(x, z),
+                    new BlocCarte(bord ? TypeElementCarte.LIMITE : TypeElementCarte.ILE, 0));
+            }
+        }
+        carte.apparitionX = 4;
+        carte.apparitionZ = 3;
+
+        ZoneCarte parcelle = new ZoneCarte();
+        parcelle.nom = "P";
+        parcelle.type = TypeElementCarte.ILE;
+        carte.zones.add(parcelle);
+        // Deux cellules séparées d'un écart : deux morceaux
+        carte.blocs.get(CarteDonnees.cle(1, 1)).zone = 1;
+        carte.blocs.get(CarteDonnees.cle(3, 3)).zone = 1;
+        assertTrue(carte.validerPourSauvegarde().stream()
+            .anyMatch(e -> e.contains("morceaux")));
+        assertEquals(2, carte.compterMorceauxParcelles()[1]);
+
+        // Un pont DIAGONAL suffit : (1,1)–(2,2)–(3,3) se touchent en diagonale
+        carte.blocs.get(CarteDonnees.cle(2, 2)).zone = 1;
+        assertTrue(carte.validerPourSauvegarde().stream()
+            .noneMatch(e -> e.contains("morceaux")));
+        assertEquals(1, carte.compterMorceauxParcelles()[1]);
+    }
+
     /** Les quantités et délais de bonbons forgés sont bornés au décodage (anti-DoS). */
     @Test
     void decodeurBorneQuantitesBonbons() {

@@ -181,6 +181,9 @@ public class EcranEditeurCarte extends Screen {
     private final List<int[]> lignesZonesInspecteur = new ArrayList<>();
     /** Comptes de cellules par parcelle (index 0 inutilisé), rafraîchis avec les stats */
     private int[] comptesZones = new int[1];
+    /** Morceaux (composantes connexes) par parcelle — > 1 = parcelle coupée en deux,
+     *  signalée ⚠ dans le panneau et refusée à la sauvegarde */
+    private int[] morceauxZones = new int[1];
     private EditBox champNomZone;
     private Button boutonNouvelleZone;
     private Button boutonSupprimerZone;
@@ -586,8 +589,9 @@ public class EcranEditeurCarte extends Screen {
             pastille, couleurPastille, () -> outilActif == outil, COULEUR_ACCENT);
         String infobulle = outil == OutilPalette.ZONE
             ? "Découpe la carte en parcelles nommées : peignez les cellules de la parcelle active "
-                + "(panneau de droite). La navigation en jeu pointe les bonbons parcelle par "
-                + "parcelle, et chaque bonbon doit appartenir à une parcelle pour sauvegarder"
+                + "(panneau de droite). Les blocs d'une parcelle doivent se toucher (côté ou "
+                + "diagonale). La navigation en jeu pointe les bonbons parcelle par parcelle, et "
+                + "chaque bonbon doit appartenir à une parcelle pour sauvegarder"
             : outil.nomAffichage;
         bouton.setTooltip(net.minecraft.client.gui.components.Tooltip.create(Component.literal(infobulle)));
         addRenderableWidget(bouton);
@@ -670,6 +674,22 @@ public class EcranEditeurCarte extends Screen {
         zonesRegistreModifie = true;
         surCarteModifiee();
         mettreAJourPanneauZones();
+    }
+
+    /** La cellule touche-t-elle (côté ou diagonale) une cellule de la parcelle {@code id} ? */
+    private boolean celluleToucheParcelle(int cx, int cz, int id) {
+        for (int dz = -1; dz <= 1; dz++) {
+            for (int dx = -1; dx <= 1; dx++) {
+                if (dx == 0 && dz == 0) {
+                    continue;
+                }
+                BlocCarte voisin = carte.obtenirBlocOuNull(cx + dx, cz + dz);
+                if (voisin != null && voisin.zone == id) {
+                    return true;
+                }
+            }
+        }
+        return false;
     }
 
     /** Vrai si une parcelle AUTRE que {@code saufIndex} porte déjà ce nom (casse ignorée
@@ -789,8 +809,11 @@ public class EcranEditeurCarte extends Screen {
                 int id = i + 1;
                 guiGraphics.fill(x + 2, y, x + 9, y + 7, couleurZone(id));
                 int compte = id < comptesZones.length ? comptesZones[id] : 0;
+                // ⚠N = parcelle coupée en N morceaux disjoints (sauvegarde refusée en l'état)
+                String fragmentee = id < morceauxZones.length && morceauxZones[id] > 1
+                    ? " §c⚠" + morceauxZones[id] : "";
                 String texte = (id == zoneActive ? "§b➤ §f" : "§f") + nomZoneAffiche(id)
-                    + " §7(" + compte + ")";
+                    + " §7(" + compte + ")" + fragmentee;
                 guiGraphics.drawString(this.font, texte, x + 12, y, 0xFFFFFF);
                 lignesZonesInspecteur.add(new int[]{y - 1, y + 10, id});
                 y += 11;
@@ -1059,6 +1082,17 @@ public class EcranEditeurCarte extends Screen {
                 if (zoneActive <= 0 || zoneActive > carte.zones.size()) {
                     if (!silencieux) {
                         afficherToast("Créez ou choisissez d'abord une parcelle dans le panneau de droite", true);
+                    }
+                    return;
+                }
+                // Une parcelle est d'un seul tenant : la cellule peinte doit toucher la
+                // parcelle active (côté ou diagonale), sauf sa toute première cellule.
+                // comptesZones (rafraîchi avec les stats, ≤ 500 ms de retard) sert de test
+                // de vacuité ; la validation à la sauvegarde reste l'autorité.
+                if (existant.zone != zoneActive && !celluleToucheParcelle(cx, cz, zoneActive)
+                    && zoneActive < comptesZones.length && comptesZones[zoneActive] > 0) {
+                    if (!silencieux) {
+                        afficherToast("Les blocs d'une parcelle doivent se toucher (côté ou diagonale)", true);
                     }
                     return;
                 }
@@ -3005,6 +3039,9 @@ public class EcranEditeurCarte extends Screen {
             }
         }
         comptesZones = comptes;
+        // Connexité des parcelles (⚠ dans le panneau quand une parcelle est en morceaux) —
+        // même cadence throttlée que le reste des stats
+        morceauxZones = carte.compterMorceauxParcelles();
         statBonbonsVisibles = visibles;
         statBonbonsNonVisibles = nonVisibles;
         cellulesLimiteCache = new long[limites.size()];

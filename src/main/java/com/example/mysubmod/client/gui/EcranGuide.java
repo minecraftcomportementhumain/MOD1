@@ -266,7 +266,9 @@ public class EcranGuide extends Screen {
             + "([N] + flèche) pointe les bonbons parcelle par parcelle, et le choix de la parcelle "
             + "de départ se fait parmi elles, telles que vous les avez définies. Créez une parcelle "
             + "dans le panneau de droite, peignez ses cellules (Eau comprise), renommez-la. "
-            + "§cChaque bonbon doit appartenir à une parcelle§7 — la sauvegarde est refusée sinon.");
+            + "§cChaque bonbon doit appartenir à une parcelle§7, chaque parcelle est §cd'un seul "
+            + "tenant§7 (ses blocs se touchent, côté ou diagonale — ⚠ dans le panneau sinon) et "
+            + "porte un §cnom unique§7 — la sauvegarde est refusée sinon.");
         para(l, "§7Le panneau de droite montre le bloc survolé, l'état de la carte (limite fermée, apparition, "
             + "totaux de bonbons) et la légende ; la barre du bas rappelle les contrôles de l'outil actif. "
             + "Un point §6●§7 sur le bouton Sauvegarder signale des modifications non sauvegardées.");

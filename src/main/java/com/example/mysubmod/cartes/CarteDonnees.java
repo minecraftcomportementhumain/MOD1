@@ -337,6 +337,21 @@ public class CarteDonnees {
                 + " — chaque parcelle doit avoir un nom unique");
         }
 
+        // Chaque parcelle doit être d'un seul tenant : tous ses blocs se touchent
+        // (côté ou diagonale). Un clic droit peut couper une parcelle en deux dans
+        // l'éditeur : la coupure est signalée dans le panneau et bloquée ici.
+        int[] morceaux = compterMorceauxParcelles();
+        List<String> fragmentees = new ArrayList<>();
+        for (int i = 0; i < zones.size(); i++) {
+            if (morceaux[i + 1] > 1) {
+                fragmentees.add(zones.get(i).nom + " (" + morceaux[i + 1] + " morceaux)");
+            }
+        }
+        if (!fragmentees.isEmpty()) {
+            erreurs.add("Parcelle(s) en plusieurs morceaux séparés : " + String.join(", ", fragmentees)
+                + " — tous les blocs d'une parcelle doivent se toucher (côté ou diagonale)");
+        }
+
         // Un bonbon visible sur un bloc à l'élévation maximale est inatteignable
         // (sa surface touche le plafond de la cage)
         int bonbonsInatteignables = 0;
@@ -357,6 +372,66 @@ public class CarteDonnees {
     }
 
     // ==================== Parcelles (« zones » dans le format de fichier) ====================
+
+    /**
+     * Nombre de morceaux (composantes 8-connexes : côtés ET diagonales) de chaque
+     * parcelle, index = id de parcelle (0 inutilisé). Une parcelle valide est d'un seul
+     * tenant : tous ses blocs se touchent — morceaux[id] doit valoir 0 (vide) ou 1.
+     */
+    public int[] compterMorceauxParcelles() {
+        int nombreZones = zones.size();
+        int[] morceaux = new int[nombreZones + 1];
+        if (nombreZones == 0) {
+            return morceaux;
+        }
+        int[] grille = new int[largeur * hauteur];
+        for (Map.Entry<Long, BlocCarte> entree : blocs.entrySet()) {
+            BlocCarte bloc = entree.getValue();
+            if (bloc.zone <= 0 || bloc.zone > nombreZones || !bloc.type.estElementDeBase()) {
+                continue;
+            }
+            int x = cleX(entree.getKey());
+            int z = cleZ(entree.getKey());
+            if (!estDansAire(x, z)) {
+                continue;
+            }
+            grille[z * largeur + x] = bloc.zone;
+        }
+        BitSet visites = new BitSet(largeur * hauteur);
+        PileIndices pile = new PileIndices();
+        for (int depart = 0; depart < grille.length; depart++) {
+            int id = grille[depart];
+            if (id == 0 || visites.get(depart)) {
+                continue;
+            }
+            morceaux[id]++;
+            pile.empiler(depart);
+            visites.set(depart);
+            while (!pile.estVide()) {
+                int courant = pile.depiler();
+                int cx = courant % largeur;
+                int cz = courant / largeur;
+                for (int dz = -1; dz <= 1; dz++) {
+                    for (int dx = -1; dx <= 1; dx++) {
+                        if (dx == 0 && dz == 0) {
+                            continue;
+                        }
+                        int vx = cx + dx;
+                        int vz = cz + dz;
+                        if (!estDansAire(vx, vz)) {
+                            continue;
+                        }
+                        int voisin = vz * largeur + vx;
+                        if (!visites.get(voisin) && grille[voisin] == id) {
+                            visites.set(voisin);
+                            pile.empiler(voisin);
+                        }
+                    }
+                }
+            }
+        }
+        return morceaux;
+    }
 
     /**
      * Reconstruit les plages et le type de chaque parcelle depuis le champ {@code zone}
