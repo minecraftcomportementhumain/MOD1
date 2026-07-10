@@ -58,8 +58,14 @@ public class GestionnaireEvenementsServeur {
      */
     @SubscribeEvent
     public static void onDegatsEtouffement(net.minecraftforge.event.entity.living.LivingHurtEvent event) {
+        // Uniquement pendant une partie SM3 active : hors de là (salle d'attente, autre
+        // mode), l'étouffement vanilla doit rester normal — la justification (bloc bonbon
+        // qui emmure) n'existe qu'en jeu.
         if (event.getEntity() instanceof ServerPlayer
-            && event.getSource().is(net.minecraft.world.damagesource.DamageTypes.IN_WALL)) {
+            && event.getSource().is(net.minecraft.world.damagesource.DamageTypes.IN_WALL)
+            && com.example.mysubmod.sousmodes.GestionnaireSousModes.getInstance().obtenirModeActuel()
+                == com.example.mysubmod.sousmodes.SousMode.SOUS_MODE_3
+            && com.example.mysubmod.sousmodes.sousmode3.GestionnaireSousMode3.getInstance().estPartieActive()) {
             event.setCanceled(true);
         }
     }

@@ -494,6 +494,25 @@ public class GestionnaireBonbonsSousMode3 {
         entitesBonbonsVisibles.keySet().removeIf(entite -> !entite.isAlive());
     }
 
+    /**
+     * Réassocie un bonbon visible qui vient de (re)charger dans un chunk à sa cellule
+     * d'origine, s'il n'est plus suivi. Le suivi est keyé par instance d'ItemEntity ;
+     * le déchargement d'un chunk invalide l'instance (la purge l'évacue comme une fusion),
+     * et au rechargement une NOUVELLE instance apparaît, non suivie → son ramassage ne
+     * décrémenterait plus le compteur de zone ni ne planifierait de réapparition.
+     * Un bonbon présent physiquement à une cellule connue est forcément actif (s'il avait
+     * été ramassé, l'entité n'existerait pas).
+     */
+    public void reenregistrerBonbonVisibleSiConnu(ItemEntity entite) {
+        if (entite == null || entitesBonbonsVisibles.containsKey(entite)) {
+            return;
+        }
+        long cle = cleCellule((int) Math.floor(entite.getX()), (int) Math.floor(entite.getZ()));
+        if (cellulesVisibles.containsKey(cle)) {
+            entitesBonbonsVisibles.put(entite, cle);
+        }
+    }
+
     private void planifierReapparitionVisible(InfoCelluleVisible info) {
         try {
             minuterieReapparition.schedule(new TimerTask() {

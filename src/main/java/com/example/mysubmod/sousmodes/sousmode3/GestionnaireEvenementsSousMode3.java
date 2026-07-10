@@ -12,6 +12,7 @@ import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.InteractionHand;
 import net.minecraft.world.InteractionResult;
 import net.minecraft.world.entity.item.ItemEntity;
+import net.minecraft.world.entity.player.Inventory;
 import net.minecraft.world.item.BlockItem;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.GameType;
@@ -399,6 +400,13 @@ public class GestionnaireEvenementsSousMode3 {
 
         if (gestionnaire.estJoueurVivant(joueur.getUUID())) {
             if (GestionnaireBonbonsSousMode3.estObjetBonbon(pile)) {
+                // Inventaire plein : ne PAS traiter le ramassage. Sinon l'événement se
+                // re-déclenche à chaque tick (le bonbon reste au sol) → compteur gonflé et
+                // réapparition planifiée alors que l'original est toujours là (duplication).
+                if (!inventairePeutAccepter(joueur, pile)) {
+                    event.setCanceled(true);
+                    return;
+                }
                 gestionnaire.incrementerCompteurBonbons(joueur.getUUID(), pile.getCount());
 
                 // Compteur de zone + réapparition (si bonbon visible de la carte)
@@ -415,6 +423,23 @@ public class GestionnaireEvenementsSousMode3 {
             event.setCanceled(true);
             joueur.sendSystemMessage(Component.literal("§cVous ne pouvez pas ramasser d'objets pour le moment"));
         }
+    }
+
+    /** Vrai si l'inventaire du joueur peut accueillir (tout ou partie de) la pile :
+     *  un emplacement vide, ou une pile identique non pleine. */
+    private static boolean inventairePeutAccepter(ServerPlayer joueur, ItemStack pile) {
+        Inventory inv = joueur.getInventory();
+        if (inv.getFreeSlot() != -1) {
+            return true;
+        }
+        for (int i = 0; i < inv.getContainerSize(); i++) {
+            ItemStack s = inv.getItem(i);
+            if (!s.isEmpty() && s.getCount() < s.getMaxStackSize()
+                && ItemStack.isSameItemSameTags(s, pile)) {
+                return true;
+            }
+        }
+        return false;
     }
 
     @SubscribeEvent
@@ -518,6 +543,11 @@ public class GestionnaireEvenementsSousMode3 {
             // (le joueur s'était déconnecté avant la restauration de fin de partie)
             GestionnaireSousMode3.getInstance().reinitialiserSanteMaxJoueur(joueur);
 
+            // Restaurer l'inventaire d'avant-partie d'un joueur déconnecté pendant la partie
+            // et revenu après la fin : sinon il garderait les items de la carte SM3 et son
+            // inventaire d'origine (conservé à part) serait perdu.
+            GestionnaireSousMode3.getInstance().restaurerInventaireStockeSiPresent(joueur);
+
             // Effacer le HUD Sous-mode 3 pour les joueurs qui se connectent dans un autre mode
             com.example.mysubmod.reseau.GestionnaireReseau.INSTANCE.send(
                 net.minecraftforge.network.PacketDistributor.PLAYER.with(() -> joueur),
@@ -595,6 +625,10 @@ public class GestionnaireEvenementsSousMode3 {
             }
             if (!config.pluie && (overworld.isRaining() || overworld.isThundering())) {
                 overworld.setWeatherParameters(6000, 0, false, false);
+            } else if (config.pluie && !overworld.isRaining()) {
+                // Ré-imposer la pluie : la forcée au lancement expire après 30 min, or une
+                // partie peut durer jusqu'à 240 min — sinon le ciel redevient clair ensuite.
+                overworld.setWeatherParameters(0, 6000, true, false);
             }
         }
 
@@ -672,6 +706,11 @@ public class GestionnaireEvenementsSousMode3 {
                 && !GestionnaireBonbonsSousMode3.estObjetBonbon(entiteObjet.getItem())
                 && !gestionnaire.estObjetAuSolAutorise(entiteObjet)) {
                 event.setCanceled(true);
+            } else if (GestionnaireBonbonsSousMode3.estObjetBonbon(entiteObjet.getItem())) {
+                // Un bonbon visible qui (re)charge dans un chunk : le réassocier à sa cellule
+                // si le déchargement avait cassé le suivi (keyé par instance d'entité), sinon
+                // son ramassage ne décrémenterait plus le compteur ni ne réapparaîtrait.
+                GestionnaireBonbonsSousMode3.obtenirInstance().reenregistrerBonbonVisibleSiConnu(entiteObjet);
             }
             return;
         }

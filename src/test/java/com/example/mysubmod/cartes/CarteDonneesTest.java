@@ -726,6 +726,13 @@ class CarteDonneesTest {
         carte.blocs.get(CarteDonnees.cle(4, 4)).zone = 0; // parcelle 2 désormais vide
         assertTrue(carte.validerPourSauvegarde().stream()
             .noneMatch(e -> e.contains("même nom")));
+
+        // Un nom vide sur une parcelle NON vide est refusé (il deviendrait « Parcelle n »
+        // à la sérialisation et pourrait dupliquer un nom existant)
+        carte.blocs.get(CarteDonnees.cle(4, 4)).zone = 2; // reremplir la parcelle 2
+        a2.nom = "";
+        assertTrue(carte.validerPourSauvegarde().stream()
+            .anyMatch(e -> e.contains("sans nom")));
     }
 
     /** Une parcelle doit être d'un seul tenant (connexité 8 : côtés ET diagonales). */

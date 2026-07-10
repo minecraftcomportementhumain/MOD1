@@ -418,16 +418,9 @@ public class EcranEditeurCarte extends Screen {
             if (zoneActive >= 1 && zoneActive <= carte.zones.size()) {
                 com.example.mysubmod.cartes.ZoneCarte zone = carte.zones.get(zoneActive - 1);
                 if (!texte.equals(zone.nom)) {
-                    // Refuser un nom déjà porté par une AUTRE parcelle : deux parcelles
-                    // homonymes sont conceptuellement la même parcelle (le HUD et le spawn
-                    // en jeu les confondent). Le champ reprend l'ancien nom.
-                    if (!texte.isBlank() && nomParcelleUtilise(texte, zoneActive - 1)) {
-                        afficherToast("Une autre parcelle porte déjà le nom « " + texte + " »", true);
-                        majProgrammatiqueChampNom = true;
-                        champNomZone.setValue(zone.nom);
-                        majProgrammatiqueChampNom = false;
-                        return;
-                    }
+                    // Saisie libre (revert-à-la-frappe interdisait « Parcelle 12 » quand
+                    // « Parcelle 1 » existe). L'unicité et le non-vide sont imposés à la
+                    // sauvegarde ; le panneau marque ⚠ un nom en doublon ou vide.
                     zone.nom = texte;
                     zonesRegistreModifie = true;
                     surCarteModifiee();
@@ -676,22 +669,6 @@ public class EcranEditeurCarte extends Screen {
         mettreAJourPanneauZones();
     }
 
-    /** La cellule touche-t-elle (côté ou diagonale) une cellule de la parcelle {@code id} ? */
-    private boolean celluleToucheParcelle(int cx, int cz, int id) {
-        for (int dz = -1; dz <= 1; dz++) {
-            for (int dx = -1; dx <= 1; dx++) {
-                if (dx == 0 && dz == 0) {
-                    continue;
-                }
-                BlocCarte voisin = carte.obtenirBlocOuNull(cx + dx, cz + dz);
-                if (voisin != null && voisin.zone == id) {
-                    return true;
-                }
-            }
-        }
-        return false;
-    }
-
     /** Vrai si une parcelle AUTRE que {@code saufIndex} porte déjà ce nom (casse ignorée
      *  laissée volontairement sensible : le HUD affiche le nom tel quel). */
     private boolean nomParcelleUtilise(String nom, int saufIndex) {
@@ -812,8 +789,17 @@ public class EcranEditeurCarte extends Screen {
                 // ⚠N = parcelle coupée en N morceaux disjoints (sauvegarde refusée en l'état)
                 String fragmentee = id < morceauxZones.length && morceauxZones[id] > 1
                     ? " §c⚠" + morceauxZones[id] : "";
+                // ⚠ nom vide ou en doublon (refusé à la sauvegarde) — seulement si non vide de cellules
+                String nomInvalide = "";
+                if (compte > 0) {
+                    if (carte.zones.get(i).nom == null || carte.zones.get(i).nom.isBlank()) {
+                        nomInvalide = " §c⚠sans nom";
+                    } else if (nomParcelleUtilise(carte.zones.get(i).nom, i)) {
+                        nomInvalide = " §c⚠doublon";
+                    }
+                }
                 String texte = (id == zoneActive ? "§b➤ §f" : "§f") + nomZoneAffiche(id)
-                    + " §7(" + compte + ")" + fragmentee;
+                    + " §7(" + compte + ")" + fragmentee + nomInvalide;
                 guiGraphics.drawString(this.font, texte, x + 12, y, 0xFFFFFF);
                 lignesZonesInspecteur.add(new int[]{y - 1, y + 10, id});
                 y += 11;
@@ -1085,17 +1071,10 @@ public class EcranEditeurCarte extends Screen {
                     }
                     return;
                 }
-                // Une parcelle est d'un seul tenant : la cellule peinte doit toucher la
-                // parcelle active (côté ou diagonale), sauf sa toute première cellule.
-                // comptesZones (rafraîchi avec les stats, ≤ 500 ms de retard) sert de test
-                // de vacuité ; la validation à la sauvegarde reste l'autorité.
-                if (existant.zone != zoneActive && !celluleToucheParcelle(cx, cz, zoneActive)
-                    && zoneActive < comptesZones.length && comptesZones[zoneActive] > 0) {
-                    if (!silencieux) {
-                        afficherToast("Les blocs d'une parcelle doivent se toucher (côté ou diagonale)", true);
-                    }
-                    return;
-                }
+                // Peinture libre : la contrainte « un seul tenant » n'est PAS imposée
+                // cellule par cellule (le test throttlé et l'ordre du pinceau créaient des
+                // refus/fragmentations silencieux). Le panneau signale ⚠ une parcelle en
+                // morceaux et la sauvegarde la refuse — c'est l'autorité.
                 apres.zone = zoneActive;
             }
             case LIMITE -> {
@@ -1117,6 +1096,12 @@ public class EcranEditeurCarte extends Screen {
                 }
                 // Écrase tout le contenu sans confirmation
                 apres = new BlocCarte(TypeElementCarte.LIMITE, 0);
+                // Peindre la Limite sur le point d'apparition le retire (un bloc Limite ne
+                // peut pas accueillir l'apparition) — comme « Limite › Par défaut »
+                if (carte.apparitionX == cx && carte.apparitionZ == cz) {
+                    carte.apparitionX = -1;
+                    carte.apparitionZ = -1;
+                }
             }
             case BONBON_VISIBLE -> {
                 if (!existant.type.estElementDeBase()) {
@@ -1161,6 +1146,9 @@ public class EcranEditeurCarte extends Screen {
                         afficherToast("Le point d'apparition doit être à l'intérieur du périmètre Limite", true);
                     }
                     return;
+                }
+                if (carte.apparitionX == cx && carte.apparitionZ == cz) {
+                    return; // déjà le point d'apparition : ne pas empiler d'action no-op (● à tort)
                 }
                 ActionEditeur actionApparition = new ActionEditeur(carte);
                 actionApparition.apparitionApresX = cx;
@@ -1519,24 +1507,35 @@ public class EcranEditeurCarte extends Screen {
 
     /** Bouton « Limite › Supprimer » : retire tous les éléments Limite */
     private void supprimerLimite() {
-        ActionEditeur action = new ActionEditeur(carte);
-        List<long[]> aRetirer = new ArrayList<>();
+        List<Long> aRetirer = new ArrayList<>();
         for (Map.Entry<Long, BlocCarte> entree : carte.blocs.entrySet()) {
             if (entree.getValue().type == TypeElementCarte.LIMITE) {
-                aRetirer.add(new long[]{entree.getKey()});
+                aRetirer.add(entree.getKey());
             }
         }
         if (aRetirer.isEmpty()) {
             return;
         }
-        for (long[] cle : aRetirer) {
-            int cx = CarteDonnees.cleX(cle[0]);
-            int cz = CarteDonnees.cleZ(cle[0]);
-            BlocCarte avant = carte.obtenirBloc(cx, cz).copier();
-            action.ajouterChangement(cx, cz, avant, new BlocCarte());
+        // Même garde que les autres opérations de masse : au-delà du seuil, non annulable
+        boolean annulable = aRetirer.size() <= MAX_BLOCS_ACTION_ANNULABLE;
+        ActionEditeur action = annulable ? new ActionEditeur(carte) : null;
+        for (long cle : aRetirer) {
+            int cx = CarteDonnees.cleX(cle);
+            int cz = CarteDonnees.cleZ(cle);
+            if (action != null) {
+                action.ajouterChangement(cx, cz, carte.obtenirBloc(cx, cz).copier(), new BlocCarte());
+            }
             carte.definirBloc(cx, cz, null);
         }
-        enregistrerAction(action);
+        if (action != null) {
+            enregistrerAction(action);
+        } else {
+            pileAnnulation.clear();
+            pileRetablissement.clear();
+            reperePileSauvegarde = new ActionEditeur(carte);
+            surCarteModifiee();
+            afficherToast("Limite supprimée (" + aRetirer.size() + " blocs, trop volumineux pour l'annulation)", false);
+        }
     }
 
     /** Bouton « Limite › Par défaut » : Limite sur le contour de l'aire totale (écrase sans confirmation) */
@@ -1672,7 +1671,9 @@ public class EcranEditeurCarte extends Screen {
             int cx = bonbon[0];
             int cz = bonbon[1];
             boolean visible = bonbon[2] == 1;
-            int quantite = Math.max(0, bonbon[3]);
+            // Clamp AVANT l'addition : sinon deux lignes CSV à 2 milliards sur la même
+            // cellule débordent l'int en négatif avant le min.
+            int quantite = Math.min(CarteDonnees.QUANTITE_BONBON_MAX, Math.max(0, bonbon[3]));
             long cle = CarteDonnees.cle(cx, cz);
             BlocCarte bloc = nouveauxBlocs.computeIfAbsent(cle, k -> new BlocCarte(TypeElementCarte.ILE, 0));
             if (visible) {
@@ -1719,10 +1720,17 @@ public class EcranEditeurCarte extends Screen {
             surCarteModifiee();
             afficherToast("Import CSV appliqué (trop volumineux pour l'annulation)", false);
         }
+        // L'import réinitialise la carte : les parcelles de l'ancienne carte ne
+        // correspondent plus à rien (blocs remplacés) — sinon elles réservent leurs noms
+        // et s'affichent à 0 cellule, et zoneActive pointe une parcelle disparue.
+        carte.zones.clear();
+        zoneActive = 0;
+        zonesRegistreModifie = true;
         synchroniserChampsTaille();
         cellulesSelectionnees.clear();
         recalculerResumeSelection();
         mettreAJourPanneauDelais();
+        mettreAJourPanneauZones();
     }
 
     /**
@@ -2055,9 +2063,10 @@ public class EcranEditeurCarte extends Screen {
                 afficherMessage("Valeur refusée", "Délai bonbon visible : valeur non numérique");
                 return;
             }
-            if (delaiVisible < 1) {
+            if (delaiVisible < 1 || delaiVisible > CarteDonnees.DELAI_BONBON_MAX) {
                 afficherMessage("Valeur refusée",
-                    "Le délai minimum est de 1 seconde (0 est réservé au comportement par défaut)");
+                    "Le délai doit être entre 1 et " + CarteDonnees.DELAI_BONBON_MAX
+                        + " secondes (0 est réservé au comportement par défaut)");
                 return;
             }
         }
@@ -2068,9 +2077,10 @@ public class EcranEditeurCarte extends Screen {
                 afficherMessage("Valeur refusée", "Délai bonbon non-visible : valeur non numérique");
                 return;
             }
-            if (delaiNonVisible < 1) {
+            if (delaiNonVisible < 1 || delaiNonVisible > CarteDonnees.DELAI_BONBON_MAX) {
                 afficherMessage("Valeur refusée",
-                    "Le délai minimum est de 1 seconde (0 est réservé au comportement par défaut)");
+                    "Le délai doit être entre 1 et " + CarteDonnees.DELAI_BONBON_MAX
+                        + " secondes (0 est réservé au comportement par défaut)");
                 return;
             }
         }
@@ -2081,8 +2091,9 @@ public class EcranEditeurCarte extends Screen {
                 afficherMessage("Valeur refusée", "Apparition initiale visible : valeur non numérique");
                 return;
             }
-            if (apparitionInitiale < 0) {
-                afficherMessage("Valeur refusée", "L'apparition initiale doit être de 0 seconde ou plus");
+            if (apparitionInitiale < 0 || apparitionInitiale > CarteDonnees.DELAI_BONBON_MAX) {
+                afficherMessage("Valeur refusée", "L'apparition initiale doit être entre 0 et "
+                    + CarteDonnees.DELAI_BONBON_MAX + " secondes");
                 return;
             }
         }
@@ -2094,8 +2105,9 @@ public class EcranEditeurCarte extends Screen {
                 afficherMessage("Valeur refusée", "Apparition initiale non-visible : valeur non numérique");
                 return;
             }
-            if (apparitionInitialeNonVisible < 0) {
-                afficherMessage("Valeur refusée", "L'apparition initiale doit être de 0 seconde ou plus");
+            if (apparitionInitialeNonVisible < 0 || apparitionInitialeNonVisible > CarteDonnees.DELAI_BONBON_MAX) {
+                afficherMessage("Valeur refusée", "L'apparition initiale doit être entre 0 et "
+                    + CarteDonnees.DELAI_BONBON_MAX + " secondes");
                 return;
             }
         }
@@ -2224,7 +2236,9 @@ public class EcranEditeurCarte extends Screen {
      * Remplit les blocs sans élément de base à l'intérieur du périmètre Limite
      * avec de l'Eau ou de la Pierre (élévation 0). Action annulable, sauf pour les
      * remplissages géants où l'historique d'annulation est vidé à la place.
-     * Les blocs contenant un bonbon non-visible ne peuvent pas recevoir d'Eau.
+     * Un bloc porteur d'un bonbon non-visible reçoit toujours de la Pierre (l'Eau ne
+     * peut pas le porter) — sinon le remplissage le laisserait vide et la sauvegarde
+     * échouerait ensuite sans expliquer pourquoi.
      */
     private void remplirInterieurVide(TypeElementCarte type) {
         Set<Long> interieur = carte.calculerInterieurLimite();
@@ -2233,9 +2247,6 @@ public class EcranEditeurCarte extends Screen {
         for (long cle : interieur) {
             BlocCarte bloc = carte.blocs.get(cle);
             if (bloc != null && bloc.type.estElementDeBase()) {
-                continue;
-            }
-            if (type == TypeElementCarte.EAU && bloc != null && bloc.qteBonbonNonVisible > 0) {
                 continue;
             }
             aRemplir++;
@@ -2248,16 +2259,16 @@ public class EcranEditeurCarte extends Screen {
             if (bloc != null && bloc.type.estElementDeBase()) {
                 continue;
             }
-            if (type == TypeElementCarte.EAU && bloc != null && bloc.qteBonbonNonVisible > 0) {
-                continue; // L'eau ne peut pas contenir de bonbon non-visible
-            }
+            // L'eau ne peut pas porter un bonbon non-visible → Pierre pour ces blocs
+            TypeElementCarte typeCible = (type == TypeElementCarte.EAU
+                && bloc != null && bloc.qteBonbonNonVisible > 0) ? TypeElementCarte.PIERRE : type;
             int cx = CarteDonnees.cleX(cle);
             int cz = CarteDonnees.cleZ(cle);
             BlocCarte apres = (bloc != null ? bloc : new BlocCarte()).copier();
             if (action != null) {
                 action.ajouterChangement(cx, cz, apres.copier(), apres);
             }
-            apres.type = type;
+            apres.type = typeCible;
             apres.elevation = 0;
             carte.definirBloc(cx, cz, apres);
         }
@@ -2296,10 +2307,10 @@ public class EcranEditeurCarte extends Screen {
     }
 
     public void surSauvegardeReussie(String nomCarte) {
-        // Accusé périmé : une autre carte a été chargée pendant l'aller-retour réseau
-        // (le chargement met nomEnvoi à null). Ne pas appliquer les repères de l'ancien
-        // envoi à la carte fraîchement chargée.
-        if (nomEnvoi == null) {
+        // Accusé périmé : une autre carte a été chargée/renvoyée pendant l'aller-retour
+        // (chargement → nomEnvoi = null ; ou un autre envoi en vol → nomEnvoi ≠ nomCarte).
+        // Ne pas appliquer les repères d'un envoi qui n'est pas celui-ci.
+        if (nomEnvoi == null || !nomEnvoi.equals(nomCarte)) {
             afficherToast("La carte « " + nomCarte + " » a été sauvegardée", false);
             return;
         }
@@ -2872,17 +2883,19 @@ public class EcranEditeurCarte extends Screen {
         }
 
         // 4) Sélection mise en évidence — parcourir la plage VISIBLE (bornée par l'écran)
-        // et tester l'appartenance, plutôt que d'itérer toute la sélection à chaque image :
-        // une sélection peut compter des millions de cellules (rectangle sur toute la carte).
+        // et tester l'appartenance, plutôt que d'itérer toute la sélection à chaque image.
+        // En fort dézoom, échantillonner d'un pas (comme le terrain) : sans cela une
+        // sélection sur toute une carte 1800² = millions de contains par image.
         if (!cellulesSelectionnees.isEmpty()) {
-            for (int cx = cxMin; cx <= cxMax; cx++) {
-                for (int cz = czMin; cz <= czMax; cz++) {
+            for (int cx = cxMin; cx <= cxMax; cx += pasEchantillon) {
+                for (int cz = czMin; cz <= czMax; cz += pasEchantillon) {
                     if (!cellulesSelectionnees.contains(CarteDonnees.cle(cx, cz))) {
                         continue;
                     }
                     int x0 = (int) Math.floor(gauche + decalageX + cx * tailleCellule);
                     int y0 = (int) Math.floor(haut + decalageY + cz * tailleCellule);
-                    guiGraphics.fill(x0, y0, x0 + taille, y0 + taille, 0x6000FFFF);
+                    int cote = Math.max(taille, pasEchantillon > 1 ? 1 : taille);
+                    guiGraphics.fill(x0, y0, x0 + cote, y0 + cote, 0x6000FFFF);
                 }
             }
         }

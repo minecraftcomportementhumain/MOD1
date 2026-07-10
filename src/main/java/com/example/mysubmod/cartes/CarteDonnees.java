@@ -327,10 +327,20 @@ public class CarteDonnees {
         }
         java.util.Set<String> nomsVus = new java.util.HashSet<>();
         java.util.Set<String> nomsEnDouble = new java.util.LinkedHashSet<>();
+        int parcellesSansNom = 0;
         for (int i = 0; i < zones.size(); i++) {
-            if (parcelleUtilisee[i + 1] && !nomsVus.add(zones.get(i).nom)) {
-                nomsEnDouble.add(zones.get(i).nom);
+            if (!parcelleUtilisee[i + 1]) {
+                continue;
             }
+            String nom = zones.get(i).nom;
+            if (nom == null || nom.isBlank()) {
+                parcellesSansNom++; // un nom vide deviendrait « Parcelle n » et pourrait dupliquer
+            } else if (!nomsVus.add(nom)) {
+                nomsEnDouble.add(nom);
+            }
+        }
+        if (parcellesSansNom > 0) {
+            erreurs.add(parcellesSansNom + " parcelle(s) sans nom — chaque parcelle doit être nommée");
         }
         if (!nomsEnDouble.isEmpty()) {
             erreurs.add("Parcelles portant le même nom : " + String.join(", ", nomsEnDouble)
@@ -480,12 +490,26 @@ public class CarteDonnees {
                 }
             }
         }
+        java.util.Set<String> nomsUtilises = new java.util.HashSet<>();
+        for (ZoneCarte zone : zones) {
+            if (zone.nom != null && !zone.nom.isBlank()) {
+                nomsUtilises.add(zone.nom);
+            }
+        }
         for (int i = 0; i < nombreZones; i++) {
             ZoneCarte zone = zones.get(i);
             zone.plages = plagesParZone.get(i);
             zone.type = contientIle[i + 1] ? TypeElementCarte.ILE : TypeElementCarte.PIERRE;
+            // Nom vide → « Parcelle n » avec le plus petit n libre (jamais un doublon,
+            // sinon deux parcelles porteraient le même nom dans le fichier)
             if (zone.nom == null || zone.nom.isBlank()) {
-                zone.nom = "Parcelle " + (i + 1);
+                int n = i + 1;
+                String nom = "Parcelle " + n;
+                while (nomsUtilises.contains(nom)) {
+                    nom = "Parcelle " + (++n);
+                }
+                zone.nom = nom;
+                nomsUtilises.add(nom);
             }
         }
     }

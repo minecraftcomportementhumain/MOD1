@@ -76,7 +76,7 @@ public class EnregistreurDonneesSousMode3 {
             String ligneCsv = String.format(Locale.US, "%s,%s,%s,%.2f,%.2f,%.2f,%.1f,%s\n",
                 horodatage,
                 echapperCsv(joueur.getName().getString()),
-                typeEvenement,
+                echapperCsv(typeEvenement), // « RECONNECTE (-3 ticks, -1.5 PV) » contient une virgule
                 joueur.getX(),
                 joueur.getY(),
                 joueur.getZ(),

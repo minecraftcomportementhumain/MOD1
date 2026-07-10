@@ -239,6 +239,12 @@ public class GestionnaireCartes {
         libererEditeur(idAdmin);
     }
 
+    /** UUID de l'admin qui a l'éditeur ouvert (null si aucun) — sert à le garder actif
+     *  face au minuteur d'inactivité vanilla (l'édition ne bouge pas le personnage). */
+    public synchronized UUID obtenirEditeurVerrouilleePar() {
+        return editeurVerrouilleePar;
+    }
+
     // ==================== Transferts en morceaux ====================
 
     /**

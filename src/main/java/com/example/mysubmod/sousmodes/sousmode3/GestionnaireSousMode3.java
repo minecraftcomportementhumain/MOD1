@@ -776,9 +776,12 @@ public class GestionnaireSousMode3 {
     private void afficherClassement(MinecraftServer serveur) {
         List<EntreeClassement> entrees = new ArrayList<>();
 
+        // Ne PAS inclure joueursEnAttente : un joueur qui a réellement joué est dans
+        // joueursVivants (vivant) ou heureMortJoueur (mort). joueursEnAttente peut retenir
+        // des joueurs déconnectés avant le lancement, jamais entrés en jeu — ils figureraient
+        // au classement « mort, survie 0m0s » sans avoir joué.
         Set<UUID> participants = new HashSet<>();
         participants.addAll(joueursVivants);
-        participants.addAll(joueursEnAttente);
         participants.addAll(heureMortJoueur.keySet());
 
         for (UUID idJoueur : participants) {
@@ -1443,8 +1446,10 @@ public class GestionnaireSousMode3 {
             joueur.setHealth(joueur.getMaxHealth());
             joueur.getFoodData().setFoodLevel(config.faim ? 10 : 20);
             joueur.getFoodData().setSaturation(5.0f);
-            float nouvelleSante = Math.max(0.5f, joueur.getMaxHealth() - perteSante);
-            joueur.setHealth(nouvelleSante);
+            // Santé réelle (non clampée) pour décider de la mort ; clampée à 0,5 seulement
+            // pour setHealth d'un survivant (setHealth(0) est problématique)
+            float santeReelle = joueur.getMaxHealth() - perteSante;
+            joueur.setHealth(Math.max(0.5f, santeReelle));
 
             joueur.sendSystemMessage(Component.literal(String.format(
                 "§eVous avez été reconnecté. Le jeu a démarré pendant votre absence. Perte de santé: %.1f cœurs",
@@ -1452,7 +1457,7 @@ public class GestionnaireSousMode3 {
             if (enregistreurDonnees != null) {
                 enregistreurDonnees.enregistrerActionJoueur(joueur, "RECONNECTE (debut partie manque)");
             }
-            verifierMortApresReconnexion(joueur, nouvelleSante);
+            verifierMortApresReconnexion(joueur, santeReelle);
             return;
         }
 
@@ -1488,7 +1493,11 @@ public class GestionnaireSousMode3 {
                 viderInventaireJoueur(joueur);
             }
 
-            float santeActuelle = joueur.getHealth();
+            // Santé à la déconnexion, PAS joueur.getHealth() : à la connexion, la santé max
+            // a été réinitialisée à 20 vanilla puis la santé clampée à 20 — avec une vie max
+            // personnalisée (> 20), lire getHealth() ici perdrait des cœurs. appliquerSanteMax
+            // (ci-dessus) a rétabli l'attribut ; on repart de la santé réelle d'avant.
+            float santeActuelle = Math.min(infoDeconnexion.santeADeconnexion, joueur.getMaxHealth());
             if (deconnecteAvantDebutPartie) {
                 joueur.setHealth(joueur.getMaxHealth());
                 joueur.getFoodData().setFoodLevel(config.faim ? 10 : 20);
@@ -1496,8 +1505,8 @@ public class GestionnaireSousMode3 {
                 santeActuelle = joueur.getMaxHealth();
             }
 
-            float nouvelleSante = Math.max(0.5f, santeActuelle - perteSante);
-            joueur.setHealth(nouvelleSante);
+            float santeReelle = santeActuelle - perteSante;
+            joueur.setHealth(Math.max(0.5f, santeReelle));
             joueur.sendSystemMessage(Component.literal(String.format(
                 "§eVous avez été reconnecté. Perte de santé: %.1f cœurs (%d ticks de dégradation manqués)",
                 perteSante / 2.0f, ticksSanteManques)));
@@ -1510,15 +1519,17 @@ public class GestionnaireSousMode3 {
                     String.format("RECONNECTE (-%d ticks, -%.1f PV)", ticksSanteManques, perteSante)));
             }
 
-            verifierMortApresReconnexion(joueur, nouvelleSante);
+            verifierMortApresReconnexion(joueur, santeReelle);
         } else if (joueursSpectateurs.contains(nouveauUUID)) {
             teleporterVersSpectateur(joueur);
             joueur.sendSystemMessage(Component.literal("§eVous avez été reconnecté en mode spectateur"));
         }
     }
 
-    private void verifierMortApresReconnexion(ServerPlayer joueur, float nouvelleSante) {
-        if (nouvelleSante > 0.5f) {
+    private void verifierMortApresReconnexion(ServerPlayer joueur, float santeReelle) {
+        // Mort seulement si la santé réelle (non clampée) a atteint 0 ; un joueur à
+        // exactement 0,5 PV est vivant (le chemin en ligne ne tue qu'à ≤ 0).
+        if (santeReelle > 0f) {
             return;
         }
         deposerInventaireALaMort(joueur);
@@ -1573,7 +1584,21 @@ public class GestionnaireSousMode3 {
                 }
             }
         }
-        inventairesStockes.clear();
+        // NE PAS vider inventairesStockes : les entrées restantes sont celles de
+        // participants DÉCONNECTÉS ; les effacer perdrait leur inventaire d'avant-partie.
+        // Elles sont restaurées à leur reconnexion (restaurerInventaireStockeSiPresent).
+    }
+
+    /** Restaure l'inventaire d'avant-partie d'un joueur qui se reconnecte après la fin de
+     *  la partie (déconnecté pendant qu'elle se jouait). Sans effet s'il n'a rien de stocké. */
+    public void restaurerInventaireStockeSiPresent(ServerPlayer joueur) {
+        List<ItemStack> inventaire = inventairesStockes.remove(joueur.getUUID());
+        if (inventaire != null) {
+            joueur.getInventory().clearContent();
+            for (int i = 0; i < Math.min(inventaire.size(), joueur.getInventory().getContainerSize()); i++) {
+                joueur.getInventory().setItem(i, inventaire.get(i));
+            }
+        }
     }
 
     private void reinitialiserSanteTousJoueurs(MinecraftServer serveur) {
