@@ -612,7 +612,7 @@ public class GestionnaireSousMode3 {
                         // carte générée, les bonbons réapparus et les blocs posés par les
                         // joueurs) : un effacement synchrone d'une grande carte dépasserait
                         // les 60 s du watchdog. Seuls les chunks réellement écrits sont visés.
-                        EffaceurCarteSousMode3.demarrer(monde, generation);
+                        EffaceurCarteSousMode3.demarrer(monde, generation, carte != null ? carte.nom : "");
                         effacerPlateformeSpectateur(monde);
                     } else {
                         // Nettoyage de secours après un arrêt inattendu du serveur

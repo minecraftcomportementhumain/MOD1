@@ -52,10 +52,14 @@ public class RenduChargementCarte {
         g.fill(gaucheBarre - margeInterne, hautPanneau,
             gaucheBarre + largeurBarre + margeInterne, basPanneau, 0xC8000000);
 
-        // Titre
+        // Titre (« Génération de la carte », « Nettoyage de la carte »...)
+        String libelle = ChargementCarteClient.obtenirTitre();
+        if (libelle.isEmpty()) {
+            libelle = "Génération de la carte";
+        }
         Component titre = nomCarte.isEmpty()
-            ? Component.literal("§eGénération de la carte...")
-            : Component.literal("§eGénération de la carte §f« " + nomCarte + " §f»");
+            ? Component.literal("§e" + libelle + "...")
+            : Component.literal("§e" + libelle + " §f« " + nomCarte + " §f»");
         g.drawCenteredString(mc.font, titre, centreX, hautBarre - 18, 0xFFFFFF);
 
         // Piste de la barre

@@ -1,12 +1,17 @@
 package com.example.mysubmod.sousmodes.sousmode3;
 
 import com.example.mysubmod.MonSubMod;
+import com.example.mysubmod.cartes.reseau.PaquetProgressionChargement;
+import com.example.mysubmod.reseau.GestionnaireReseau;
+import com.example.mysubmod.utilitaire.UtilitaireFiltreJoueurs;
 import net.minecraft.server.level.ServerLevel;
+import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.server.level.TicketType;
 import net.minecraft.world.level.ChunkPos;
 import net.minecraftforge.event.TickEvent;
 import net.minecraftforge.eventbus.api.SubscribeEvent;
 import net.minecraftforge.fml.common.Mod;
+import net.minecraftforge.network.PacketDistributor;
 
 import java.util.ArrayList;
 import java.util.HashSet;
@@ -45,6 +50,8 @@ public class EffaceurCarteSousMode3 {
     private static long blocsEffaces;
     private static int chunksChargesReference = -1;
     private static int ticksEnPause;
+    private static String nomCarte = "";
+    private static int dernierPourcentEnvoye = -1;
     /** Tâches à exécuter une fois l'effacement terminé (ex. génération suivante) */
     private static final List<Runnable> tachesApres = new ArrayList<>();
 
@@ -73,13 +80,14 @@ public class EffaceurCarteSousMode3 {
      * génération (plus un anneau d'un chunk pour le feuillage débordant), avec le masque
      * du périmètre. Une génération annulée tôt n'a presque rien à effacer.
      */
-    public static void demarrer(ServerLevel monde, GenerateurCarteSousMode3.ResultatGeneration generation) {
+    public static void demarrer(ServerLevel monde, GenerateurCarteSousMode3.ResultatGeneration generation,
+                                String nom) {
         if (monde == null || generation == null) {
             return;
         }
         if (estEnCours()) {
             // Un effacement est déjà en cours : mettre celui-ci en file
-            tachesApres.add(() -> demarrer(monde, generation));
+            tachesApres.add(() -> demarrer(monde, generation, nom));
             return;
         }
         Set<ChunkPos> ensemble = new HashSet<>();
@@ -91,7 +99,7 @@ public class EffaceurCarteSousMode3 {
             }
         }
         demarrerInterne(monde, ordonner(ensemble), generation.cellulesInterieur,
-            generation.origineX, generation.origineZ);
+            generation.origineX, generation.origineZ, nom);
     }
 
     /** Nettoyage de secours : toute la bande de la région enregistrée (masque nul) */
@@ -110,7 +118,7 @@ public class EffaceurCarteSousMode3 {
                 ensemble.add(new ChunkPos(chunkX, chunkZ));
             }
         }
-        demarrerInterne(monde, ordonner(ensemble), null, 0, 0);
+        demarrerInterne(monde, ordonner(ensemble), null, 0, 0, "");
     }
 
     private static List<ChunkPos> ordonner(Set<ChunkPos> ensemble) {
@@ -120,7 +128,7 @@ public class EffaceurCarteSousMode3 {
     }
 
     private static void demarrerInterne(ServerLevel monde, List<ChunkPos> chunks,
-                                        Set<Long> interieur, int origX, int origZ) {
+                                        Set<Long> interieur, int origX, int origZ, String nom) {
         niveau = monde;
         cibles = chunks;
         index = 0;
@@ -131,9 +139,13 @@ public class EffaceurCarteSousMode3 {
         blocsEffaces = 0;
         chunksChargesReference = -1;
         ticksEnPause = 0;
+        nomCarte = nom != null ? nom : "";
+        dernierPourcentEnvoye = -1;
         MonSubMod.JOURNALISEUR.info("Effacement de la carte du Sous-mode 3 : {} chunks à balayer", chunks.size());
         if (chunks.isEmpty()) {
             terminer();
+        } else {
+            envoyerProgression(0, true);
         }
     }
 
@@ -174,6 +186,11 @@ public class EffaceurCarteSousMode3 {
                 index++;
                 chunksCeTick++;
             }
+            int pourcent = Math.round(100.0f * index / cibles.size());
+            if (pourcent != dernierPourcentEnvoye) {
+                envoyerProgression(pourcent, true);
+                dernierPourcentEnvoye = pourcent;
+            }
             if (index >= cibles.size()) {
                 terminer();
             }
@@ -207,6 +224,7 @@ public class EffaceurCarteSousMode3 {
         MonSubMod.JOURNALISEUR.info("Carte Sous-mode 3 effacée : {} blocs supprimés ({} chunks balayés)",
             blocsEffaces, index);
         GenerateurCarteSousMode3.supprimerFichierRegion();
+        envoyerProgression(100, false); // 100 % puis barre masquée
 
         niveau = null;
         cibles = null;
@@ -226,6 +244,18 @@ public class EffaceurCarteSousMode3 {
                     MonSubMod.JOURNALISEUR.error("Erreur dans une tâche après effacement de carte", e);
                 }
             }
+        }
+    }
+
+    /** Barre de progression du nettoyage, diffusée aux joueurs authentifiés */
+    private static void envoyerProgression(int pourcent, boolean actif) {
+        if (niveau == null) {
+            return;
+        }
+        PaquetProgressionChargement paquet = new PaquetProgressionChargement(
+            actif, pourcent, nomCarte, PaquetProgressionChargement.TITRE_NETTOYAGE);
+        for (ServerPlayer joueur : UtilitaireFiltreJoueurs.obtenirJoueursAuthentifies(niveau.getServer())) {
+            GestionnaireReseau.INSTANCE.send(PacketDistributor.PLAYER.with(() -> joueur), paquet);
         }
     }
 }
