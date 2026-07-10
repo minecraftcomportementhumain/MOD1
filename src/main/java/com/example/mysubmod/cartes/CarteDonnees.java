@@ -666,12 +666,18 @@ public class CarteDonnees {
         }
 
         if (racine.has("zones")) {
+            long totalCellules = 0;
             for (JsonElement element : racine.getAsJsonArray("zones")) {
                 JsonObject objetZone = element.getAsJsonObject();
                 ZoneCarte zone = new ZoneCarte();
                 zone.nom = objetZone.get("nom").getAsString();
                 zone.type = TypeElementCarte.valueOf(objetZone.get("type").getAsString());
                 for (JsonElement elementCellule : objetZone.getAsJsonArray("cellules")) {
+                    totalCellules++;
+                    if (totalCellules > BLOCS_MAX) {
+                        // Même garde anti-DoS que les zones v2
+                        throw new IllegalArgumentException("Trop de cellules de zones");
+                    }
                     JsonArray paire = elementCellule.getAsJsonArray();
                     zone.cellules.add(new int[]{paire.get(0).getAsInt(), paire.get(1).getAsInt()});
                 }
@@ -826,8 +832,9 @@ public class CarteDonnees {
                 int z = Integer.parseInt(plages.substring(i, virgule1));
                 int x0 = Integer.parseInt(plages.substring(virgule1 + 1, virgule2));
                 int longueur = Integer.parseInt(plages.substring(virgule2 + 1, fin));
+                // Comparaison en long : « x0 + longueur » en int serait contournable par débordement
                 if (longueur < 1 || z < 0 || z >= carte.hauteur
-                    || x0 < 0 || x0 + longueur > carte.largeur) {
+                    || x0 < 0 || (long) x0 + longueur > carte.largeur) {
                     throw new IllegalArgumentException("Plage de zone hors bornes");
                 }
                 totalCellules += longueur;

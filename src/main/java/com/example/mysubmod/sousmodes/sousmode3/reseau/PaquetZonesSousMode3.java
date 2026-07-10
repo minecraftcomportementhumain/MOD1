@@ -1,6 +1,8 @@
 package com.example.mysubmod.sousmodes.sousmode3.reseau;
 
+import com.example.mysubmod.cartes.CarteDonnees;
 import com.example.mysubmod.sousmodes.sousmode3.GestionnaireBonbonsSousMode3;
+import io.netty.handler.codec.DecoderException;
 import net.minecraft.network.FriendlyByteBuf;
 import net.minecraftforge.network.NetworkEvent;
 
@@ -15,11 +17,11 @@ import java.util.function.Supplier;
  * Version « complète » (avec cellules) à l'initialisation / reconnexion ;
  * version « compteurs » (sans cellules) pour les mises à jour en temps réel.
  *
- * Les cellules voyagent en plages « z, x0, longueur » et la liste complète est
- * découpée en plusieurs parties si nécessaire : sur les grandes cartes (jusqu'à
- * 2500×2500), une zone peut compter des millions de cellules, ce qui dépasserait
- * la taille maximale d'une trame réseau (~2 Mio) si chaque cellule était écrite
- * individuellement dans un paquet unique.
+ * <p>Les cellules voyagent et restent stockées en plages triées « z, x0, longueur »
+ * (jamais développées cellule par cellule : une zone d'une carte 2500×2500 peut en
+ * compter des millions), et l'appartenance se teste par recherche binaire. La liste
+ * complète est découpée en plusieurs parties sous la limite de trame (~2 Mio) ; une
+ * zone géante est scindée en segments marqués « suite », refusionnés à la réception.</p>
  */
 public class PaquetZonesSousMode3 {
 
@@ -36,19 +38,20 @@ public class PaquetZonesSousMode3 {
         public final int bonbonsNonVisibles;
         public final int bonbonsBleus;   // Détail par type (Sous-mode 2 sur carte)
         public final int bonbonsRouges;
-        public final List<int[]> cellules;
-        /** Représentation réseau {z, x0, longueur} — présente côté émetteur seulement */
-        private final List<int[]> plages;
+        /** Plages de cellules triées par (z, x0) : {z, x0, longueur} */
+        public final List<int[]> plages;
+        /** Segment de continuation d'une zone scindée (fusionné à la réception) */
+        public final boolean suite;
 
         public ZoneReseau(String nom, double centreX, double centreZ, int bonbonsVisibles,
                           int bonbonsNonVisibles, int bonbonsBleus, int bonbonsRouges, List<int[]> cellules) {
             this(nom, centreX, centreZ, bonbonsVisibles, bonbonsNonVisibles, bonbonsBleus, bonbonsRouges,
-                cellules, calculerPlages(cellules));
+                calculerPlages(cellules), false);
         }
 
         private ZoneReseau(String nom, double centreX, double centreZ, int bonbonsVisibles,
                            int bonbonsNonVisibles, int bonbonsBleus, int bonbonsRouges,
-                           List<int[]> cellules, List<int[]> plages) {
+                           List<int[]> plages, boolean suite) {
             this.nom = nom;
             this.centreX = centreX;
             this.centreZ = centreZ;
@@ -56,14 +59,23 @@ public class PaquetZonesSousMode3 {
             this.bonbonsNonVisibles = bonbonsNonVisibles;
             this.bonbonsBleus = bonbonsBleus;
             this.bonbonsRouges = bonbonsRouges;
-            this.cellules = cellules;
             this.plages = plages;
+            this.suite = suite;
         }
 
         /** Copie de la zone limitée à une tranche de ses plages (scission des zones géantes) */
-        private ZoneReseau segment(int debutPlage, int finPlage) {
+        private ZoneReseau segment(int debutPlage, int finPlage, boolean estSuite) {
             return new ZoneReseau(nom, centreX, centreZ, bonbonsVisibles, bonbonsNonVisibles,
-                bonbonsBleus, bonbonsRouges, List.of(), new ArrayList<>(plages.subList(debutPlage, finPlage)));
+                bonbonsBleus, bonbonsRouges, new ArrayList<>(plages.subList(debutPlage, finPlage)), estSuite);
+        }
+
+        /** Fusion d'un segment de continuation (les plages restent triées : tranches contiguës) */
+        private ZoneReseau fusionner(ZoneReseau suiteZone) {
+            List<int[]> fusionnees = new ArrayList<>(plages.size() + suiteZone.plages.size());
+            fusionnees.addAll(plages);
+            fusionnees.addAll(suiteZone.plages);
+            return new ZoneReseau(nom, centreX, centreZ, bonbonsVisibles, bonbonsNonVisibles,
+                bonbonsBleus, bonbonsRouges, fusionnees, suite);
         }
 
         private int coutOctets() {
@@ -71,7 +83,27 @@ public class PaquetZonesSousMode3 {
         }
     }
 
-    /** Cellules (coordonnées monde) -> plages « z, x0, longueur » (tri par rangée puis fusion) */
+    /** La cellule (cx, cz) appartient-elle à ces plages triées ? Recherche binaire, O(log n). */
+    public static boolean plagesContiennent(List<int[]> plages, int cx, int cz) {
+        int bas = 0;
+        int haut = plages.size() - 1;
+        while (bas <= haut) {
+            int milieu = (bas + haut) >>> 1;
+            int[] plage = plages.get(milieu);
+            if (plage[0] < cz || (plage[0] == cz && plage[1] <= cx)) {
+                bas = milieu + 1;
+            } else {
+                haut = milieu - 1;
+            }
+        }
+        if (haut < 0) {
+            return false;
+        }
+        int[] plage = plages.get(haut);
+        return plage[0] == cz && cx < plage[1] + plage[2];
+    }
+
+    /** Cellules (coordonnées monde) -> plages triées « z, x0, longueur » */
     private static List<int[]> calculerPlages(List<int[]> cellules) {
         long[] indices = new long[cellules.size()];
         int n = 0;
@@ -119,7 +151,7 @@ public class PaquetZonesSousMode3 {
     /**
      * Liste complète des zones (avec cellules), découpée en autant de paquets que
      * nécessaire pour rester sous la limite de trame. Les zones géantes sont scindées
-     * en segments de même nom, refusionnés à la réception.
+     * en segments marqués « suite », refusionnés à la réception.
      */
     public static List<PaquetZonesSousMode3> completEnParties(
             List<GestionnaireBonbonsSousMode3.DonneesZone> zones, boolean reinitialiser) {
@@ -134,7 +166,7 @@ public class PaquetZonesSousMode3 {
             } else {
                 for (int debut = 0; debut < zoneReseau.plages.size(); debut += maxPlagesParSegment) {
                     segments.add(zoneReseau.segment(debut,
-                        Math.min(zoneReseau.plages.size(), debut + maxPlagesParSegment)));
+                        Math.min(zoneReseau.plages.size(), debut + maxPlagesParSegment), debut > 0));
                 }
             }
         }
@@ -186,6 +218,7 @@ public class PaquetZonesSousMode3 {
         tampon.writeInt(paquet.zones.size());
         for (ZoneReseau zone : paquet.zones) {
             tampon.writeUtf(zone.nom);
+            tampon.writeBoolean(zone.suite);
             tampon.writeDouble(zone.centreX);
             tampon.writeDouble(zone.centreZ);
             tampon.writeInt(zone.bonbonsVisibles);
@@ -208,8 +241,10 @@ public class PaquetZonesSousMode3 {
         int totalParties = tampon.readInt();
         int nombreZones = tampon.readInt();
         List<ZoneReseau> zones = new ArrayList<>();
+        long totalCellules = 0;
         for (int i = 0; i < nombreZones; i++) {
             String nom = tampon.readUtf();
+            boolean suite = tampon.readBoolean();
             double centreX = tampon.readDouble();
             double centreZ = tampon.readDouble();
             int visibles = tampon.readInt();
@@ -217,17 +252,27 @@ public class PaquetZonesSousMode3 {
             int bleus = tampon.readInt();
             int rouges = tampon.readInt();
             int nombrePlages = tampon.readInt();
-            List<int[]> cellules = new ArrayList<>();
+            // Bornes : chaque plage occupe 12 octets dans la trame, et le total de
+            // cellules décrites ne peut pas dépasser l'aire maximale d'une carte
+            if (nombrePlages < 0 || (long) nombrePlages * COUT_OCTETS_PLAGE > tampon.readableBytes()) {
+                throw new DecoderException("Nombre de plages de zone invalide: " + nombrePlages);
+            }
+            List<int[]> plages = new ArrayList<>(nombrePlages);
             for (int j = 0; j < nombrePlages; j++) {
                 int z = tampon.readInt();
                 int x0 = tampon.readInt();
                 int longueur = tampon.readInt();
-                for (int k = 0; k < longueur; k++) {
-                    cellules.add(new int[]{x0 + k, z});
+                if (longueur < 1 || longueur > CarteDonnees.BLOCS_MAX) {
+                    throw new DecoderException("Longueur de plage de zone invalide: " + longueur);
                 }
+                totalCellules += longueur;
+                if (totalCellules > CarteDonnees.BLOCS_MAX) {
+                    throw new DecoderException("Trop de cellules de zones dans le paquet");
+                }
+                plages.add(new int[]{z, x0, longueur});
             }
             zones.add(new ZoneReseau(nom, centreX, centreZ, visibles, nonVisibles, bleus, rouges,
-                cellules, List.of()));
+                plages, suite));
         }
         return new PaquetZonesSousMode3(zones, complet, reinitialiser, indexPartie, totalParties);
     }
@@ -247,15 +292,10 @@ public class PaquetZonesSousMode3 {
                 partiesEnCours.clear();
             }
             for (ZoneReseau zone : paquet.zones) {
-                // Refusionner les segments d'une zone scindée (même nom, envoyés consécutivement)
-                if (!partiesEnCours.isEmpty()
-                    && partiesEnCours.get(partiesEnCours.size() - 1).nom.equals(zone.nom)) {
+                // Refusionner uniquement les segments explicitement marqués « suite »
+                if (zone.suite && !partiesEnCours.isEmpty()) {
                     ZoneReseau precedent = partiesEnCours.remove(partiesEnCours.size() - 1);
-                    List<int[]> cellulesFusionnees = new ArrayList<>(precedent.cellules);
-                    cellulesFusionnees.addAll(zone.cellules);
-                    partiesEnCours.add(new ZoneReseau(precedent.nom, precedent.centreX, precedent.centreZ,
-                        precedent.bonbonsVisibles, precedent.bonbonsNonVisibles,
-                        precedent.bonbonsBleus, precedent.bonbonsRouges, cellulesFusionnees, List.of()));
+                    partiesEnCours.add(precedent.fusionner(zone));
                 } else {
                     partiesEnCours.add(zone);
                 }

@@ -13,8 +13,12 @@ import java.util.zip.GZIPOutputStream;
  */
 public final class UtilitaireCompressionCarte {
 
-    /** Taille décompressée maximale acceptée (borne anti-bombe de décompression). */
-    public static final int TAILLE_DECOMPRESSEE_MAX = 96 * 1024 * 1024;
+    /**
+     * Taille décompressée maximale acceptée (borne anti-bombe de décompression).
+     * Doit rester supérieure au JSON v2 maximal d'une carte légale : à 2500×2500,
+     * BLOCS_MAX entrées de bonbons représentent ~190 Mo — 256 Mio laisse de la marge.
+     */
+    public static final int TAILLE_DECOMPRESSEE_MAX = 256 * 1024 * 1024;
 
     /** Taille d'un morceau réseau (sous la limite des paquets client→serveur, ~32 Ko). */
     public static final int TAILLE_MORCEAU = 30000;

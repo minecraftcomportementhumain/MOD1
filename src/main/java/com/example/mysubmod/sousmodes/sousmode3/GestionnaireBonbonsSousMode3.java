@@ -650,8 +650,13 @@ public class GestionnaireBonbonsSousMode3 {
         if (serveur == null) {
             return;
         }
+        // Construire les parties une seule fois (l'empaquetage en plages d'une grande
+        // carte a un coût réel) : les mêmes paquets sont envoyés à chaque joueur
+        List<PaquetZonesSousMode3> parties = PaquetZonesSousMode3.completEnParties(zones, reinitialiser);
         for (ServerPlayer joueur : UtilitaireFiltreJoueurs.obtenirJoueursAuthentifies(serveur)) {
-            envoyerZonesCompletesAJoueur(joueur, reinitialiser);
+            for (PaquetZonesSousMode3 partie : parties) {
+                GestionnaireReseau.INSTANCE.send(PacketDistributor.PLAYER.with(() -> joueur), partie);
+            }
         }
     }
 

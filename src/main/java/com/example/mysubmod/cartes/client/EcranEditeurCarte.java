@@ -166,6 +166,9 @@ public class EcranEditeurCarte extends Screen {
     private boolean statLimiteFermee = false;
     private int statBonbonsVisibles = 0;
     private int statBonbonsNonVisibles = 0;
+    // Cellules Limite (peu nombreuses) : redessinées explicitement en fort dézoom,
+    // où l'échantillonnage du rendu pourrait sauter un mur d'une cellule d'épaisseur
+    private long[] cellulesLimiteCache = new long[0];
 
     // Fenêtre modale interne (messages / confirmations / choix)
     private boolean modalActif = false;
@@ -2060,6 +2063,23 @@ public class EcranEditeurCarte extends Screen {
             }
         }
 
+        // 1b) En fort dézoom, l'échantillonnage peut sauter un mur Limite d'une cellule
+        //     d'épaisseur : les cellules Limite (liste en cache, ~périmètre) sont
+        //     redessinées explicitement pour que la boucle reste toujours visible
+        if (pasEchantillon > 1) {
+            rafraichirStatsCarte(); // rafraîchit aussi le cache des cellules Limite
+            for (long cle : cellulesLimiteCache) {
+                int cx = CarteDonnees.cleX(cle);
+                int cz = CarteDonnees.cleZ(cle);
+                if (cx < cxMin || cx > cxMax || cz < czMin || cz > czMax) {
+                    continue;
+                }
+                int x0 = (int) Math.floor(gauche + decalageX + cx * tailleCellule);
+                int y0 = (int) Math.floor(haut + decalageY + cz * tailleCellule);
+                guiGraphics.fill(x0, y0, x0 + taille, y0 + taille, 0xFFC83232);
+            }
+        }
+
         // 2) Lignes de la grille (lignes complètes, seulement à un zoom suffisant)
         if (taille >= 4) {
             int yGrille0 = (int) Math.floor(haut + decalageY + czMin * tailleCellule);
@@ -2221,12 +2241,21 @@ public class EcranEditeurCarte extends Screen {
         statLimiteFermee = carte.limiteEstBoucleFermeeValide();
         int visibles = 0;
         int nonVisibles = 0;
-        for (BlocCarte bloc : carte.blocs.values()) {
+        List<Long> limites = new ArrayList<>();
+        for (Map.Entry<Long, BlocCarte> entree : carte.blocs.entrySet()) {
+            BlocCarte bloc = entree.getValue();
             visibles += bloc.qteBonbonVisible;
             nonVisibles += bloc.qteBonbonNonVisible;
+            if (bloc.type == TypeElementCarte.LIMITE) {
+                limites.add(entree.getKey());
+            }
         }
         statBonbonsVisibles = visibles;
         statBonbonsNonVisibles = nonVisibles;
+        cellulesLimiteCache = new long[limites.size()];
+        for (int i = 0; i < limites.size(); i++) {
+            cellulesLimiteCache[i] = limites.get(i);
+        }
     }
 
     /**

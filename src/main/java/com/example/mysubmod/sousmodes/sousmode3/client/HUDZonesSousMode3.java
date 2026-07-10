@@ -29,7 +29,9 @@ public class HUDZonesSousMode3 {
         public int bonbonsNonVisibles;
         public int bonbonsBleus;   // Détail par type (Sous-mode 2 sur carte)
         public int bonbonsRouges;
-        public List<int[]> cellules = new ArrayList<>();
+        /** Plages de cellules triées « z, x0, longueur » (jamais développées : une zone
+         *  d'une grande carte peut compter des millions de cellules) */
+        public List<int[]> plages = new ArrayList<>();
 
         ZoneClient(String nom, double centreX, double centreZ) {
             this.nom = nom;
@@ -38,14 +40,7 @@ public class HUDZonesSousMode3 {
         }
 
         public boolean contientPosition(double x, double z) {
-            int cx = (int) Math.floor(x);
-            int cz = (int) Math.floor(z);
-            for (int[] cellule : cellules) {
-                if (cellule[0] == cx && cellule[1] == cz) {
-                    return true;
-                }
-            }
-            return false;
+            return PaquetZonesSousMode3.plagesContiennent(plages, (int) Math.floor(x), (int) Math.floor(z));
         }
     }
 
@@ -67,7 +62,7 @@ public class HUDZonesSousMode3 {
                 zone.bonbonsNonVisibles = zoneReseau.bonbonsNonVisibles;
                 zone.bonbonsBleus = zoneReseau.bonbonsBleus;
                 zone.bonbonsRouges = zoneReseau.bonbonsRouges;
-                zone.cellules = zoneReseau.cellules;
+                zone.plages = zoneReseau.plages;
                 ZONES.add(zone);
             }
             actif = !ZONES.isEmpty();

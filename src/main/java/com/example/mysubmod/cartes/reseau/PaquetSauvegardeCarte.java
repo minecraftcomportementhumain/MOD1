@@ -92,6 +92,13 @@ public class PaquetSauvegardeCarte {
                     GestionnaireReseau.INSTANCE.send(PacketDistributor.PLAYER.with(() -> joueur),
                         new PaquetResultatSauvegardeCarte(PaquetResultatSauvegardeCarte.CODE_ERREUR, erreur));
                 }
+            } catch (IllegalArgumentException e) {
+                // Messages de validation en français (bornes, plages, décompression) :
+                // les remonter tels quels pour que l'admin comprenne le refus
+                MonSubMod.JOURNALISEUR.warn("Sauvegarde de carte refusée : {}", e.getMessage());
+                GestionnaireReseau.INSTANCE.send(PacketDistributor.PLAYER.with(() -> joueur),
+                    new PaquetResultatSauvegardeCarte(PaquetResultatSauvegardeCarte.CODE_ERREUR,
+                        e.getMessage() != null ? e.getMessage() : "Données de carte invalides"));
             } catch (Exception e) {
                 MonSubMod.JOURNALISEUR.error("Erreur lors de la réception d'une sauvegarde de carte", e);
                 GestionnaireReseau.INSTANCE.send(PacketDistributor.PLAYER.with(() -> joueur),
