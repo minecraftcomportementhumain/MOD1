@@ -145,8 +145,11 @@ public class GestionnaireCartes {
                 }
             }
 
-            // Zones nommées automatiquement à la sauvegarde
-            carte.recalculerZones();
+            // Zones : conservées telles quelles si dessinées manuellement dans l'éditeur
+            // (versJson les redérive des blocs), sinon nommées automatiquement
+            if (!carte.zonesManuelles) {
+                carte.recalculerZones();
+            }
 
             Path fichier = UtilitaireCheminSecurise.resoudreConfine(Paths.get(REPERTOIRE_CARTES), carte.nom + ".json");
             if (fichier == null) {

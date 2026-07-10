@@ -17,6 +17,10 @@ public class BlocCarte {
     public TypeBonbonCarte typeBonbonNonVisible = TypeBonbonCarte.STANDARD; // Standard / Bleu / Rouge (spécialisation Sous-mode 3)
     public int delaiApparitionInitiale = 0; // secondes après le début de partie, 0 = dès le début (bonbon visible)
     public int delaiApparitionInitialeNonVisible = 0; // idem pour le bloc bonbon non-visible
+    /** Zone manuelle du bloc : 0 = aucune, sinon 1 + index dans {@code CarteDonnees.zones}.
+     *  Rempli à l'édition et au décodage (cartes à zonage manuel) ; le fichier stocke
+     *  les zones en plages, pas ce champ. */
+    public int zone = 0;
 
     public BlocCarte() {
     }
@@ -38,6 +42,7 @@ public class BlocCarte {
         copie.typeBonbonNonVisible = this.typeBonbonNonVisible;
         copie.delaiApparitionInitiale = this.delaiApparitionInitiale;
         copie.delaiApparitionInitialeNonVisible = this.delaiApparitionInitialeNonVisible;
+        copie.zone = this.zone;
         return copie;
     }
 
@@ -56,6 +61,7 @@ public class BlocCarte {
             && typeBonbonVisible == autre.typeBonbonVisible
             && typeBonbonNonVisible == autre.typeBonbonNonVisible
             && delaiApparitionInitiale == autre.delaiApparitionInitiale
-            && delaiApparitionInitialeNonVisible == autre.delaiApparitionInitialeNonVisible;
+            && delaiApparitionInitialeNonVisible == autre.delaiApparitionInitialeNonVisible
+            && zone == autre.zone;
     }
 }

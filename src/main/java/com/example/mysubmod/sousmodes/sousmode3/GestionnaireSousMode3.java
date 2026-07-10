@@ -1051,8 +1051,10 @@ public class GestionnaireSousMode3 {
     }
 
     /**
-     * Point de départ d'une zone : surface de la cellule la plus proche du centre géométrique
-     * (même règle que les parties sur carte des Sous-modes 1 et 2). Null si zone inconnue.
+     * Point de départ d'une zone : surface de la cellule de TERRE (Île/Pierre) la plus
+     * proche du centre géométrique (même règle que les parties sur carte des Sous-modes
+     * 1 et 2). Une zone manuelle peut inclure de l'Eau : ces cellules ne servent de
+     * repli que si la zone n'a aucune terre. Null si zone inconnue.
      */
     private BlockPos calculerSpawnZone(String nomZone) {
         if (carte == null || generation == null || nomZone == null) {
@@ -1066,6 +1068,9 @@ public class GestionnaireSousMode3 {
             int meilleurX = 0;
             int meilleurZ = 0;
             double meilleureDistance = Double.MAX_VALUE;
+            int meilleurTerreX = 0;
+            int meilleurTerreZ = 0;
+            double meilleureDistanceTerre = Double.MAX_VALUE;
             // Parcours des plages en ordre de balayage : même départage des égalités
             // que l'ancienne liste de cellules triée
             for (int[] plage : zone.plages) {
@@ -1080,10 +1085,23 @@ public class GestionnaireSousMode3 {
                         meilleurX = x;
                         meilleurZ = z;
                     }
+                    if (distance < meilleureDistanceTerre) {
+                        BlocCarte blocIci = carte.obtenirBlocOuNull(x, z);
+                        if (blocIci != null && (blocIci.type == TypeElementCarte.ILE
+                            || blocIci.type == TypeElementCarte.PIERRE)) {
+                            meilleureDistanceTerre = distance;
+                            meilleurTerreX = x;
+                            meilleurTerreZ = z;
+                        }
+                    }
                 }
             }
             if (meilleureDistance == Double.MAX_VALUE) {
                 return null;
+            }
+            if (meilleureDistanceTerre != Double.MAX_VALUE) {
+                meilleurX = meilleurTerreX;
+                meilleurZ = meilleurTerreZ;
             }
             BlocCarte bloc = carte.obtenirBloc(meilleurX, meilleurZ);
             int surfaceY = GenerateurCarteSousMode3.NIVEAU_MER + Math.max(0, bloc.elevation);

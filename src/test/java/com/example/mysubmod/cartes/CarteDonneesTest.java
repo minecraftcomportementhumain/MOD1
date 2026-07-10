@@ -591,4 +591,78 @@ class CarteDonneesTest {
             CarteDonnees.cle(5, 5), CarteDonnees.cle(3, 6)), ensembleDepuisPlages(plages));
         assertFalse(ZoneCarte.plagesContiennent(plages, 6, 5));
     }
+
+    // ==================== Zones manuelles ====================
+
+    @Test
+    void zonesManuellesRoundTrip() {
+        CarteDonnees carte = new CarteDonnees();
+        carte.nom = "zones_manuelles";
+        carte.largeur = 8;
+        carte.hauteur = 6;
+        for (int x = 0; x < 8; x++) {
+            for (int z = 0; z < 6; z++) {
+                TypeElementCarte type = x < 4 ? TypeElementCarte.ILE
+                    : (x < 6 ? TypeElementCarte.EAU : TypeElementCarte.PIERRE);
+                carte.blocs.put(CarteDonnees.cle(x, z), new BlocCarte(type, 0));
+            }
+        }
+
+        ZoneCarte nord = new ZoneCarte();
+        nord.nom = "Plage nord";
+        nord.type = TypeElementCarte.PIERRE; // volontairement faux : redérivé des cellules à la sauvegarde
+        carte.zones.add(nord);
+        ZoneCarte recif = new ZoneCarte();
+        recif.nom = "Récif";
+        recif.type = TypeElementCarte.ILE; // idem : zone d'eau seulement -> PIERRE attendu
+        carte.zones.add(recif);
+        ZoneCarte jamaisPeinte = new ZoneCarte();
+        jamaisPeinte.nom = "Jamais peinte";
+        jamaisPeinte.type = TypeElementCarte.ILE;
+        carte.zones.add(jamaisPeinte);
+
+        // « Plage nord » : deux rangées de terre ; « Récif » : de l'eau seulement
+        for (int x = 1; x <= 3; x++) {
+            carte.blocs.get(CarteDonnees.cle(x, 1)).zone = 1;
+            carte.blocs.get(CarteDonnees.cle(x, 2)).zone = 1;
+        }
+        carte.blocs.get(CarteDonnees.cle(4, 3)).zone = 2;
+        carte.blocs.get(CarteDonnees.cle(5, 3)).zone = 2;
+        carte.zonesManuelles = true;
+
+        CarteDonnees relue = CarteDonnees.depuisJson(carte.versJson());
+
+        assertTrue(relue.zonesManuelles);
+        // La zone jamais peinte n'est pas sérialisée
+        assertEquals(2, relue.zones.size());
+        assertEquals("Plage nord", relue.zones.get(0).nom);
+        assertEquals("Récif", relue.zones.get(1).nom);
+        // Types redérivés des cellules : contient de la terre -> ILE, eau seule -> PIERRE
+        assertEquals(TypeElementCarte.ILE, relue.zones.get(0).type);
+        assertEquals(TypeElementCarte.PIERRE, relue.zones.get(1).type);
+        // Plages exactes
+        assertEquals(Set.of(CarteDonnees.cle(1, 1), CarteDonnees.cle(2, 1), CarteDonnees.cle(3, 1),
+                CarteDonnees.cle(1, 2), CarteDonnees.cle(2, 2), CarteDonnees.cle(3, 2)),
+            ensembleDepuisPlages(relue.zones.get(0).plages));
+        // bloc.zone réassignés au décodage (l'éditeur peut reprendre le zonage tel quel)
+        assertEquals(1, relue.blocs.get(CarteDonnees.cle(2, 2)).zone);
+        assertEquals(2, relue.blocs.get(CarteDonnees.cle(5, 3)).zone);
+        assertEquals(0, relue.blocs.get(CarteDonnees.cle(6, 4)).zone);
+
+        // Second aller-retour : état stable
+        CarteDonnees relue2 = CarteDonnees.depuisJson(relue.versJson());
+        assertTrue(relue2.zonesManuelles);
+        assertEquals(2, relue2.zones.size());
+        assertEquals(ensembleDepuisPlages(relue.zones.get(0).plages),
+            ensembleDepuisPlages(relue2.zones.get(0).plages));
+    }
+
+    @Test
+    void carteSansZonesManuellesResteAutomatique() {
+        CarteDonnees carte = carteVariee(24, 18, 4242L);
+        carte.recalculerZones();
+        CarteDonnees relue = CarteDonnees.depuisJson(carte.versJson());
+        assertFalse(relue.zonesManuelles);
+        assertEquals(carte.zones.size(), relue.zones.size());
+    }
 }

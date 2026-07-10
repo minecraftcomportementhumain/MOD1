@@ -251,7 +251,7 @@ public class EcranGuide extends Screen {
 
         titre(l, "Créer une carte (éditeur)");
         para(l, "Vous dessinez sur une grille. Palette : §eEau, Île, Pierre, Limite§r (mur, en boucle fermée), "
-            + "§eBonbon visible, Bonbon non-visible, Apparition§r.");
+            + "§eZone§r, §eBonbon visible, Bonbon non-visible, Apparition§r.");
         puce(l, "§eClic gauche§r peint / ajoute · §eClic droit§r retire / décrémente.");
         puce(l, "§ePinceau§r (rangée §e− / + §rde la palette, ou §eMaj+molette§r) : agrandit l'aire "
             + "d'application des outils Eau, Île, Pierre et Bonbons, de 1×1 à 15×15 — Limite et "
@@ -262,6 +262,10 @@ public class EcranGuide extends Screen {
         puce(l, "§eSélection§r : tracer un rectangle sur le terrain (Île/Pierre) et les bonbons. "
             + "§eCtrl+molette§r élève/abaisse tout le terrain sélectionné d'un coup ; pour les bonbons, "
             + "régler les délais et le §etype§r (Standard/Bleu/Rouge), puis §eAppliquer§r.");
+        puce(l, "§eZone§r : découpez la carte en zones nommées — la navigation en jeu ([N] + flèche) "
+            + "pointe les bonbons zone par zone. Créez une zone dans le panneau de droite, peignez ses "
+            + "cellules, renommez-la ; sans zones dessinées, une zone par île est créée automatiquement "
+            + "à la sauvegarde.");
         para(l, "§7Le panneau de droite montre le bloc survolé, l'état de la carte (limite fermée, apparition, "
             + "totaux de bonbons) et la légende ; la barre du bas rappelle les contrôles de l'outil actif. "
             + "Un point §6●§7 sur le bouton Sauvegarder signale des modifications non sauvegardées.");
