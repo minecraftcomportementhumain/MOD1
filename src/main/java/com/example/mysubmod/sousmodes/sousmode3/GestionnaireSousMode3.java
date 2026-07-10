@@ -173,17 +173,9 @@ public class GestionnaireSousMode3 {
             && carte.compterBonbonsNonVisiblesStandardInterieur() == 0;
     }
 
-    /** Vrai si la carte possède au moins une zone de type Île (prérequis du choix de zone de départ). */
-    public boolean carteAZonesIle() {
-        if (carte == null) {
-            return false;
-        }
-        for (ZoneCarte zone : carte.zones) {
-            if (zone.type == TypeElementCarte.ILE) {
-                return true;
-            }
-        }
-        return false;
+    /** Vrai si la carte possède au moins une parcelle (prérequis du choix de parcelle de départ). */
+    public boolean carteAParcelles() {
+        return carte != null && !carte.zones.isEmpty();
     }
 
     /** Transmet à un admin les faits de la carte active (grisage des options du menu N). */
@@ -191,7 +183,7 @@ public class GestionnaireSousMode3 {
         GestionnaireReseau.INSTANCE.send(
             PacketDistributor.PLAYER.with(() -> admin),
             new com.example.mysubmod.sousmodes.sousmode3.reseau.PaquetFaitsCarteSousMode3(
-                carteABonbonsNonVisibles(), carteABonbonsTypes(), carteAZonesIle()));
+                carteABonbonsNonVisibles(), carteABonbonsTypes(), carteAParcelles()));
     }
 
     /**
@@ -204,8 +196,8 @@ public class GestionnaireSousMode3 {
             problemes.add("Spécialisation Bleu/Rouge : tous les bonbons de la carte");
             problemes.add("(visibles et non-visibles) doivent être typés Bleu ou Rouge.");
         }
-        if (c.selectionZoneDepart && !carteAZonesIle()) {
-            problemes.add("Choix de parcelle de départ : la carte n'a aucune parcelle contenant de l'Île.");
+        if (c.selectionZoneDepart && !carteAParcelles()) {
+            problemes.add("Choix de parcelle de départ : la carte n'a aucune parcelle.");
         }
         return problemes;
     }
@@ -1021,30 +1013,27 @@ public class GestionnaireSousMode3 {
     private static final int TEMPS_SELECTION_ZONES_SECONDES = 30;
     private long heureDebutSelectionZones;
 
-    /** Noms des zones de type Île de la carte active (sélectionnables comme zone de départ) */
-    private List<String> obtenirZonesIle() {
+    /** Noms des parcelles de la carte active, telles que définies par son créateur —
+     *  toutes sélectionnables comme parcelle de départ */
+    private List<String> obtenirParcellesDepart() {
         List<String> noms = new ArrayList<>();
         if (carte != null) {
             for (ZoneCarte zone : carte.zones) {
-                if (zone.type == TypeElementCarte.ILE) {
-                    noms.add(zone.nom);
-                }
+                noms.add(zone.nom);
             }
         }
         return noms;
     }
 
     /**
-     * Tailles des zones Île en blocs (nombre de cellules de surface), dans le même ordre
-     * que {@link #obtenirZonesIle()} — affichées sur l'écran de sélection de zone.
+     * Tailles des parcelles en blocs (nombre de cellules), dans le même ordre que
+     * {@link #obtenirParcellesDepart()} — affichées sur l'écran de sélection.
      */
-    private List<Integer> obtenirTaillesZonesIle() {
+    private List<Integer> obtenirTaillesParcellesDepart() {
         List<Integer> tailles = new ArrayList<>();
         if (carte != null) {
             for (ZoneCarte zone : carte.zones) {
-                if (zone.type == TypeElementCarte.ILE) {
-                    tailles.add((int) Math.min(Integer.MAX_VALUE, zone.nombreCellules()));
-                }
+                tailles.add((int) Math.min(Integer.MAX_VALUE, zone.nombreCellules()));
             }
         }
         return tailles;
@@ -1116,13 +1105,13 @@ public class GestionnaireSousMode3 {
         selectionZonesEnCours = true;
         heureDebutSelectionZones = System.currentTimeMillis();
 
-        List<String> zonesIle = obtenirZonesIle();
-        List<Integer> taillesIle = obtenirTaillesZonesIle();
+        List<String> parcelles = obtenirParcellesDepart();
+        List<Integer> tailles = obtenirTaillesParcellesDepart();
         for (ServerPlayer joueur : UtilitaireFiltreJoueurs.obtenirJoueursAuthentifies(serveur)) {
             if (!GestionnaireSousModes.getInstance().estAdmin(joueur)) {
                 GestionnaireReseau.INSTANCE.send(PacketDistributor.PLAYER.with(() -> joueur),
                     new com.example.mysubmod.cartes.reseau.PaquetSelectionZoneDepart(
-                        zonesIle, taillesIle, TEMPS_SELECTION_ZONES_SECONDES));
+                        parcelles, tailles, TEMPS_SELECTION_ZONES_SECONDES));
             }
         }
 
@@ -1147,7 +1136,7 @@ public class GestionnaireSousMode3 {
             || GestionnaireSousModes.getInstance().estAdmin(joueur)) {
             return;
         }
-        if (!obtenirZonesIle().contains(nomZone)) {
+        if (!obtenirParcellesDepart().contains(nomZone)) {
             return;
         }
         zonesChoisies.put(joueur.getUUID(), nomZone);
@@ -1167,7 +1156,7 @@ public class GestionnaireSousMode3 {
         if (restant > 0) {
             GestionnaireReseau.INSTANCE.send(PacketDistributor.PLAYER.with(() -> joueur),
                 new com.example.mysubmod.cartes.reseau.PaquetSelectionZoneDepart(
-                    obtenirZonesIle(), obtenirTaillesZonesIle(), restant));
+                    obtenirParcellesDepart(), obtenirTaillesParcellesDepart(), restant));
         }
     }
 
@@ -1190,12 +1179,12 @@ public class GestionnaireSousMode3 {
         selectionZonesEnCours = false;
         arreterSelectionZones();
 
-        List<String> zonesIle = obtenirZonesIle();
+        List<String> parcelles = obtenirParcellesDepart();
         java.util.Random aleatoire = new java.util.Random();
         for (UUID idJoueur : joueursEnAttente) {
             String zone = zonesChoisies.get(idJoueur);
-            if (zone == null && !zonesIle.isEmpty()) {
-                zone = zonesIle.get(aleatoire.nextInt(zonesIle.size()));
+            if (zone == null && !parcelles.isEmpty()) {
+                zone = parcelles.get(aleatoire.nextInt(parcelles.size()));
                 zonesChoisies.put(idJoueur, zone);
                 ServerPlayer joueur = serveur.getPlayerList().getPlayer(idJoueur);
                 if (joueur != null) {

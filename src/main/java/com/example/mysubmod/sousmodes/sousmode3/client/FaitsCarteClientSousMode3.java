@@ -9,15 +9,15 @@ package com.example.mysubmod.sousmodes.sousmode3.client;
 public class FaitsCarteClientSousMode3 {
     private static boolean aBonbonsNonVisibles = false;
     private static boolean aBonbonsTypes = false;
-    private static boolean aZonesIle = false;
+    private static boolean aParcelles = false;
 
     private FaitsCarteClientSousMode3() {
     }
 
-    public static void definir(boolean bonbonsNonVisibles, boolean bonbonsTypes, boolean zonesIle) {
+    public static void definir(boolean bonbonsNonVisibles, boolean bonbonsTypes, boolean parcelles) {
         aBonbonsNonVisibles = bonbonsNonVisibles;
         aBonbonsTypes = bonbonsTypes;
-        aZonesIle = zonesIle;
+        aParcelles = parcelles;
     }
 
     public static boolean aBonbonsNonVisibles() {
@@ -28,7 +28,7 @@ public class FaitsCarteClientSousMode3 {
         return aBonbonsTypes;
     }
 
-    public static boolean aZonesIle() {
-        return aZonesIle;
+    public static boolean aParcelles() {
+        return aParcelles;
     }
 }

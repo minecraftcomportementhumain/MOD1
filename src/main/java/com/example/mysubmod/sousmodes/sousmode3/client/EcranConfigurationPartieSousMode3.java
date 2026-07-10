@@ -125,12 +125,12 @@ public class EcranConfigurationPartieSousMode3 extends Screen {
         caseSpecialisation.active = FaitsCarteClientSousMode3.aBonbonsTypes();
 
         titre(xB, yb, "§e§lParcelle de départ");
-        if (!FaitsCarteClientSousMode3.aZonesIle()) {
-            config.selectionZoneDepart = false; // la carte n'a aucune parcelle avec Île sélectionnable
+        if (!FaitsCarteClientSousMode3.aParcelles()) {
+            config.selectionZoneDepart = false; // la carte n'a aucune parcelle
         }
         Checkbox caseZone = caseAcocher(xB, yb, "Choix par joueur", config.selectionZoneDepart,
             v -> config.selectionZoneDepart = v);
-        caseZone.active = FaitsCarteClientSousMode3.aZonesIle();
+        caseZone.active = FaitsCarteClientSousMode3.aParcelles();
 
         // ---- Colonne C : Interactions & fin de partie ----
         int[] yc = {yDepart};

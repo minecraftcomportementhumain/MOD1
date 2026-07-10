@@ -324,9 +324,9 @@ public class CarteDonnees {
     /**
      * Reconstruit les plages et le type de chaque parcelle depuis le champ {@code zone}
      * des blocs : une passe sur les blocs vers une grille d'ids, puis un balayage
-     * row-major qui émet les plages triées. Le type devient Île si la parcelle contient
-     * au moins une cellule Île (prérequis du choix de parcelle de départ), sinon
-     * Pierre. Un nom vide est remplacé par « Parcelle n ».
+     * row-major qui émet les plages triées. Le type (conservé dans le format) devient
+     * Île si la parcelle contient au moins une cellule Île, sinon Pierre. Un nom vide
+     * est remplacé par « Parcelle n ».
      */
     public void reconstruireZonesDepuisBlocs() {
         int nombreZones = zones.size();

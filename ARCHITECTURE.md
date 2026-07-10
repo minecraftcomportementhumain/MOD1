@@ -70,8 +70,9 @@ phases. À maintenir à chaque changement structurel.
   **exclusivement manuel** (outil Parcelle de l'éditeur) — aucun recalcul
   automatique, nulle part (`recalculerZones` n'est plus qu'un utilitaire de test).
   `versJson` dérive les plages nommées du champ `zone` des blocs (parcelles vides
-  omises, type Île dès qu'une cellule Île est présente — prérequis du choix de
-  parcelle de départ) ; `depuisJson` fait l'inverse. Le champ `BlocCarte.zone`
+  omises, type Île/Pierre dérivé mais conservé pour le format seulement) ;
+  `depuisJson` fait l'inverse. Le **choix de parcelle de départ propose toutes les
+  parcelles**, telles que définies sur la carte. Le champ `BlocCarte.zone`
   n'est jamais sérialisé directement. **Validation bloquante à la sauvegarde :
   chaque bonbon doit appartenir à une parcelle.** Les bonbons hors parcelle d'une
   vieille carte tombent en jeu dans la pseudo-zone HUD « Hors parcelle ».

@@ -13,18 +13,18 @@ import java.util.function.Supplier;
 public class PaquetFaitsCarteSousMode3 {
     private final boolean aBonbonsNonVisibles;
     private final boolean aBonbonsTypes;
-    private final boolean aZonesIle;
+    private final boolean aParcelles;
 
-    public PaquetFaitsCarteSousMode3(boolean aBonbonsNonVisibles, boolean aBonbonsTypes, boolean aZonesIle) {
+    public PaquetFaitsCarteSousMode3(boolean aBonbonsNonVisibles, boolean aBonbonsTypes, boolean aParcelles) {
         this.aBonbonsNonVisibles = aBonbonsNonVisibles;
         this.aBonbonsTypes = aBonbonsTypes;
-        this.aZonesIle = aZonesIle;
+        this.aParcelles = aParcelles;
     }
 
     public static void encode(PaquetFaitsCarteSousMode3 paquet, FriendlyByteBuf tampon) {
         tampon.writeBoolean(paquet.aBonbonsNonVisibles);
         tampon.writeBoolean(paquet.aBonbonsTypes);
-        tampon.writeBoolean(paquet.aZonesIle);
+        tampon.writeBoolean(paquet.aParcelles);
     }
 
     public static PaquetFaitsCarteSousMode3 decode(FriendlyByteBuf tampon) {
@@ -33,7 +33,7 @@ public class PaquetFaitsCarteSousMode3 {
 
     public static void traiter(PaquetFaitsCarteSousMode3 paquet, Supplier<NetworkEvent.Context> ctx) {
         ctx.get().enqueueWork(() ->
-            FaitsCarteClientSousMode3.definir(paquet.aBonbonsNonVisibles, paquet.aBonbonsTypes, paquet.aZonesIle));
+            FaitsCarteClientSousMode3.definir(paquet.aBonbonsNonVisibles, paquet.aBonbonsTypes, paquet.aParcelles));
         ctx.get().setPacketHandled(true);
     }
 }

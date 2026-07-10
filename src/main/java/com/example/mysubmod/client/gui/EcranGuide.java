@@ -263,10 +263,10 @@ public class EcranGuide extends Screen {
             + "§eCtrl+molette§r élève/abaisse tout le terrain sélectionné d'un coup ; pour les bonbons, "
             + "régler les délais et le §etype§r (Standard/Bleu/Rouge), puis §eAppliquer§r.");
         puce(l, "§eParcelle§r : découpez la carte en parcelles nommées — la navigation en jeu "
-            + "([N] + flèche) pointe les bonbons parcelle par parcelle, et le choix de l'île de départ "
-            + "se fait parmi les parcelles contenant de l'Île. Créez une parcelle dans le panneau de "
-            + "droite, peignez ses cellules (Eau comprise), renommez-la. §cChaque bonbon doit "
-            + "appartenir à une parcelle§7 — la sauvegarde est refusée sinon.");
+            + "([N] + flèche) pointe les bonbons parcelle par parcelle, et le choix de la parcelle "
+            + "de départ se fait parmi elles, telles que vous les avez définies. Créez une parcelle "
+            + "dans le panneau de droite, peignez ses cellules (Eau comprise), renommez-la. "
+            + "§cChaque bonbon doit appartenir à une parcelle§7 — la sauvegarde est refusée sinon.");
         para(l, "§7Le panneau de droite montre le bloc survolé, l'état de la carte (limite fermée, apparition, "
             + "totaux de bonbons) et la légende ; la barre du bas rappelle les contrôles de l'outil actif. "
             + "Un point §6●§7 sur le bouton Sauvegarder signale des modifications non sauvegardées.");
@@ -305,7 +305,7 @@ public class EcranGuide extends Screen {
         puce(l, "§bSanté§r : Dégradation oui · ½ cœur / 10 s · Vie max 10 cœurs · Régén. non · Réapparition non.");
         puce(l, "§bEnvironnement§r : Jour permanent oui · Chute non · Noyade mortelle oui · Faim non · PvP non · Pluie non.");
         puce(l, "§bMode§r : Spécialisation Bleu/Rouge non §7(carte à bonbons typés requise)§r.");
-        puce(l, "§bParcelle de départ§r : Choix par joueur non §7(parcelle avec Île requise)§r.");
+        puce(l, "§bParcelle de départ§r : Choix par joueur non §7(au moins une parcelle requise)§r.");
         puce(l, "§bInteractions§r : Crafting non · Destruction oui · Placement oui · Jeter non · Drop à la mort non · Manger à vie max non · Bonus sprint non.");
         puce(l, "§bFin de partie§r : Éliminés classés par Survie · Dernier survivant non.");
 
