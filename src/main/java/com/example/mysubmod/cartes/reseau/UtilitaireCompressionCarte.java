@@ -16,7 +16,21 @@ public final class UtilitaireCompressionCarte {
     /** Taille décompressée maximale acceptée (borne anti-bombe de décompression). */
     public static final int TAILLE_DECOMPRESSEE_MAX = 96 * 1024 * 1024;
 
+    /** Taille d'un morceau réseau (sous la limite des paquets client→serveur, ~32 Ko). */
+    public static final int TAILLE_MORCEAU = 30000;
+
     private UtilitaireCompressionCarte() {
+    }
+
+    /** Compresse puis découpe en morceaux réseau — pipeline partagé sauvegarde C→S et chargement S→C. */
+    public static java.util.List<byte[]> compresserEtDecouper(byte[] brut) {
+        byte[] comprime = compresser(brut);
+        java.util.List<byte[]> morceaux = new java.util.ArrayList<>();
+        for (int debut = 0; debut < comprime.length; debut += TAILLE_MORCEAU) {
+            morceaux.add(java.util.Arrays.copyOfRange(comprime, debut,
+                Math.min(comprime.length, debut + TAILLE_MORCEAU)));
+        }
+        return morceaux;
     }
 
     /** Compresse des données en GZIP (jamais null). */

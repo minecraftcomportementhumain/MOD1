@@ -115,6 +115,12 @@ public class GestionnairePaquetsCartes {
             }
         } catch (Exception e) {
             MonSubMod.JOURNALISEUR.error("Erreur lors du chargement des données de carte reçues", e);
+            // Le serveur envoie le fichier tel quel : l'échec de décodage se détecte ici,
+            // et l'admin doit en être informé (sinon « Charger » échoue en silence)
+            Minecraft mc = Minecraft.getInstance();
+            if (mc.screen instanceof EcranEditeurCarte editeur) {
+                editeur.surErreurChargement();
+            }
         }
     }
 }

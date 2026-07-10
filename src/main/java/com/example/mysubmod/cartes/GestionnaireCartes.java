@@ -1,6 +1,7 @@
 package com.example.mysubmod.cartes;
 
 import com.example.mysubmod.MonSubMod;
+import com.example.mysubmod.cartes.reseau.UtilitaireCompressionCarte;
 import com.example.mysubmod.utilitaire.UtilitaireCheminSecurise;
 
 import java.io.IOException;
@@ -21,7 +22,8 @@ import java.util.stream.Collectors;
  */
 public class GestionnaireCartes {
     private static final String REPERTOIRE_CARTES = "cartes_monsubmod";
-    private static final int MAX_MORCEAUX = 1024;
+    /** Nombre maximal de morceaux d'un transfert (public : l'éditeur vérifie avant l'envoi). */
+    public static final int MAX_MORCEAUX = 1024;
     private static final int MAX_TRANSFERTS_SIMULTANES = 16;
     private static GestionnaireCartes instance;
 
@@ -236,8 +238,11 @@ public class GestionnaireCartes {
 
     /**
      * Enregistre un morceau d'une carte envoyée par un client.
-     * Retourne le JSON complet (décompressé si le client l'a envoyé en GZIP)
-     * si tous les morceaux sont arrivés, sinon null.
+     * Retourne le JSON complet (décompressé si le client l'a envoyé en GZIP) quand tous
+     * les morceaux sont arrivés, null tant que le transfert est incomplet ou rejeté par
+     * les gardes anti-abus. Lève IllegalArgumentException si les données réassemblées
+     * sont corrompues ou trop volumineuses : l'appelant doit signaler l'échec au client
+     * (null seul signifierait « en attente » et la sauvegarde échouerait en silence).
      */
     public String gererMorceauCarte(UUID idTransfert, int indexMorceau, int nombreTotalMorceaux, byte[] donnees) {
         if (nombreTotalMorceaux <= 0 || nombreTotalMorceaux > MAX_MORCEAUX
@@ -273,13 +278,7 @@ public class GestionnaireCartes {
                 System.arraycopy(morceau, 0, complet, position, morceau.length);
                 position += morceau.length;
             }
-            try {
-                return new String(com.example.mysubmod.cartes.reseau.UtilitaireCompressionCarte
-                    .decompresserSiGzip(complet), StandardCharsets.UTF_8);
-            } catch (IllegalArgumentException e) {
-                MonSubMod.JOURNALISEUR.warn("Transfert de carte rejeté : {}", e.getMessage());
-                return null;
-            }
+            return new String(UtilitaireCompressionCarte.decompresserSiGzip(complet), StandardCharsets.UTF_8);
         }
         return null;
     }

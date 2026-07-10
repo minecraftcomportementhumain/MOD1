@@ -92,6 +92,11 @@ public class CarteDonnees {
      * sans millions de Long boxés, indispensable aux grandes cartes (jusqu'à 2500×2500).
      */
     public Set<Long> calculerInterieurLimite() {
+        return interieurLimite();
+    }
+
+    /** Variante interne typée : évite un transtypage du Set public dans les usages internes */
+    private EnsembleCellules interieurLimite() {
         int total = largeur * hauteur;
         BitSet limites = new BitSet(total);
         for (Map.Entry<Long, BlocCarte> entree : blocs.entrySet()) {
@@ -162,7 +167,7 @@ public class CarteDonnees {
             return false;
         }
 
-        EnsembleCellules interieur = (EnsembleCellules) calculerInterieurLimite();
+        EnsembleCellules interieur = interieurLimite();
         if (interieur.isEmpty()) {
             return false; // Rien d'entouré : pas une boucle fermée utile
         }
@@ -353,6 +358,13 @@ public class CarteDonnees {
                     }
                 }
 
+                // Ordre de balayage déterministe : l'ordre des cellules d'une zone est le
+                // même en mémoire, dans le fichier v2 et après rechargement (les égalités
+                // de distance au centre dans le choix du point d'apparition d'une zone se
+                // départagent donc toujours de la même façon)
+                zone.cellules.sort((a, b) -> Long.compare(
+                    (long) a[1] * largeur + a[0], (long) b[1] * largeur + b[0]));
+
                 if (zone.type == TypeElementCarte.ILE) {
                     zone.nom = "Île " + lettreZone(compteurIles);
                     compteurIles++;
@@ -373,6 +385,7 @@ public class CarteDonnees {
     /** Grille des types de blocs (index = z·largeur + x, CODE_VIDE par défaut) */
     private byte[] grilleTypes() {
         byte[] types = new byte[largeur * hauteur];
+        Arrays.fill(types, CODE_VIDE); // Explicite : l'invariant ne dépend pas de VIDE.ordinal() == 0
         for (Map.Entry<Long, BlocCarte> entree : blocs.entrySet()) {
             int x = cleX(entree.getKey());
             int z = cleZ(entree.getKey());
@@ -440,6 +453,11 @@ public class CarteDonnees {
         for (Map.Entry<Long, BlocCarte> entree : blocs.entrySet()) {
             BlocCarte bloc = entree.getValue();
             if (bloc.qteBonbonVisible <= 0 && bloc.qteBonbonNonVisible <= 0) {
+                continue;
+            }
+            // Même filtre que le terrain : un bloc hors de l'aire (donnée v1 héritée)
+            // serait rejeté par le décodeur v2 et rendrait la carte insauvegardable
+            if (!estDansAire(cleX(entree.getKey()), cleZ(entree.getKey()))) {
                 continue;
             }
             JsonArray entreeBonbon = new JsonArray();
@@ -510,21 +528,28 @@ public class CarteDonnees {
         return sb.toString();
     }
 
-    /** Cellules d'une zone en plages « z,x0,longueur » (tri par index de balayage puis fusion) */
+    /**
+     * Cellules d'une zone en plages « z,x0,longueur » (tri par index de balayage puis
+     * fusion). Les cellules hors de l'aire sont ignorées : des zones périmées peuvent
+     * subsister côté client après un rétrécissement (le redimensionnement ne touche pas
+     * carte.zones), et le décodeur v2 strict rendrait sinon la carte insauvegardable.
+     */
     private String encoderPlagesZone(ZoneCarte zone) {
         long[] indices = new long[zone.cellules.size()];
         int n = 0;
         for (int[] cellule : zone.cellules) {
-            indices[n++] = (long) cellule[1] * largeur + cellule[0];
+            if (estDansAire(cellule[0], cellule[1])) {
+                indices[n++] = (long) cellule[1] * largeur + cellule[0];
+            }
         }
-        Arrays.sort(indices);
+        Arrays.sort(indices, 0, n);
 
         StringBuilder sb = new StringBuilder();
         int i = 0;
-        while (i < indices.length) {
+        while (i < n) {
             int debut = i;
             // Fusionner les cellules consécutives sans franchir la fin d'une rangée
-            while (i + 1 < indices.length && indices[i + 1] == indices[i] + 1
+            while (i + 1 < n && indices[i + 1] == indices[i] + 1
                 && indices[i + 1] % largeur != 0) {
                 i++;
             }
@@ -613,14 +638,17 @@ public class CarteDonnees {
             if (blocsJson.size() > BLOCS_MAX) {
                 throw new IllegalArgumentException("Trop de blocs dans la carte: " + blocsJson.size());
             }
-            carte.blocs = new HashMap<>(Math.max(16, (int) (blocsJson.size() / 0.75f) + 1));
+            carte.blocs = new HashMap<>(capacitePourElements(blocsJson.size()));
             for (JsonElement element : blocsJson) {
                 JsonObject objetBloc = element.getAsJsonObject();
                 int x = objetBloc.get("x").getAsInt();
                 int z = objetBloc.get("z").getAsInt();
                 BlocCarte bloc = new BlocCarte();
                 bloc.type = TypeElementCarte.valueOf(objetBloc.get("type").getAsString());
-                bloc.elevation = objetBloc.has("elevation") ? objetBloc.get("elevation").getAsInt() : 0;
+                // Les fichiers v1 n'étaient pas bornés : ramener l'élévation dans le domaine
+                // pour que le ré-enregistrement en v2 (8 bits, décodeur strict) reste valide
+                int elevationV1 = objetBloc.has("elevation") ? objetBloc.get("elevation").getAsInt() : 0;
+                bloc.elevation = Math.max(ELEVATION_MIN, Math.min(ELEVATION_MAX, elevationV1));
                 bloc.qteBonbonVisible = objetBloc.has("bonbonsVisibles") ? objetBloc.get("bonbonsVisibles").getAsInt() : 0;
                 bloc.delaiBonbonVisible = objetBloc.has("delaiVisible") ? objetBloc.get("delaiVisible").getAsInt() : 0;
                 bloc.typeBonbonVisible = objetBloc.has("typeVisible")
@@ -654,72 +682,92 @@ public class CarteDonnees {
         return carte;
     }
 
-    /** Décode la chaîne de plages « n:TÉ;… » du format v2 (balayage rangée par rangée de toute l'aire) */
+    /**
+     * Décode la chaîne de plages « n:TÉ;… » du format v2 (balayage rangée par rangée de
+     * toute l'aire). Une seule passe d'analyse valide toutes les plages (bornes calculées
+     * en long : insensibles au débordement d'entier), puis le remplissage s'effectue dans
+     * une table pré-dimensionnée — sur les très grandes cartes, les redimensionnements
+     * successifs de la HashMap domineraient sinon le temps de décodage.
+     */
     private static void decoderTerrain(CarteDonnees carte, String terrain) {
         int total = carte.largeur * carte.hauteur;
 
-        // Pré-dimensionner la table des blocs : sur les très grandes cartes, les
-        // redimensionnements successifs de la HashMap dominent le temps de décodage
+        int nbPlages = 0;
+        int[] nombres = new int[64];
+        TypeElementCarte[] types = new TypeElementCarte[64];
+        int[] elevations = new int[64];
+        long cellulesDecrites = 0;
         long nonVides = 0;
-        for (int i = 0; i < terrain.length(); ) {
-            int deuxPoints = terrain.indexOf(':', i);
-            if (deuxPoints < 0) {
-                break; // La boucle de décodage signalera la malformation
-            }
-            int fin = terrain.indexOf(';', deuxPoints + 1);
-            if (fin < 0) {
-                fin = terrain.length();
-            }
-            if (terrain.charAt(deuxPoints + 1) != 'V') {
-                try {
-                    nonVides += Long.parseLong(terrain.substring(i, deuxPoints));
-                } catch (NumberFormatException e) {
-                    break; // Idem : malformation gérée par la boucle de décodage
-                }
-            }
-            i = fin + 1;
-        }
-        if (nonVides > 0 && nonVides <= total) {
-            carte.blocs = new HashMap<>(Math.max(16, (int) (nonVides / 0.75f) + 1));
-        }
 
-        int index = 0;
         int i = 0;
         int n = terrain.length();
         while (i < n) {
-            int deuxPoints = terrain.indexOf(':', i);
-            if (deuxPoints < 0) {
-                throw new IllegalArgumentException("Plage de terrain mal formée");
-            }
-            int nombre = Integer.parseInt(terrain.substring(i, deuxPoints));
-            int fin = terrain.indexOf(';', deuxPoints + 1);
+            int fin = terrain.indexOf(';', i);
             if (fin < 0) {
                 fin = n;
             }
-            char carType = terrain.charAt(deuxPoints + 1);
-            TypeElementCarte type = typePourCar(carType);
-            int elevation = deuxPoints + 2 < fin ? Integer.parseInt(terrain.substring(deuxPoints + 2, fin)) : 0;
+            int deuxPoints = terrain.indexOf(':', i);
+            if (deuxPoints < 0 || deuxPoints + 1 >= fin) {
+                throw new IllegalArgumentException("Plage de terrain mal formée");
+            }
+            int nombre;
+            int elevation;
+            try {
+                nombre = Integer.parseInt(terrain.substring(i, deuxPoints));
+                elevation = deuxPoints + 2 < fin ? Integer.parseInt(terrain.substring(deuxPoints + 2, fin)) : 0;
+            } catch (NumberFormatException e) {
+                throw new IllegalArgumentException("Plage de terrain mal formée", e);
+            }
+            TypeElementCarte type = typePourCar(terrain.charAt(deuxPoints + 1));
 
-            if (nombre < 1 || index + nombre > total) {
+            // Comparaison en long : « index + nombre > total » en int serait contournable
+            // par débordement (ex. nombre proche de 2^31), annulant la borne anti-DoS
+            if (nombre < 1 || nombre > total - cellulesDecrites) {
                 throw new IllegalArgumentException("Plage de terrain hors bornes");
             }
             if (elevation < ELEVATION_MIN || elevation > ELEVATION_MAX) {
                 throw new IllegalArgumentException("Élévation hors bornes: " + elevation);
             }
-            if (type != TypeElementCarte.VIDE) {
-                for (int k = 0; k < nombre; k++) {
-                    int cellule = index + k;
-                    carte.blocs.put(cle(cellule % carte.largeur, cellule / carte.largeur),
-                        new BlocCarte(type, elevation));
-                }
+
+            if (nbPlages == nombres.length) {
+                nombres = Arrays.copyOf(nombres, nbPlages * 2);
+                types = Arrays.copyOf(types, nbPlages * 2);
+                elevations = Arrays.copyOf(elevations, nbPlages * 2);
             }
-            index += nombre;
+            nombres[nbPlages] = nombre;
+            types[nbPlages] = type;
+            elevations[nbPlages] = elevation;
+            nbPlages++;
+            cellulesDecrites += nombre;
+            if (type != TypeElementCarte.VIDE) {
+                nonVides += nombre;
+            }
             i = fin + 1;
         }
-        if (index != total) {
+        if (cellulesDecrites != total) {
             throw new IllegalArgumentException(
-                "Terrain incomplet: " + index + " cellules décrites sur " + total);
+                "Terrain incomplet: " + cellulesDecrites + " cellules décrites sur " + total);
         }
+
+        if (nonVides > 0) {
+            carte.blocs = new HashMap<>(capacitePourElements((int) nonVides));
+        }
+        int index = 0;
+        for (int p = 0; p < nbPlages; p++) {
+            if (types[p] != TypeElementCarte.VIDE) {
+                for (int k = 0; k < nombres[p]; k++) {
+                    int cellule = index + k;
+                    carte.blocs.put(cle(cellule % carte.largeur, cellule / carte.largeur),
+                        new BlocCarte(types[p], elevations[p]));
+                }
+            }
+            index += nombres[p];
+        }
+    }
+
+    /** Capacité initiale d'une HashMap destinée à recevoir ce nombre d'éléments sans redimensionnement */
+    private static int capacitePourElements(int elements) {
+        return Math.max(16, (int) (elements / 0.75f) + 1);
     }
 
     /** Décode le tableau « bonbons » du format v2 (10 entiers par bloc porteur de bonbons) */

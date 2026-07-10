@@ -19,8 +19,6 @@ import java.util.function.Supplier;
  * (pour la charger dans l'éditeur). Le serveur répond en morceaux via PaquetDonneesCarte.
  */
 public class PaquetDemandeDonneesCarte {
-    private static final int TAILLE_MORCEAU = 30000;
-
     private final String nomCarte;
 
     public PaquetDemandeDonneesCarte(String nomCarte) {
@@ -50,17 +48,12 @@ public class PaquetDemandeDonneesCarte {
                 return;
             }
 
-            byte[] donnees = UtilitaireCompressionCarte.compresser(json.getBytes(StandardCharsets.UTF_8));
+            java.util.List<byte[]> morceaux =
+                UtilitaireCompressionCarte.compresserEtDecouper(json.getBytes(StandardCharsets.UTF_8));
             UUID idTransfert = UUID.randomUUID();
-            int nombreTotalMorceaux = Math.max(1, (int) Math.ceil((double) donnees.length / TAILLE_MORCEAU));
-
-            for (int i = 0; i < nombreTotalMorceaux; i++) {
-                int debut = i * TAILLE_MORCEAU;
-                int longueur = Math.min(donnees.length - debut, TAILLE_MORCEAU);
-                byte[] morceau = new byte[longueur];
-                System.arraycopy(donnees, debut, morceau, 0, longueur);
+            for (int i = 0; i < morceaux.size(); i++) {
                 GestionnaireReseau.INSTANCE.send(PacketDistributor.PLAYER.with(() -> joueur),
-                    new PaquetDonneesCarte(idTransfert, nombreTotalMorceaux, i, morceau));
+                    new PaquetDonneesCarte(idTransfert, morceaux.size(), i, morceaux.get(i)));
             }
         });
         ctx.get().setPacketHandled(true);

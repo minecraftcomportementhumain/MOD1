@@ -64,7 +64,6 @@ public class EcranEditeurCarte extends Screen {
     /** En dessous de cette largeur, palette et inspecteur se compactent pour préserver la grille */
     private static final int SEUIL_LATERAUX_COMPACTS = 640;
     private static final int LARGEUR_CHAMP_SELECTION = 62;
-    private static final int TAILLE_MORCEAU_RESEAU = 30000;
 
     // Couleurs de l'habillage
     private static final int COULEUR_ACCENT = 0xFF4CB566;          // Outil actif
@@ -1591,14 +1590,34 @@ public class EcranEditeurCarte extends Screen {
         envoyerSauvegarde(jsonSauvegardeEnAttente, false);
     }
 
+    /** Au-delà de ce nombre de blocs, un remplissage n'est plus annulable (l'action
+     *  d'annulation copierait deux BlocCarte par cellule : gigaoctets sur une carte 2500×2500) */
+    private static final int MAX_BLOCS_REMPLISSAGE_ANNULABLE = 500_000;
+
     /**
      * Remplit les blocs sans élément de base à l'intérieur du périmètre Limite
-     * avec de l'Eau ou de la Pierre (élévation 0). Action annulable.
+     * avec de l'Eau ou de la Pierre (élévation 0). Action annulable, sauf pour les
+     * remplissages géants où l'historique d'annulation est vidé à la place.
      * Les blocs contenant un bonbon non-visible ne peuvent pas recevoir d'Eau.
      */
     private void remplirInterieurVide(TypeElementCarte type) {
-        ActionEditeur action = new ActionEditeur(carte);
-        for (long cle : carte.calculerInterieurLimite()) {
+        Set<Long> interieur = carte.calculerInterieurLimite();
+
+        int aRemplir = 0;
+        for (long cle : interieur) {
+            BlocCarte bloc = carte.blocs.get(cle);
+            if (bloc != null && bloc.type.estElementDeBase()) {
+                continue;
+            }
+            if (type == TypeElementCarte.EAU && bloc != null && bloc.qteBonbonNonVisible > 0) {
+                continue;
+            }
+            aRemplir++;
+        }
+        boolean annulable = aRemplir <= MAX_BLOCS_REMPLISSAGE_ANNULABLE;
+
+        ActionEditeur action = annulable ? new ActionEditeur(carte) : null;
+        for (long cle : interieur) {
             BlocCarte bloc = carte.blocs.get(cle);
             if (bloc != null && bloc.type.estElementDeBase()) {
                 continue;
@@ -1608,31 +1627,45 @@ public class EcranEditeurCarte extends Screen {
             }
             int cx = CarteDonnees.cleX(cle);
             int cz = CarteDonnees.cleZ(cle);
-            BlocCarte avant = (bloc != null ? bloc : new BlocCarte()).copier();
-            BlocCarte apres = avant.copier();
+            BlocCarte apres = (bloc != null ? bloc : new BlocCarte()).copier();
+            if (action != null) {
+                action.ajouterChangement(cx, cz, apres.copier(), apres);
+            }
             apres.type = type;
             apres.elevation = 0;
-            action.ajouterChangement(cx, cz, avant, apres);
             carte.definirBloc(cx, cz, apres);
         }
-        if (!action.estVide()) {
-            enregistrerAction(action);
+
+        if (action != null) {
+            if (!action.estVide()) {
+                enregistrerAction(action);
+            }
+        } else if (aRemplir > 0) {
+            // Remplissage géant : l'historique ne reflète plus l'état, on le vide,
+            // et un repère jamais empilé garde l'indicateur ● allumé jusqu'à la sauvegarde
+            pileAnnulation.clear();
+            pileRetablissement.clear();
+            reperePileSauvegarde = new ActionEditeur(carte);
+            surCarteModifiee();
+            afficherToast("Remplissage de " + aRemplir + " blocs appliqué (trop volumineux pour l'annulation)", false);
         }
     }
 
     private void envoyerSauvegarde(String json, boolean ecraserConfirme) {
-        byte[] donnees = com.example.mysubmod.cartes.reseau.UtilitaireCompressionCarte
-            .compresser(json.getBytes(StandardCharsets.UTF_8));
+        List<byte[]> morceaux = com.example.mysubmod.cartes.reseau.UtilitaireCompressionCarte
+            .compresserEtDecouper(json.getBytes(StandardCharsets.UTF_8));
+        if (morceaux.size() > com.example.mysubmod.cartes.GestionnaireCartes.MAX_MORCEAUX) {
+            // Le serveur rejetterait le transfert sans réponse : bloquer ici avec un message clair
+            jsonSauvegardeEnAttente = null;
+            afficherMessage("Sauvegarde bloquée",
+                "La carte est trop volumineuse pour être transmise (" + morceaux.size()
+                    + " morceaux, maximum " + com.example.mysubmod.cartes.GestionnaireCartes.MAX_MORCEAUX + ")");
+            return;
+        }
         UUID idTransfert = UUID.randomUUID();
-        int nombreTotalMorceaux = Math.max(1, (int) Math.ceil((double) donnees.length / TAILLE_MORCEAU_RESEAU));
-
-        for (int i = 0; i < nombreTotalMorceaux; i++) {
-            int debut = i * TAILLE_MORCEAU_RESEAU;
-            int longueur = Math.min(donnees.length - debut, TAILLE_MORCEAU_RESEAU);
-            byte[] morceau = new byte[longueur];
-            System.arraycopy(donnees, debut, morceau, 0, longueur);
+        for (int i = 0; i < morceaux.size(); i++) {
             GestionnaireReseau.INSTANCE.sendToServer(
-                new PaquetSauvegardeCarte(idTransfert, nombreTotalMorceaux, i, morceau, ecraserConfirme));
+                new PaquetSauvegardeCarte(idTransfert, morceaux.size(), i, morceaux.get(i), ecraserConfirme));
         }
     }
 
@@ -1660,6 +1693,12 @@ public class EcranEditeurCarte extends Screen {
     public void surErreurSauvegarde(String message) {
         jsonSauvegardeEnAttente = null;
         afficherMessage("Sauvegarde bloquée", message);
+    }
+
+    /** Le fichier reçu du serveur n'a pas pu être décodé (corrompu / illisible) */
+    public void surErreurChargement() {
+        afficherMessage("Chargement échoué",
+            "Le fichier de la carte est illisible ou corrompu (détails dans le journal du jeu)");
     }
 
     // ==================== Entrées souris / clavier ====================

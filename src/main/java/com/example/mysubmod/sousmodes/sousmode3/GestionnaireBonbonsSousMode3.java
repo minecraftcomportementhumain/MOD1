@@ -637,10 +637,11 @@ public class GestionnaireBonbonsSousMode3 {
         return zones;
     }
 
-    /** Envoie la liste complète des zones (avec cellules) à un joueur */
+    /** Envoie la liste complète des zones (avec cellules) à un joueur, en parties si nécessaire */
     public void envoyerZonesCompletesAJoueur(ServerPlayer joueur, boolean reinitialiser) {
-        GestionnaireReseau.INSTANCE.send(PacketDistributor.PLAYER.with(() -> joueur),
-            PaquetZonesSousMode3.complet(zones, reinitialiser));
+        for (PaquetZonesSousMode3 partie : PaquetZonesSousMode3.completEnParties(zones, reinitialiser)) {
+            GestionnaireReseau.INSTANCE.send(PacketDistributor.PLAYER.with(() -> joueur), partie);
+        }
     }
 
     /** Envoie la liste complète des zones à tous les joueurs authentifiés */

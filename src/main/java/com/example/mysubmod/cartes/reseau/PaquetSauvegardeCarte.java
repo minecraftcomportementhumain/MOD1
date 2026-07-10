@@ -62,13 +62,15 @@ public class PaquetSauvegardeCarte {
                 return;
             }
 
-            String json = GestionnaireCartes.getInstance().gererMorceauCarte(
-                paquet.idTransfert, paquet.indexMorceau, paquet.nombreTotalMorceaux, paquet.donneesMorceau);
-            if (json == null) {
-                return; // En attente d'autres morceaux
-            }
-
             try {
+                // Un réassemblage corrompu (GZIP invalide, taille excessive) lève : le
+                // client doit recevoir une erreur, pas un silence
+                String json = GestionnaireCartes.getInstance().gererMorceauCarte(
+                    paquet.idTransfert, paquet.indexMorceau, paquet.nombreTotalMorceaux, paquet.donneesMorceau);
+                if (json == null) {
+                    return; // En attente d'autres morceaux
+                }
+
                 CarteDonnees carte = CarteDonnees.depuisJson(json);
                 carte.nom = CarteDonnees.assainirNom(carte.nom);
 
