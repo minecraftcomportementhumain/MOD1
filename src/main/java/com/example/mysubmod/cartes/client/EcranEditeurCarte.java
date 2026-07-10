@@ -185,6 +185,9 @@ public class EcranEditeurCarte extends Screen {
     // Cellules Limite (peu nombreuses) : redessinées explicitement en fort dézoom,
     // où l'échantillonnage du rendu pourrait sauter un mur d'une cellule d'épaisseur
     private long[] cellulesLimiteCache = new long[0];
+    // Cellules portant au moins un bonbon : marqueurs compacts dessinés sous le seuil
+    // des icônes détaillées, pour que les bonbons restent repérables en dézoom
+    private long[] cellulesBonbonsCache = new long[0];
 
     // Fenêtre modale interne (messages / confirmations / choix)
     private boolean modalActif = false;
@@ -2334,7 +2337,8 @@ public class EcranEditeurCarte extends Screen {
             }
         }
 
-        // 3) Superpositions par cellule : élévations et icônes de bonbons
+        // 3) Superpositions par cellule : icônes de bonbons, puis chiffre d'élévation
+        //    par-dessus (jamais recouvert)
         if (taille >= 5) {
             for (int cx = cxMin; cx <= cxMax; cx++) {
                 for (int cz = czMin; cz <= czMax; cz++) {
@@ -2345,16 +2349,12 @@ public class EcranEditeurCarte extends Screen {
                     int ecranX = (int) Math.floor(gauche + decalageX + cx * tailleCellule);
                     int ecranY = (int) Math.floor(haut + decalageY + cz * tailleCellule);
 
-                    // Chiffre d'élévation affiché en permanence sur chaque bloc Île / Pierre
-                    if (bloc.type == TypeElementCarte.ILE || bloc.type == TypeElementCarte.PIERRE) {
-                        dessinerTexteCellule(guiGraphics, String.valueOf(bloc.elevation),
-                            ecranX + taille / 2.0f, ecranY + taille / 2.0f, taille,
-                            bloc.elevation < 0 ? 0xFF9FD3FF : 0xFFFFFFFF);
-                    }
+                    int icone = Math.max(5, taille / 2 - 1);
+                    boolean iconeVisible = bloc.qteBonbonVisible > 0 && taille >= 8;
+                    boolean iconeNonVisible = bloc.qteBonbonNonVisible > 0 && taille >= 8;
 
                     // Icônes des bonbons avec leur quantité (couleur selon le type : Standard/Bleu/Rouge)
-                    if (bloc.qteBonbonVisible > 0 && taille >= 8) {
-                        int icone = Math.max(5, taille / 2 - 1);
+                    if (iconeVisible) {
                         int couleurIcone = bloc.typeBonbonVisible.obtenirCouleurIcone();
                         int couleurTexte = bloc.typeBonbonVisible == com.example.mysubmod.cartes.TypeBonbonCarte.STANDARD
                             ? 0xFF000000 : 0xFFFFFFFF;
@@ -2362,8 +2362,7 @@ public class EcranEditeurCarte extends Screen {
                         dessinerTexteCellule(guiGraphics, String.valueOf(bloc.qteBonbonVisible),
                             ecranX + 1 + icone / 2.0f, ecranY + 1 + icone / 2.0f, icone, couleurTexte);
                     }
-                    if (bloc.qteBonbonNonVisible > 0 && taille >= 8) {
-                        int icone = Math.max(5, taille / 2 - 1);
+                    if (iconeNonVisible) {
                         int x0 = ecranX + taille - icone - 1;
                         int y0 = ecranY + taille - icone - 1;
                         int x1 = ecranX + taille - 1;
@@ -2376,6 +2375,57 @@ public class EcranEditeurCarte extends Screen {
                         dessinerCadre(guiGraphics, x0, y0, x1, y1, 0xFF000000);
                         dessinerTexteCellule(guiGraphics, String.valueOf(bloc.qteBonbonNonVisible),
                             (x0 + x1) / 2.0f, (y0 + y1) / 2.0f, icone, 0xFFFFFFFF);
+                    }
+
+                    // Chiffre d'élévation de chaque bloc Île / Pierre, dessiné après les icônes.
+                    // Dès qu'une icône occupe la cellule, il se replie dans le coin haut-droit
+                    // (toujours libre : les icônes vivent en haut-gauche et bas-droit)
+                    if (bloc.type == TypeElementCarte.ILE || bloc.type == TypeElementCarte.PIERRE) {
+                        int couleurElevation = bloc.elevation < 0 ? 0xFF9FD3FF : 0xFFFFFFFF;
+                        if (iconeVisible || iconeNonVisible) {
+                            dessinerTexteCellule(guiGraphics, String.valueOf(bloc.elevation),
+                                ecranX + taille - 1 - icone / 2.0f, ecranY + 1 + icone / 2.0f, icone,
+                                couleurElevation);
+                        } else {
+                            dessinerTexteCellule(guiGraphics, String.valueOf(bloc.elevation),
+                                ecranX + taille / 2.0f, ecranY + taille / 2.0f, taille, couleurElevation);
+                        }
+                    }
+                }
+            }
+        }
+
+        // 3b) Sous le seuil des icônes détaillées, marqueurs compacts (liste en cache,
+        //     comme les cellules Limite) pour repérer les bonbons de loin : couleur du
+        //     type, assombrie + cadre noir pour le non-visible, moitié claire / moitié
+        //     sombre quand la cellule porte les deux familles
+        if (taille < 8) {
+            rafraichirStatsCarte(); // rafraîchit aussi le cache des cellules à bonbons
+            int marqueur = Math.max(3, taille);
+            int debord = Math.max(0, (marqueur - taille) / 2);
+            for (long cle : cellulesBonbonsCache) {
+                int cx = CarteDonnees.cleX(cle);
+                int cz = CarteDonnees.cleZ(cle);
+                if (cx < cxMin || cx > cxMax || cz < czMin || cz > czMax) {
+                    continue;
+                }
+                BlocCarte bloc = carte.blocs.get(cle);
+                if (bloc == null || (bloc.qteBonbonVisible <= 0 && bloc.qteBonbonNonVisible <= 0)) {
+                    continue; // le cache peut retarder de 500 ms après un retrait
+                }
+                int x0 = (int) Math.floor(gauche + decalageX + cx * tailleCellule) - debord;
+                int y0 = (int) Math.floor(haut + decalageY + cz * tailleCellule) - debord;
+                boolean aVisible = bloc.qteBonbonVisible > 0;
+                if (aVisible) {
+                    guiGraphics.fill(x0, y0, x0 + marqueur, y0 + marqueur,
+                        bloc.typeBonbonVisible.obtenirCouleurIcone());
+                }
+                if (bloc.qteBonbonNonVisible > 0) {
+                    int xSombre = aVisible ? x0 + marqueur / 2 : x0;
+                    guiGraphics.fill(xSombre, y0, x0 + marqueur, y0 + marqueur,
+                        assombrir(bloc.typeBonbonNonVisible.obtenirCouleurIcone(), 0.6f));
+                    if (!aVisible && marqueur >= 5) {
+                        dessinerCadre(guiGraphics, x0, y0, x0 + marqueur, y0 + marqueur, 0xFF000000);
                     }
                 }
             }
@@ -2487,6 +2537,7 @@ public class EcranEditeurCarte extends Screen {
         int visibles = 0;
         int nonVisibles = 0;
         List<Long> limites = new ArrayList<>();
+        List<Long> bonbons = new ArrayList<>();
         for (Map.Entry<Long, BlocCarte> entree : carte.blocs.entrySet()) {
             BlocCarte bloc = entree.getValue();
             visibles += bloc.qteBonbonVisible;
@@ -2494,12 +2545,19 @@ public class EcranEditeurCarte extends Screen {
             if (bloc.type == TypeElementCarte.LIMITE) {
                 limites.add(entree.getKey());
             }
+            if (bloc.qteBonbonVisible > 0 || bloc.qteBonbonNonVisible > 0) {
+                bonbons.add(entree.getKey());
+            }
         }
         statBonbonsVisibles = visibles;
         statBonbonsNonVisibles = nonVisibles;
         cellulesLimiteCache = new long[limites.size()];
         for (int i = 0; i < limites.size(); i++) {
             cellulesLimiteCache[i] = limites.get(i);
+        }
+        cellulesBonbonsCache = new long[bonbons.size()];
+        for (int i = 0; i < bonbons.size(); i++) {
+            cellulesBonbonsCache[i] = bonbons.get(i);
         }
     }
 
