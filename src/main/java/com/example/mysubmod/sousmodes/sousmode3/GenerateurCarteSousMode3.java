@@ -137,14 +137,14 @@ public class GenerateurCarteSousMode3 {
         private static final int COUT_ARBRE = 4;   // poids indicatif par arbre (progression)
         private static final int POIDS_CHUNK = 64; // poids d'un chunk traité (progression)
         /** Chunks demandés d'avance : leur terrain se génère sur les threads de worldgen */
-        private static final int FENETRE_PRECHARGEMENT = 16;
+        private static final int FENETRE_PRECHARGEMENT = 32;
         /**
          * Contre-pression : sans plafond, l'écriture (rapide) distancerait le déchargement
          * des chunks et le moteur d'éclairage — sur une carte 2500×2500 (~24 600 chunks),
          * les chunks chargés et la file d'éclairage s'accumulaient en plusieurs Go et
          * épuisaient la mémoire du serveur.
          */
-        private static final int MAX_CHUNKS_PAR_TICK = 6;
+        private static final int MAX_CHUNKS_PAR_TICK = 24;
         /**
          * Croissance maximale du nombre de holders de chunks par rapport à la référence
          * prise au démarrage de la génération. Le compteur du serveur inclut les chunks

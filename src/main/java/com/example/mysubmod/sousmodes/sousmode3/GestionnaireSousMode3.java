@@ -1019,7 +1019,7 @@ public class GestionnaireSousMode3 {
         if (carte != null) {
             for (ZoneCarte zone : carte.zones) {
                 if (zone.type == TypeElementCarte.ILE) {
-                    tailles.add(zone.cellules.size());
+                    tailles.add((int) Math.min(Integer.MAX_VALUE, zone.nombreCellules()));
                 }
             }
         }
@@ -1039,24 +1039,32 @@ public class GestionnaireSousMode3 {
                 continue;
             }
             double[] centre = zone.obtenirCentre();
-            int[] meilleure = null;
+            int meilleurX = 0;
+            int meilleurZ = 0;
             double meilleureDistance = Double.MAX_VALUE;
-            for (int[] cellule : zone.cellules) {
-                double dx = cellule[0] - centre[0];
-                double dz = cellule[1] - centre[1];
-                double distance = dx * dx + dz * dz;
-                if (distance < meilleureDistance) {
-                    meilleureDistance = distance;
-                    meilleure = cellule;
+            // Parcours des plages en ordre de balayage : même départage des égalités
+            // que l'ancienne liste de cellules triée
+            for (int[] plage : zone.plages) {
+                int z = plage[0];
+                for (int k = 0; k < plage[2]; k++) {
+                    int x = plage[1] + k;
+                    double dx = x - centre[0];
+                    double dz = z - centre[1];
+                    double distance = dx * dx + dz * dz;
+                    if (distance < meilleureDistance) {
+                        meilleureDistance = distance;
+                        meilleurX = x;
+                        meilleurZ = z;
+                    }
                 }
             }
-            if (meilleure == null) {
+            if (meilleureDistance == Double.MAX_VALUE) {
                 return null;
             }
-            BlocCarte bloc = carte.obtenirBloc(meilleure[0], meilleure[1]);
+            BlocCarte bloc = carte.obtenirBloc(meilleurX, meilleurZ);
             int surfaceY = GenerateurCarteSousMode3.NIVEAU_MER + Math.max(0, bloc.elevation);
-            return new BlockPos(generation.origineX + meilleure[0], surfaceY + 1,
-                generation.origineZ + meilleure[1]);
+            return new BlockPos(generation.origineX + meilleurX, surfaceY + 1,
+                generation.origineZ + meilleurZ);
         }
         return null;
     }

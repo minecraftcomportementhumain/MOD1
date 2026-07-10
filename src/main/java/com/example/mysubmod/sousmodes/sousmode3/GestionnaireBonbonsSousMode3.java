@@ -173,7 +173,7 @@ public class GestionnaireBonbonsSousMode3 {
         List<List<int[]>> plagesCarteParZone = new ArrayList<>();
         for (ZoneCarte zone : carte.zones) {
             double[] centre = zone.obtenirCentre();
-            List<int[]> plagesCarte = PaquetZonesSousMode3.plagesDepuisCellules(zone.cellules);
+            List<int[]> plagesCarte = zone.plages; // déjà en plages triées, aucune conversion
             plagesCarteParZone.add(plagesCarte);
             List<int[]> plagesMonde = new ArrayList<>(plagesCarte.size());
             for (int[] plage : plagesCarte) {

@@ -332,13 +332,14 @@ public class CarteDonnees {
                 // Remplissage de la zone connexe du même type (8-adjacence : les diagonales comptent)
                 ZoneCarte zone = new ZoneCarte();
                 zone.type = typeIci == CODE_ILE ? TypeElementCarte.ILE : TypeElementCarte.PIERRE;
+                List<int[]> cellulesZone = new ArrayList<>();
                 pile.empiler(index);
                 visites.set(index);
                 while (!pile.estVide()) {
                     int courant = pile.depiler();
                     int cx = courant % largeur;
                     int cz = courant / largeur;
-                    zone.cellules.add(new int[]{cx, cz});
+                    cellulesZone.add(new int[]{cx, cz});
                     for (int dz = -1; dz <= 1; dz++) {
                         for (int dx = -1; dx <= 1; dx++) {
                             if (dx == 0 && dz == 0) {
@@ -358,12 +359,11 @@ public class CarteDonnees {
                     }
                 }
 
-                // Ordre de balayage déterministe : l'ordre des cellules d'une zone est le
-                // même en mémoire, dans le fichier v2 et après rechargement (les égalités
-                // de distance au centre dans le choix du point d'apparition d'une zone se
-                // départagent donc toujours de la même façon)
-                zone.cellules.sort((a, b) -> Long.compare(
-                    (long) a[1] * largeur + a[0], (long) b[1] * largeur + b[0]));
+                // Plages triées en ordre de balayage : représentation identique en mémoire,
+                // dans le fichier v2 et après rechargement (les égalités de distance au
+                // centre dans le choix du point d'apparition d'une zone se départagent
+                // donc toujours de la même façon)
+                zone.plages = ZoneCarte.plagesDepuisCellules(cellulesZone);
 
                 if (zone.type == TypeElementCarte.ILE) {
                     zone.nom = "Île " + lettreZone(compteurIles);
@@ -529,37 +529,27 @@ public class CarteDonnees {
     }
 
     /**
-     * Cellules d'une zone en plages « z,x0,longueur » (tri par index de balayage puis
-     * fusion). Les cellules hors de l'aire sont ignorées : des zones périmées peuvent
-     * subsister côté client après un rétrécissement (le redimensionnement ne touche pas
-     * carte.zones), et le décodeur v2 strict rendrait sinon la carte insauvegardable.
+     * Plages d'une zone au format fichier « z,x0,longueur ». Les plages sont rognées à
+     * l'aire de la carte : des zones périmées peuvent subsister côté client après un
+     * rétrécissement (le redimensionnement ne touche pas carte.zones), et le décodeur
+     * v2 strict rendrait sinon la carte insauvegardable.
      */
     private String encoderPlagesZone(ZoneCarte zone) {
-        long[] indices = new long[zone.cellules.size()];
-        int n = 0;
-        for (int[] cellule : zone.cellules) {
-            if (estDansAire(cellule[0], cellule[1])) {
-                indices[n++] = (long) cellule[1] * largeur + cellule[0];
-            }
-        }
-        Arrays.sort(indices, 0, n);
-
         StringBuilder sb = new StringBuilder();
-        int i = 0;
-        while (i < n) {
-            int debut = i;
-            // Fusionner les cellules consécutives sans franchir la fin d'une rangée
-            while (i + 1 < n && indices[i + 1] == indices[i] + 1
-                && indices[i + 1] % largeur != 0) {
-                i++;
+        for (int[] plage : zone.plages) {
+            int z = plage[0];
+            if (z < 0 || z >= hauteur) {
+                continue;
             }
-            int z = (int) (indices[debut] / largeur);
-            int x0 = (int) (indices[debut] % largeur);
+            int x0 = Math.max(0, plage[1]);
+            long fin = Math.min(largeur, (long) plage[1] + plage[2]);
+            if (fin <= x0) {
+                continue;
+            }
             if (sb.length() > 0) {
                 sb.append(';');
             }
-            sb.append(z).append(',').append(x0).append(',').append(i - debut + 1);
-            i++;
+            sb.append(z).append(',').append(x0).append(',').append(fin - x0);
         }
         return sb.toString();
     }
@@ -672,6 +662,8 @@ public class CarteDonnees {
                 ZoneCarte zone = new ZoneCarte();
                 zone.nom = objetZone.get("nom").getAsString();
                 zone.type = TypeElementCarte.valueOf(objetZone.get("type").getAsString());
+                // Expansion transitoire (format v1 seulement) puis conversion en plages
+                List<int[]> cellules = new ArrayList<>();
                 for (JsonElement elementCellule : objetZone.getAsJsonArray("cellules")) {
                     totalCellules++;
                     if (totalCellules > BLOCS_MAX) {
@@ -679,8 +671,9 @@ public class CarteDonnees {
                         throw new IllegalArgumentException("Trop de cellules de zones");
                     }
                     JsonArray paire = elementCellule.getAsJsonArray();
-                    zone.cellules.add(new int[]{paire.get(0).getAsInt(), paire.get(1).getAsInt()});
+                    cellules.add(new int[]{paire.get(0).getAsInt(), paire.get(1).getAsInt()});
                 }
+                zone.plages = ZoneCarte.plagesDepuisCellules(cellules);
                 carte.zones.add(zone);
             }
         }
@@ -841,11 +834,12 @@ public class CarteDonnees {
                 if (totalCellules > BLOCS_MAX) {
                     throw new IllegalArgumentException("Trop de cellules de zones");
                 }
-                for (int k = 0; k < longueur; k++) {
-                    zone.cellules.add(new int[]{x0 + k, z});
-                }
+                zone.plages.add(new int[]{z, x0, longueur});
                 i = fin + 1;
             }
+            // L'appartenance se teste par recherche binaire : garantir le tri même
+            // pour un fichier forgé dont les plages seraient désordonnées
+            zone.plages.sort((a, b) -> a[0] != b[0] ? Integer.compare(a[0], b[0]) : Integer.compare(a[1], b[1]));
             carte.zones.add(zone);
         }
     }

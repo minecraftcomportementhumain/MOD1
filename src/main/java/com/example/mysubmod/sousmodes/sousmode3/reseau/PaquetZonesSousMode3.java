@@ -86,48 +86,7 @@ public class PaquetZonesSousMode3 {
 
     /** La cellule (cx, cz) appartient-elle à ces plages triées ? Recherche binaire, O(log n). */
     public static boolean plagesContiennent(List<int[]> plages, int cx, int cz) {
-        int bas = 0;
-        int haut = plages.size() - 1;
-        while (bas <= haut) {
-            int milieu = (bas + haut) >>> 1;
-            int[] plage = plages.get(milieu);
-            if (plage[0] < cz || (plage[0] == cz && plage[1] <= cx)) {
-                bas = milieu + 1;
-            } else {
-                haut = milieu - 1;
-            }
-        }
-        if (haut < 0) {
-            return false;
-        }
-        int[] plage = plages.get(haut);
-        return plage[0] == cz && cx < plage[1] + plage[2];
-    }
-
-    /** Cellules {x, z} -> plages triées « z, x0, longueur » (mêmes coordonnées que l'entrée) */
-    public static List<int[]> plagesDepuisCellules(List<int[]> cellules) {
-        long[] indices = new long[cellules.size()];
-        int n = 0;
-        for (int[] cellule : cellules) {
-            // Clé triable : z signé en poids fort, x décalé en non-signé en poids faible
-            indices[n++] = (((long) cellule[1]) << 32) | ((cellule[0] - (long) Integer.MIN_VALUE) & 0xFFFFFFFFL);
-        }
-        Arrays.sort(indices);
-
-        List<int[]> plages = new ArrayList<>();
-        int i = 0;
-        while (i < indices.length) {
-            int debut = i;
-            while (i + 1 < indices.length && indices[i + 1] == indices[i] + 1
-                && (indices[i + 1] & 0xFFFFFFFFL) != 0) { // ne pas franchir un changement de rangée
-                i++;
-            }
-            int z = (int) (indices[debut] >> 32);
-            int x0 = (int) ((indices[debut] & 0xFFFFFFFFL) + Integer.MIN_VALUE);
-            plages.add(new int[]{z, x0, i - debut + 1});
-            i++;
-        }
-        return plages;
+        return com.example.mysubmod.cartes.ZoneCarte.plagesContiennent(plages, cx, cz);
     }
 
     private final List<ZoneReseau> zones;

@@ -27,10 +27,12 @@ import java.util.Set;
 @Mod.EventBusSubscriber(modid = MonSubMod.MOD_ID, bus = Mod.EventBusSubscriber.Bus.FORGE)
 public class EffaceurCarteSousMode3 {
 
-    private static final int MAX_CHUNKS_PAR_TICK = 6;
-    private static final int FENETRE_PRECHARGEMENT = 16;
+    private static final int MAX_CHUNKS_PAR_TICK = 24;
+    private static final int FENETRE_PRECHARGEMENT = 32;
     private static final int MARGE_CHUNKS_CHARGES = 2000;
     private static final int TICKS_PAUSE_MAX = 100;
+    /** Temps maximal consacré à l'effacement par tick */
+    private static final long BUDGET_NANOS = 30_000_000L;
 
     private static ServerLevel niveau;
     private static List<ChunkPos> cibles;
@@ -142,8 +144,10 @@ public class EffaceurCarteSousMode3 {
         }
 
         try {
+            long debut = System.nanoTime();
             int chunksCeTick = 0;
-            while (index < cibles.size() && chunksCeTick < MAX_CHUNKS_PAR_TICK) {
+            while (index < cibles.size() && chunksCeTick < MAX_CHUNKS_PAR_TICK
+                && System.nanoTime() - debut < BUDGET_NANOS) {
                 // Même contre-pression que la génération : borne la croissance des chunks
                 // chargés par rapport au niveau observé au démarrage de l'effacement
                 int charges = niveau.getChunkSource().getLoadedChunksCount();
