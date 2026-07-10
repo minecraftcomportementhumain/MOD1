@@ -603,11 +603,10 @@ public class GestionnaireSousMode3 {
                 ServerLevel monde = serveur.getLevel(ServerLevel.OVERWORLD);
                 if (monde != null) {
                     if (generation != null) {
-                        // Inclure les blocs bonbons réapparus et les blocs placés par les joueurs (déjà suivis)
-                        generation.blocsPlaces.addAll(
-                            GestionnaireBonbonsSousMode3.obtenirInstance().obtenirPositionsBonbonsCaches());
                         retirerItemsDansCage(monde);
-                        GenerateurCarteSousMode3.effacer(monde, generation.blocsPlaces);
+                        // Balayage de la bande de la cage : couvre la carte générée, les blocs
+                        // bonbons réapparus et les blocs posés par les joueurs (tous dans la cage)
+                        GenerateurCarteSousMode3.effacerCarte(monde, generation);
                         effacerPlateformeSpectateur(monde);
                     } else {
                         // Nettoyage de secours après un arrêt inattendu du serveur

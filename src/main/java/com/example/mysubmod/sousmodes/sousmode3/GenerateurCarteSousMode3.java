@@ -8,9 +8,19 @@ import com.example.mysubmod.objets.BlocsMod;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import net.minecraft.core.BlockPos;
+import net.minecraft.core.SectionPos;
+import net.minecraft.network.protocol.game.ClientboundLevelChunkWithLightPacket;
+import net.minecraft.server.level.ServerChunkCache;
 import net.minecraft.server.level.ServerLevel;
+import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.server.level.TicketType;
+import net.minecraft.world.level.ChunkPos;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.Blocks;
+import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.level.chunk.LevelChunk;
+import net.minecraft.world.level.chunk.LevelChunkSection;
+import net.minecraft.world.level.levelgen.Heightmap;
 
 import java.io.File;
 import java.nio.charset.StandardCharsets;
@@ -20,6 +30,7 @@ import java.nio.file.Paths;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Deque;
+import java.util.EnumSet;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
@@ -61,12 +72,31 @@ public class GenerateurCarteSousMode3 {
 
     /** Résultat de la génération d'une carte dans le monde */
     public static class ResultatGeneration {
+        /**
+         * Blocs suivis hors génération de masse (bonbons réapparus, blocs posés par les
+         * joueurs). La carte elle-même n'y est plus suivie bloc par bloc : l'effacement
+         * balaie la bande de la cage ({@link #effacerCarte}) — suivre 100 M de positions
+         * dans un HashSet coûterait plusieurs Go sur une carte 2500×2500.
+         */
         public final Set<BlockPos> blocsPlaces = new HashSet<>();
         public Set<Long> cellulesInterieur = new HashSet<>();
+        /** Chunks écrits par la génération (recalcul d'éclairage groupé à la fin) */
+        public final Set<ChunkPos> chunksModifies = new HashSet<>();
         public int origineX;
         public int origineZ;
+        public int largeurCarte;
+        public int hauteurCarte;
+        public long blocsEcrits;
         public BlockPos pointApparitionMonde;
     }
+
+    // États réutilisés par la génération et l'effacement en masse
+    private static final net.minecraft.world.level.block.state.BlockState ETAT_BARRIER =
+        Blocks.BARRIER.defaultBlockState();
+    private static final net.minecraft.world.level.block.state.BlockState ETAT_EAU =
+        Blocks.WATER.defaultBlockState();
+    private static final net.minecraft.world.level.block.state.BlockState ETAT_AIR =
+        Blocks.AIR.defaultBlockState();
 
     /**
      * Génère la carte dans le monde, centrée sur l'origine (0, 0).
@@ -104,9 +134,12 @@ public class GenerateurCarteSousMode3 {
      * posée. L'état final ne dépend donc pas du découpage temporel.</p>
      */
     public static class Tache {
-        private enum Phase { INIT, COLONNES, ARBRES, FINALISATION, TERMINE }
+        private enum Phase { INIT, CHUNKS, ARBRES, FINALISATION, TERMINE }
 
-        private static final int COUT_ARBRE = 4; // poids indicatif par cellule d'île (progression)
+        private static final int COUT_ARBRE = 4;   // poids indicatif par arbre (progression)
+        private static final int POIDS_CHUNK = 64; // poids d'un chunk traité (progression)
+        /** Chunks demandés d'avance : leur terrain se génère sur les threads de worldgen */
+        private static final int FENETRE_PRECHARGEMENT = 16;
 
         private final ServerLevel niveau;
         private final CarteDonnees carte;
@@ -115,8 +148,10 @@ public class GenerateurCarteSousMode3 {
 
         private Phase phase = Phase.INIT;
         private Set<Long> cellulesRemplissageEau;
-        private int indexColonne;
-        private int totalColonnes;
+        private List<ChunkPos> chunksCibles;
+        private int indexChunk;
+        private int prochainTicket; // premier chunk sans ticket de préchargement
+        private final List<BlockPos> semencesLumiere = new ArrayList<>();
         private List<Long> clesArbres;
         private int indexArbre;
 
@@ -151,26 +186,40 @@ public class GenerateurCarteSousMode3 {
 
         /**
          * Poursuit la génération pendant au plus {@code budgetNanos} nanosecondes.
+         * La carte est écrite chunk par chunk, directement dans les sections (aucune
+         * notification par bloc) ; les chunks à venir sont préchargés en asynchrone,
+         * de sorte que la génération vanilla du terrain s'exécute sur les threads de
+         * worldgen et non sur le thread serveur.
          * @return true si la génération est terminée.
          */
         public boolean avancer(long budgetNanos) {
             long debut = System.nanoTime();
+            // Chemin synchrone (budget « infini ») : chargements de chunks bloquants
+            boolean synchrone = budgetNanos >= Long.MAX_VALUE / 2;
 
             if (phase == Phase.INIT) {
                 initialiser();
-                phase = Phase.COLONNES;
+                phase = Phase.CHUNKS;
             }
 
-            while (phase == Phase.COLONNES) {
-                if (indexColonne >= totalColonnes) {
+            while (phase == Phase.CHUNKS) {
+                if (indexChunk >= chunksCibles.size()) {
+                    abandonner(); // plus aucun ticket de préchargement à conserver
                     phase = Phase.ARBRES;
                     break;
                 }
-                int cx = indexColonne / carte.hauteur;
-                int cz = indexColonne % carte.hauteur;
-                traiterColonne(cx, cz);
-                poidsFait += estimerCoutColonne(cx, cz);
-                indexColonne++;
+                if (!synchrone) {
+                    precharger();
+                    ChunkPos pos = chunksCibles.get(indexChunk);
+                    if (!niveau.getChunkSource().hasChunk(pos.x, pos.z)) {
+                        return false; // le terrain se génère hors du thread serveur : revenir au tick suivant
+                    }
+                }
+                ChunkPos pos = chunksCibles.get(indexChunk);
+                genererChunk(niveau.getChunk(pos.x, pos.z));
+                libererTicket(indexChunk);
+                poidsFait += POIDS_CHUNK;
+                indexChunk++;
                 if (System.nanoTime() - debut >= budgetNanos) {
                     return false;
                 }
@@ -196,14 +245,57 @@ public class GenerateurCarteSousMode3 {
             return phase == Phase.TERMINE;
         }
 
+        /** Libère les tickets de préchargement restants (fin de phase ou annulation). */
+        public void abandonner() {
+            if (chunksCibles == null) {
+                return;
+            }
+            for (int i = Math.max(indexChunk, 0); i < prochainTicket; i++) {
+                ChunkPos pos = chunksCibles.get(i);
+                niveau.getChunkSource().removeRegionTicket(TicketType.FORCED, pos, 0, pos);
+            }
+            prochainTicket = indexChunk;
+        }
+
+        /** Pose des tickets sur les prochains chunks : leur génération démarre en tâche de fond */
+        private void precharger() {
+            int fin = Math.min(chunksCibles.size(), indexChunk + FENETRE_PRECHARGEMENT);
+            while (prochainTicket < fin) {
+                ChunkPos pos = chunksCibles.get(prochainTicket);
+                niveau.getChunkSource().addRegionTicket(TicketType.FORCED, pos, 0, pos);
+                prochainTicket++;
+            }
+        }
+
+        private void libererTicket(int index) {
+            if (index < prochainTicket) {
+                ChunkPos pos = chunksCibles.get(index);
+                niveau.getChunkSource().removeRegionTicket(TicketType.FORCED, pos, 0, pos);
+            }
+        }
+
         private void initialiser() {
             resultat.origineX = -carte.largeur / 2;
             resultat.origineZ = -carte.hauteur / 2;
+            resultat.largeurCarte = carte.largeur;
+            resultat.hauteurCarte = carte.hauteur;
             resultat.cellulesInterieur = carte.calculerInterieurLimite();
             cellulesRemplissageEau = calculerRemplissageEau(carte, resultat.cellulesInterieur);
-            totalColonnes = carte.largeur * carte.hauteur;
 
-            // Cellules d'île éligibles aux arbres (mêmes filtres externes que genererArbres)
+            // Chunks couvrant l'aire de la carte, en ordre de balayage
+            int chunkXMin = resultat.origineX >> 4;
+            int chunkXMax = (resultat.origineX + carte.largeur - 1) >> 4;
+            int chunkZMin = resultat.origineZ >> 4;
+            int chunkZMax = (resultat.origineZ + carte.hauteur - 1) >> 4;
+            chunksCibles = new ArrayList<>();
+            for (int chunkZ = chunkZMin; chunkZ <= chunkZMax; chunkZ++) {
+                for (int chunkX = chunkXMin; chunkX <= chunkXMax; chunkX++) {
+                    chunksCibles.add(new ChunkPos(chunkX, chunkZ));
+                }
+            }
+
+            // Cellules d'île éligibles aux arbres, triées par chunk : la phase ARBRES
+            // recharge chaque chunk au plus une fois au lieu de sauter au hasard
             clesArbres = new ArrayList<>();
             for (Map.Entry<Long, BlocCarte> entree : carte.blocs.entrySet()) {
                 BlocCarte bloc = entree.getValue();
@@ -211,16 +303,20 @@ public class GenerateurCarteSousMode3 {
                     clesArbres.add(entree.getKey());
                 }
             }
+            clesArbres.sort((a, b) -> {
+                int chunkA = (((resultat.origineZ + CarteDonnees.cleZ(a)) >> 4) << 16)
+                    ^ (((resultat.origineX + CarteDonnees.cleX(a)) >> 4) & 0xFFFF);
+                int chunkB = (((resultat.origineZ + CarteDonnees.cleZ(b)) >> 4) << 16)
+                    ^ (((resultat.origineX + CarteDonnees.cleX(b)) >> 4) & 0xFFFF);
+                return Integer.compare(chunkA, chunkB);
+            });
 
-            // Poids total pour la progression (estimation du nombre de blocs à poser)
-            poidsTotal = (long) clesArbres.size() * COUT_ARBRE;
-            for (int i = 0; i < totalColonnes; i++) {
-                poidsTotal += estimerCoutColonne(i / carte.hauteur, i % carte.hauteur);
-            }
+            poidsTotal = (long) chunksCibles.size() * POIDS_CHUNK + (long) clesArbres.size() * COUT_ARBRE;
 
-            MonSubMod.JOURNALISEUR.info("Génération de la carte « {} » ({}x{}, {} cellules intérieures) à l'origine ({}, {})",
+            MonSubMod.JOURNALISEUR.info(
+                "Génération de la carte « {} » ({}x{}, {} cellules intérieures, {} chunks) à l'origine ({}, {})",
                 carte.nom, carte.largeur, carte.hauteur, resultat.cellulesInterieur.size(),
-                resultat.origineX, resultat.origineZ);
+                chunksCibles.size(), resultat.origineX, resultat.origineZ);
 
             // Écrire la région dès maintenant : un arrêt en pleine génération est alors couvert
             // par le nettoyage de secours (nettoyerRegionResiduelle).
@@ -228,17 +324,34 @@ public class GenerateurCarteSousMode3 {
                 resultat.origineX + carte.largeur - 1, resultat.origineZ + carte.hauteur - 1);
         }
 
-        private void traiterColonne(int cx, int cz) {
+        /** Écrit toutes les colonnes de la carte couvertes par ce chunk, puis le finalise */
+        private void genererChunk(LevelChunk chunk) {
+            ChunkPos pos = chunk.getPos();
+            int mondeXMin = Math.max(pos.getMinBlockX(), resultat.origineX);
+            int mondeXMax = Math.min(pos.getMaxBlockX(), resultat.origineX + carte.largeur - 1);
+            int mondeZMin = Math.max(pos.getMinBlockZ(), resultat.origineZ);
+            int mondeZMax = Math.min(pos.getMaxBlockZ(), resultat.origineZ + carte.hauteur - 1);
+            for (int mondeX = mondeXMin; mondeX <= mondeXMax; mondeX++) {
+                for (int mondeZ = mondeZMin; mondeZ <= mondeZMax; mondeZ++) {
+                    genererColonne(chunk, mondeX - resultat.origineX, mondeZ - resultat.origineZ, mondeX, mondeZ);
+                }
+            }
+            finaliserChunkModifie(niveau, chunk);
+            semerLumiere(niveau, semencesLumiere);
+            resultat.chunksModifies.add(pos);
+        }
+
+        /** Logique de colonne identique à l'ancien chemin bloc par bloc, en écriture par sections */
+        private void genererColonne(LevelChunk chunk, int cx, int cz, int mondeX, int mondeZ) {
             long cle = CarteDonnees.cle(cx, cz);
             BlocCarte bloc = carte.obtenirBlocOuNull(cx, cz);
-            int mondeX = resultat.origineX + cx;
-            int mondeZ = resultat.origineZ + cz;
 
             if (bloc != null && bloc.type == TypeElementCarte.LIMITE) {
                 // Blocs Limite : uniquement des blocs barrier (mur complet de la cage)
                 for (int y = Y_PLANCHER_BARRIER; y <= Y_PLAFOND_BARRIER; y++) {
-                    placer(niveau, resultat, new BlockPos(mondeX, y, mondeZ), Blocks.BARRIER.defaultBlockState());
+                    ecrire(chunk, mondeX, y, mondeZ, ETAT_BARRIER);
                 }
+                semerColonneBase(mondeX, mondeZ);
                 return;
             }
 
@@ -247,50 +360,107 @@ public class GenerateurCarteSousMode3 {
             }
 
             // Plancher et plafond barrier de chaque colonne intérieure
-            placer(niveau, resultat, new BlockPos(mondeX, Y_PLANCHER_BARRIER, mondeZ), Blocks.BARRIER.defaultBlockState());
-            placer(niveau, resultat, new BlockPos(mondeX, Y_PLAFOND_BARRIER, mondeZ), Blocks.BARRIER.defaultBlockState());
+            ecrire(chunk, mondeX, Y_PLANCHER_BARRIER, mondeZ, ETAT_BARRIER);
+            ecrire(chunk, mondeX, Y_PLAFOND_BARRIER, mondeZ, ETAT_BARRIER);
 
             if (bloc == null || !bloc.type.estElementDeBase()) {
                 return; // Ne devrait pas arriver (validation à la sauvegarde)
             }
 
             switch (bloc.type) {
-                case EAU -> genererColonneEau(niveau, resultat, mondeX, mondeZ);
-                case ILE, PIERRE -> genererColonneSolide(niveau, resultat, carte, bloc, cx, cz, mondeX, mondeZ,
-                    cellulesRemplissageEau.contains(cle), genererBonbonsCaches);
+                case EAU -> {
+                    for (int y = Y_BAS_COLONNE; y <= NIVEAU_MER; y++) {
+                        ecrire(chunk, mondeX, y, mondeZ, ETAT_EAU);
+                    }
+                    degagerAir(chunk, mondeX, mondeZ, NIVEAU_MER + 1);
+                    semerColonneBase(mondeX, mondeZ);
+                    semerLumiereA(mondeX, NIVEAU_MER, mondeZ);
+                    semerLumiereA(mondeX, NIVEAU_MER + 1, mondeZ);
+                }
+                case ILE, PIERRE -> colonneSolide(chunk, bloc, cx, cz, mondeX, mondeZ,
+                    cellulesRemplissageEau.contains(cle));
                 default -> {
                 }
             }
         }
 
-        /** Estimation du nombre de setBlock d'une colonne (pour une progression fluide). */
-        private int estimerCoutColonne(int cx, int cz) {
-            long cle = CarteDonnees.cle(cx, cz);
-            BlocCarte bloc = carte.obtenirBlocOuNull(cx, cz);
-            if (bloc != null && bloc.type == TypeElementCarte.LIMITE) {
-                return Y_PLAFOND_BARRIER - Y_PLANCHER_BARRIER + 1;
-            }
-            if (!resultat.cellulesInterieur.contains(cle)) {
-                return 0;
-            }
-            int cout = 2; // plancher + plafond barrier
-            if (bloc == null || !bloc.type.estElementDeBase()) {
-                return cout;
-            }
-            if (bloc.type == TypeElementCarte.EAU) {
-                return cout + (NIVEAU_MER - Y_BAS_COLONNE + 1);
-            }
-            // ILE / PIERRE
+        /**
+         * Semences d'éclairage communes à toute colonne écrite : plancher (l'opacité y
+         * change par rapport au terrain d'origine) et entrée du ciel dans la cage.
+         */
+        private void semerColonneBase(int mondeX, int mondeZ) {
+            semerLumiereA(mondeX, Y_PLANCHER_BARRIER, mondeZ);
+            semerLumiereA(mondeX, Y_HAUT_JOUABLE, mondeZ);
+            semerLumiereA(mondeX, Y_PLAFOND_BARRIER, mondeZ);
+        }
+
+        private void semerLumiereA(int mondeX, int y, int mondeZ) {
+            semencesLumiere.add(new BlockPos(mondeX, y, mondeZ));
+        }
+
+        private void colonneSolide(LevelChunk chunk, BlocCarte bloc, int cx, int cz,
+                                   int mondeX, int mondeZ, boolean remplirEauAuDessus) {
+            boolean estPierre = bloc.type == TypeElementCarte.PIERRE;
             int surfaceY = NIVEAU_MER + bloc.elevation;
-            cout += (surfaceY - Y_BAS_COLONNE + 1);
-            if (genererBonbonsCaches && bloc.qteBonbonNonVisible > 0
-                && bloc.delaiApparitionInitialeNonVisible == 0 && (surfaceY - 1) >= Y_BAS_COLONNE) {
-                cout += 1;
+            Random aleatoire = aleatoirePourCellule(carte.seed, cx, cz);
+
+            // Colonne solide depuis la limite inférieure de la cage (−15) jusqu'à l'élévation définie
+            for (int y = Y_BAS_COLONNE; y <= surfaceY; y++) {
+                Block materiau;
+                if (y == surfaceY) {
+                    materiau = estPierre ? choisirSurfacePierre(aleatoire) : choisirSurfaceIle(aleatoire);
+                } else {
+                    materiau = estPierre ? choisirSousSolPierre(aleatoire) : Blocks.DIRT;
+                }
+                ecrire(chunk, mondeX, y, mondeZ, materiau.defaultBlockState());
             }
-            if (cellulesRemplissageEau.contains(cle) && bloc.elevation < 0) {
-                cout += (NIVEAU_MER - surfaceY);
+
+            // Bloc bonbon non-visible : 1 bloc sous la surface, faces identiques aux blocs environnants.
+            // Avec un délai d'apparition initiale, le bloc de sous-sol normal reste en place : le bloc
+            // bonbon le remplacera au moment planifié après le début de la partie.
+            if (genererBonbonsCaches && bloc.qteBonbonNonVisible > 0) {
+                int yBonbon = surfaceY - 1;
+                if (yBonbon >= Y_BAS_COLONNE) {
+                    if (bloc.delaiApparitionInitialeNonVisible == 0) {
+                        Block blocBonbon = estPierre ? BlocsMod.BONBON_CACHE_PIERRE.get() : BlocsMod.BONBON_CACHE_TERRE.get();
+                        ecrire(chunk, mondeX, yBonbon, mondeZ, blocBonbon.defaultBlockState());
+                    }
+                } else {
+                    MonSubMod.JOURNALISEUR.warn("Bonbon non-visible ignoré en ({}, {}) : élévation trop basse", cx, cz);
+                }
             }
-            return cout;
+
+            // Bloc submergé : l'eau remplit l'espace au-dessus jusqu'au niveau de la mer
+            if (remplirEauAuDessus && bloc.elevation < 0) {
+                for (int y = surfaceY + 1; y <= NIVEAU_MER; y++) {
+                    ecrire(chunk, mondeX, y, mondeZ, ETAT_EAU);
+                }
+                degagerAir(chunk, mondeX, mondeZ, NIVEAU_MER + 1);
+                semerLumiereA(mondeX, NIVEAU_MER, mondeZ);
+                semerLumiereA(mondeX, NIVEAU_MER + 1, mondeZ);
+            } else {
+                degagerAir(chunk, mondeX, mondeZ, surfaceY + 1);
+            }
+
+            // Semences d'éclairage de la colonne : plancher/plafond + surface (transition opaque/air)
+            semerColonneBase(mondeX, mondeZ);
+            semerLumiereA(mondeX, surfaceY, mondeZ);
+            if (surfaceY + 1 <= Y_HAUT_JOUABLE) {
+                semerLumiereA(mondeX, surfaceY + 1, mondeZ);
+            }
+        }
+
+        /** Dégage l'air au-dessus d'une colonne jusqu'au haut de l'espace jouable */
+        private void degagerAir(LevelChunk chunk, int mondeX, int mondeZ, int depuisY) {
+            for (int y = depuisY; y <= Y_HAUT_JOUABLE; y++) {
+                ecrire(chunk, mondeX, y, mondeZ, ETAT_AIR);
+            }
+        }
+
+        private void ecrire(LevelChunk chunk, int mondeX, int y, int mondeZ, BlockState etat) {
+            if (ecrireBlocSection(chunk, mondeX, y, mondeZ, etat, semencesLumiere)) {
+                resultat.blocsEcrits++;
+            }
         }
 
         private void finaliser() {
@@ -305,7 +475,8 @@ public class GenerateurCarteSousMode3 {
                     Math.max(NIVEAU_MER, surfaceY) + 1,
                     resultat.origineZ + carte.apparitionZ);
             }
-            MonSubMod.JOURNALISEUR.info("Carte générée : {} blocs placés", resultat.blocsPlaces.size());
+            MonSubMod.JOURNALISEUR.info("Carte générée : {} blocs écrits dans {} chunks",
+                resultat.blocsEcrits, resultat.chunksModifies.size());
         }
     }
 
@@ -352,66 +523,73 @@ public class GenerateurCarteSousMode3 {
         return remplies;
     }
 
-    private static void genererColonneEau(ServerLevel niveau, ResultatGeneration resultat, int mondeX, int mondeZ) {
-        for (int y = Y_BAS_COLONNE; y <= NIVEAU_MER; y++) {
-            placer(niveau, resultat, new BlockPos(mondeX, y, mondeZ), Blocks.WATER.defaultBlockState());
+    // ==================== Écriture en masse par sections de chunks ====================
+
+    /**
+     * Écrit un état directement dans la section du chunk : aucune notification de bloc,
+     * de voisin ni d'éclairage. L'éclairage est ensuite recalculé par « semences » :
+     * {@code checkBlock} aux points de transition d'opacité de chaque colonne (voir les
+     * appelants), le moteur d'éclairage threadé de 1.20 propageant le reste en arrière-plan.
+     * Un éventuel bloc-entité du bloc remplacé est retiré pour ne pas laisser d'orphelin,
+     * et la position d'un ancien bloc émetteur de lumière est ajoutée aux semences.
+     * @return true si l'état a changé
+     */
+    private static boolean ecrireBlocSection(LevelChunk chunk, int mondeX, int y, int mondeZ, BlockState etat,
+                                             List<BlockPos> semencesLumiere) {
+        LevelChunkSection section = chunk.getSection(chunk.getSectionIndex(y));
+        int localX = mondeX & 15;
+        int localY = y & 15;
+        int localZ = mondeZ & 15;
+        BlockState ancien = section.getBlockState(localX, localY, localZ);
+        if (ancien == etat) {
+            return false;
         }
-        // Dégager l'espace au-dessus de l'eau
-        degagerAir(niveau, mondeX, mondeZ, NIVEAU_MER + 1);
+        if (ancien.hasBlockEntity()) {
+            chunk.removeBlockEntity(new BlockPos(mondeX, y, mondeZ));
+        }
+        if (ancien.getLightEmission() > 0 && semencesLumiere != null) {
+            // Ancien émetteur (magma, lichen...) : sans semence, sa lumière fantôme persisterait
+            semencesLumiere.add(new BlockPos(mondeX, y, mondeZ));
+        }
+        section.setBlockState(localX, localY, localZ, etat, false);
+        return true;
     }
 
-    private static void genererColonneSolide(ServerLevel niveau, ResultatGeneration resultat, CarteDonnees carte,
-                                             BlocCarte bloc, int cx, int cz, int mondeX, int mondeZ,
-                                             boolean remplirEauAuDessus, boolean genererBonbonsCaches) {
-        boolean estPierre = bloc.type == TypeElementCarte.PIERRE;
-        int surfaceY = NIVEAU_MER + bloc.elevation;
-        Random aleatoire = aleatoirePourCellule(carte.seed, cx, cz);
+    /**
+     * Finalise un chunk écrit en masse : heightmaps recalculées, chunk marqué à
+     * sauvegarder, sections signalées au moteur d'éclairage, et renvoi du chunk aux
+     * joueurs qui l'observent déjà (les autres le recevront normalement à l'approche).
+     */
+    private static void finaliserChunkModifie(ServerLevel niveau, LevelChunk chunk) {
+        Heightmap.primeHeightmaps(chunk, EnumSet.of(
+            Heightmap.Types.WORLD_SURFACE, Heightmap.Types.OCEAN_FLOOR,
+            Heightmap.Types.MOTION_BLOCKING, Heightmap.Types.MOTION_BLOCKING_NO_LEAVES));
+        chunk.setUnsaved(true);
 
-        // Colonne solide depuis la limite inférieure de la cage (−15) jusqu'à l'élévation définie
-        for (int y = Y_BAS_COLONNE; y <= surfaceY; y++) {
-            Block materiau;
-            if (y == surfaceY) {
-                materiau = estPierre ? choisirSurfacePierre(aleatoire) : choisirSurfaceIle(aleatoire);
-            } else {
-                materiau = estPierre ? choisirSousSolPierre(aleatoire) : Blocks.DIRT;
-            }
-            placer(niveau, resultat, new BlockPos(mondeX, y, mondeZ), materiau.defaultBlockState());
+        int indexMin = chunk.getSectionIndex(Y_PLANCHER_BARRIER);
+        int indexMax = chunk.getSectionIndex(Y_PLAFOND_BARRIER);
+        for (int index = indexMin; index <= indexMax; index++) {
+            LevelChunkSection section = chunk.getSection(index);
+            niveau.getLightEngine().updateSectionStatus(
+                SectionPos.of(chunk.getPos(), chunk.getSectionYFromSectionIndex(index)), section.hasOnlyAir());
         }
 
-        // Bloc bonbon non-visible : 1 bloc sous la surface, faces identiques aux blocs environnants.
-        // Avec un délai d'apparition initiale, le bloc de sous-sol normal reste en place : le bloc
-        // bonbon le remplacera au moment planifié après le début de la partie.
-        if (genererBonbonsCaches && bloc.qteBonbonNonVisible > 0) {
-            int yBonbon = surfaceY - 1;
-            if (yBonbon >= Y_BAS_COLONNE) {
-                if (bloc.delaiApparitionInitialeNonVisible == 0) {
-                    Block blocBonbon = estPierre ? BlocsMod.BONBON_CACHE_PIERRE.get() : BlocsMod.BONBON_CACHE_TERRE.get();
-                    placer(niveau, resultat, new BlockPos(mondeX, yBonbon, mondeZ), blocBonbon.defaultBlockState());
-                }
-            } else {
-                MonSubMod.JOURNALISEUR.warn("Bonbon non-visible ignoré en ({}, {}) : élévation trop basse", cx, cz);
-            }
-        }
-
-        // Bloc submergé : l'eau remplit l'espace au-dessus jusqu'au niveau de la mer
-        if (remplirEauAuDessus && bloc.elevation < 0) {
-            for (int y = surfaceY + 1; y <= NIVEAU_MER; y++) {
-                placer(niveau, resultat, new BlockPos(mondeX, y, mondeZ), Blocks.WATER.defaultBlockState());
-            }
-            degagerAir(niveau, mondeX, mondeZ, NIVEAU_MER + 1);
-        } else {
-            degagerAir(niveau, mondeX, mondeZ, surfaceY + 1);
+        for (ServerPlayer joueur : ((ServerChunkCache) niveau.getChunkSource()).chunkMap
+            .getPlayers(chunk.getPos(), false)) {
+            joueur.connection.send(new ClientboundLevelChunkWithLightPacket(
+                chunk, niveau.getLightEngine(), null, null));
         }
     }
 
-    /** Dégage l'air au-dessus d'une colonne jusqu'au haut de l'espace jouable */
-    private static void degagerAir(ServerLevel niveau, int mondeX, int mondeZ, int depuisY) {
-        for (int y = depuisY; y <= Y_HAUT_JOUABLE; y++) {
-            BlockPos pos = new BlockPos(mondeX, y, mondeZ);
-            if (!niveau.getBlockState(pos).isAir()) {
-                niveau.setBlock(pos, Blocks.AIR.defaultBlockState(), DRAPEAU_PLACEMENT);
-            }
+    /**
+     * Enfile les semences de recalcul d'éclairage d'un chunk : le moteur d'éclairage
+     * (threadé en 1.20) repropage la lumière depuis chaque point vérifié, en tâche de fond.
+     */
+    private static void semerLumiere(ServerLevel niveau, List<BlockPos> semences) {
+        for (BlockPos pos : semences) {
+            niveau.getLightEngine().checkBlock(pos);
         }
+        semences.clear();
     }
 
     /** Générateur aléatoire déterministe par cellule (rendu identique à chaque chargement) */
@@ -514,28 +692,91 @@ public class GenerateurCarteSousMode3 {
     }
 
     private static void placer(ServerLevel niveau, ResultatGeneration resultat, BlockPos pos,
-                               net.minecraft.world.level.block.state.BlockState etat) {
+                               BlockState etat) {
+        // Chemin « fin » (arbres, sparses) : setBlock normal, éclairage couvert par le
+        // recalcul groupé de la finalisation
         niveau.setBlock(pos, etat, DRAPEAU_PLACEMENT);
-        resultat.blocsPlaces.add(pos.immutable());
+        resultat.blocsEcrits++;
     }
 
     // ==================== Nettoyage ====================
 
-    /** Supprime tous les blocs suivis (placés lors du chargement ou par les joueurs) */
-    public static void effacer(ServerLevel niveau, Set<BlockPos> blocsPlaces) {
-        if (niveau == null || blocsPlaces == null) {
+    /** Marge autour du périmètre : le feuillage des arbres peut déborder de 2 cellules */
+    private static final int MARGE_EFFACEMENT = 2;
+
+    /**
+     * Efface la carte générée : balayage par sections de la bande de la cage (Y 84..116),
+     * restreint aux cellules à au plus {@link #MARGE_EFFACEMENT} cellules de l'intérieur
+     * du périmètre (couvre les murs Limite, le feuillage débordant, les blocs bonbons
+     * réapparus et les blocs posés par les joueurs — tous dans la cage). Le terrain
+     * naturel hors du périmètre n'est pas touché.
+     */
+    public static void effacerCarte(ServerLevel niveau, ResultatGeneration generation) {
+        if (niveau == null || generation == null) {
             return;
         }
-        int effaces = 0;
-        for (BlockPos pos : blocsPlaces) {
-            if (!niveau.getBlockState(pos).isAir()) {
-                niveau.setBlock(pos, Blocks.AIR.defaultBlockState(), DRAPEAU_PLACEMENT);
-                effaces++;
+        long effaces = 0;
+        int chunksModifies = 0;
+        List<BlockPos> semencesLumiere = new ArrayList<>();
+        int mondeXMin = generation.origineX - MARGE_EFFACEMENT;
+        int mondeXMax = generation.origineX + generation.largeurCarte - 1 + MARGE_EFFACEMENT;
+        int mondeZMin = generation.origineZ - MARGE_EFFACEMENT;
+        int mondeZMax = generation.origineZ + generation.hauteurCarte - 1 + MARGE_EFFACEMENT;
+
+        for (int chunkZ = mondeZMin >> 4; chunkZ <= mondeZMax >> 4; chunkZ++) {
+            for (int chunkX = mondeXMin >> 4; chunkX <= mondeXMax >> 4; chunkX++) {
+                LevelChunk chunk = niveau.getChunk(chunkX, chunkZ);
+                boolean modifie = false;
+                int xDebut = Math.max(chunkX << 4, mondeXMin);
+                int xFin = Math.min((chunkX << 4) + 15, mondeXMax);
+                int zDebut = Math.max(chunkZ << 4, mondeZMin);
+                int zFin = Math.min((chunkZ << 4) + 15, mondeZMax);
+                for (int mondeX = xDebut; mondeX <= xFin; mondeX++) {
+                    for (int mondeZ = zDebut; mondeZ <= zFin; mondeZ++) {
+                        if (!procheInterieur(generation,
+                            mondeX - generation.origineX, mondeZ - generation.origineZ)) {
+                            continue;
+                        }
+                        boolean colonneModifiee = false;
+                        for (int y = Y_PLANCHER_BARRIER; y <= Y_PLAFOND_BARRIER; y++) {
+                            if (ecrireBlocSection(chunk, mondeX, y, mondeZ, ETAT_AIR, semencesLumiere)) {
+                                colonneModifiee = true;
+                                effaces++;
+                            }
+                        }
+                        if (colonneModifiee) {
+                            modifie = true;
+                            // La bande redevient de l'air : la lumière du ciel redescend
+                            // depuis le plafond et se repropage depuis le plancher
+                            semencesLumiere.add(new BlockPos(mondeX, Y_PLANCHER_BARRIER, mondeZ));
+                            semencesLumiere.add(new BlockPos(mondeX, Y_PLAFOND_BARRIER, mondeZ));
+                        }
+                    }
+                }
+                if (modifie) {
+                    finaliserChunkModifie(niveau, chunk);
+                    semerLumiere(niveau, semencesLumiere);
+                    chunksModifies++;
+                } else {
+                    semencesLumiere.clear();
+                }
             }
         }
-        MonSubMod.JOURNALISEUR.info("Carte Sous-mode 3 effacée : {} blocs supprimés ({} positions suivies)",
-            effaces, blocsPlaces.size());
+        MonSubMod.JOURNALISEUR.info("Carte Sous-mode 3 effacée : {} blocs supprimés ({} chunks)",
+            effaces, chunksModifies);
         supprimerFichierRegion();
+    }
+
+    /** La cellule est-elle à au plus MARGE_EFFACEMENT cellules d'une cellule intérieure ? */
+    private static boolean procheInterieur(ResultatGeneration generation, int cx, int cz) {
+        for (int dx = -MARGE_EFFACEMENT; dx <= MARGE_EFFACEMENT; dx++) {
+            for (int dz = -MARGE_EFFACEMENT; dz <= MARGE_EFFACEMENT; dz++) {
+                if (generation.cellulesInterieur.contains(CarteDonnees.cle(cx + dx, cz + dz))) {
+                    return true;
+                }
+            }
+        }
+        return false;
     }
 
     private static void sauvegarderFichierRegion(int minX, int minZ, int maxX, int maxZ) {
@@ -580,13 +821,35 @@ public class GenerateurCarteSousMode3 {
             MonSubMod.JOURNALISEUR.info("Nettoyage de la région résiduelle du Sous-mode 3 : ({}, {}) à ({}, {})",
                 minX, minZ, maxX, maxZ);
 
-            for (int x = minX; x <= maxX; x++) {
-                for (int z = minZ; z <= maxZ; z++) {
-                    for (int y = Y_PLANCHER_BARRIER; y <= Y_PLAFOND_BARRIER; y++) {
-                        BlockPos pos = new BlockPos(x, y, z);
-                        if (!niveau.getBlockState(pos).isAir()) {
-                            niveau.setBlock(pos, Blocks.AIR.defaultBlockState(), DRAPEAU_PLACEMENT);
+            // Balayage par sections de toute la bande de la cage (la carte d'origine est
+            // inconnue après un arrêt brutal : toute la région enregistrée est nettoyée)
+            List<BlockPos> semencesLumiere = new ArrayList<>();
+            for (int chunkZ = (minZ - MARGE_EFFACEMENT) >> 4; chunkZ <= (maxZ + MARGE_EFFACEMENT) >> 4; chunkZ++) {
+                for (int chunkX = (minX - MARGE_EFFACEMENT) >> 4; chunkX <= (maxX + MARGE_EFFACEMENT) >> 4; chunkX++) {
+                    LevelChunk chunk = niveau.getChunk(chunkX, chunkZ);
+                    boolean modifie = false;
+                    int xDebut = Math.max(chunkX << 4, minX - MARGE_EFFACEMENT);
+                    int xFin = Math.min((chunkX << 4) + 15, maxX + MARGE_EFFACEMENT);
+                    int zDebut = Math.max(chunkZ << 4, minZ - MARGE_EFFACEMENT);
+                    int zFin = Math.min((chunkZ << 4) + 15, maxZ + MARGE_EFFACEMENT);
+                    for (int x = xDebut; x <= xFin; x++) {
+                        for (int z = zDebut; z <= zFin; z++) {
+                            boolean colonneModifiee = false;
+                            for (int y = Y_PLANCHER_BARRIER; y <= Y_PLAFOND_BARRIER; y++) {
+                                colonneModifiee |= ecrireBlocSection(chunk, x, y, z, ETAT_AIR, semencesLumiere);
+                            }
+                            if (colonneModifiee) {
+                                modifie = true;
+                                semencesLumiere.add(new BlockPos(x, Y_PLANCHER_BARRIER, z));
+                                semencesLumiere.add(new BlockPos(x, Y_PLAFOND_BARRIER, z));
+                            }
                         }
+                    }
+                    if (modifie) {
+                        finaliserChunkModifie(niveau, chunk);
+                        semerLumiere(niveau, semencesLumiere);
+                    } else {
+                        semencesLumiere.clear();
                     }
                 }
             }

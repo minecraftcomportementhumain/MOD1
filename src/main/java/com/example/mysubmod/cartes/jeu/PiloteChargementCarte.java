@@ -56,7 +56,7 @@ public class PiloteChargementCarte {
 
     /**
      * Annule la génération en cours (changement de mode / arrêt). Ne nettoie pas les blocs
-     * déjà posés : l'appelant les efface via le résultat suivi ({@code blocsPlaces}).
+     * déjà posés : l'appelant efface la bande de la cage via le résultat de génération.
      */
     public static void annuler() {
         if (tache == null) {
@@ -64,6 +64,7 @@ public class PiloteChargementCarte {
         }
         MonSubMod.JOURNALISEUR.info("Annulation de la génération étalée de la carte « {} »", nomCarte);
         envoyerProgression(0, false); // masquer la barre
+        tache.abandonner(); // libérer les tickets de préchargement de chunks
         tache = null;
         apresGeneration = null;
         serveur = null;
