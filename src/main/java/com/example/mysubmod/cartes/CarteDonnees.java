@@ -503,15 +503,22 @@ public class CarteDonnees {
             // Nom vide → « Parcelle n » avec le plus petit n libre (jamais un doublon,
             // sinon deux parcelles porteraient le même nom dans le fichier)
             if (zone.nom == null || zone.nom.isBlank()) {
-                int n = i + 1;
-                String nom = "Parcelle " + n;
-                while (nomsUtilises.contains(nom)) {
-                    nom = "Parcelle " + (++n);
-                }
-                zone.nom = nom;
-                nomsUtilises.add(nom);
+                zone.nom = genererNomParcelleLibre(nomsUtilises, i + 1);
+                nomsUtilises.add(zone.nom);
             }
         }
+    }
+
+    /** « Parcelle n » avec le plus petit n ≥ {@code depart} absent de {@code nomsUtilises}.
+     *  Générateur unique pour la sérialisation et l'éditeur — les deux doivent nommer
+     *  une parcelle sans nom de la même façon. */
+    public static String genererNomParcelleLibre(java.util.Set<String> nomsUtilises, int depart) {
+        int n = depart;
+        String nom = "Parcelle " + n;
+        while (nomsUtilises.contains(nom)) {
+            nom = "Parcelle " + (++n);
+        }
+        return nom;
     }
 
     /**

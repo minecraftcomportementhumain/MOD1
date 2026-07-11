@@ -29,8 +29,9 @@ public class GestionnaireCartes {
 
     private String carteSelectionnee = null; // Nom de la carte active (null = aucune)
 
-    // Verrou de l'éditeur : un seul admin à la fois
-    private UUID editeurVerrouilleePar = null;
+    // Verrou de l'éditeur : un seul admin à la fois. volatile : lu sans verrou à chaque
+    // tick serveur par le garde anti-kick (les écritures restent synchronized)
+    private volatile UUID editeurVerrouilleePar = null;
     private String nomAdminEditeur = null;
 
     // Réassemblage des sauvegardes envoyées en morceaux par les clients
@@ -240,8 +241,9 @@ public class GestionnaireCartes {
     }
 
     /** UUID de l'admin qui a l'éditeur ouvert (null si aucun) — sert à le garder actif
-     *  face au minuteur d'inactivité vanilla (l'édition ne bouge pas le personnage). */
-    public synchronized UUID obtenirEditeurVerrouilleePar() {
+     *  face au minuteur d'inactivité vanilla (l'édition ne bouge pas le personnage).
+     *  Lecture sans verrou (champ volatile) : appelé à chaque tick serveur. */
+    public UUID obtenirEditeurVerrouilleePar() {
         return editeurVerrouilleePar;
     }
 

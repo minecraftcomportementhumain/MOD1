@@ -40,6 +40,10 @@ import java.util.concurrent.ConcurrentHashMap;
 public class GestionnaireBonbonsSousMode3 {
     private static GestionnaireBonbonsSousMode3 instance;
 
+    /** Clé NBT persistante (survit au déchargement de chunk) marquant un bonbon visible
+     *  posé par la carte avec sa cellule d'origine — voir reenregistrerBonbonVisibleSiConnu */
+    private static final String TAG_CELLULE_ORIGINE = MonSubMod.MOD_ID + "_cellule_bonbon_visible";
+
     /** Données d'une zone pour le HUD (coordonnées monde) */
     public static class DonneesZone {
         public final String nom;
@@ -358,9 +362,15 @@ public class GestionnaireBonbonsSousMode3 {
         entite.setPickUpDelay(40);
         entite.setUnlimitedLifetime();
         entite.setDeltaMovement(0, 0, 0);
+        long cle = cleCellule(info.mondeX, info.mondeZ);
+        // Marqueur persistant de la cellule d'origine (survit au déchargement du chunk) :
+        // seul un bonbon posé par la carte le porte — permet de le réassocier fiablement
+        // au rechargement, sans confondre un bonbon lâché par un joueur ni une entité
+        // qui a dérivé sur une cellule voisine.
+        entite.getPersistentData().putLong(TAG_CELLULE_ORIGINE, cle);
         niveau.addFreshEntity(entite);
 
-        entitesBonbonsVisibles.put(entite, cleCellule(info.mondeX, info.mondeZ));
+        entitesBonbonsVisibles.put(entite, cle);
     }
 
     /** Item d'un bonbon visible : typé Bleu/Rouge quand la spécialisation est active, sinon standard */
@@ -500,14 +510,17 @@ public class GestionnaireBonbonsSousMode3 {
      * le déchargement d'un chunk invalide l'instance (la purge l'évacue comme une fusion),
      * et au rechargement une NOUVELLE instance apparaît, non suivie → son ramassage ne
      * décrémenterait plus le compteur de zone ni ne planifierait de réapparition.
-     * Un bonbon présent physiquement à une cellule connue est forcément actif (s'il avait
-     * été ramassé, l'entité n'existerait pas).
+     * Seules les entités portant le marqueur NBT posé à l'apparition sont réassociées :
+     * un bonbon lâché par un joueur (mort, jet) ou issu d'un bloc miné n'a pas de
+     * marqueur et n'est jamais adopté ; un bonbon qui a dérivé physiquement reste
+     * rattaché à sa cellule d'ORIGINE, pas à celle où il repose.
      */
     public void reenregistrerBonbonVisibleSiConnu(ItemEntity entite) {
-        if (entite == null || entitesBonbonsVisibles.containsKey(entite)) {
+        if (entite == null || entitesBonbonsVisibles.containsKey(entite)
+            || !entite.getPersistentData().contains(TAG_CELLULE_ORIGINE)) {
             return;
         }
-        long cle = cleCellule((int) Math.floor(entite.getX()), (int) Math.floor(entite.getZ()));
+        long cle = entite.getPersistentData().getLong(TAG_CELLULE_ORIGINE);
         if (cellulesVisibles.containsKey(cle)) {
             entitesBonbonsVisibles.put(entite, cle);
         }

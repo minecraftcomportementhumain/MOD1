@@ -692,6 +692,11 @@ public class GestionnaireEvenementsSousMode3 {
 
     @SubscribeEvent(priority = net.minecraftforge.eventbus.api.EventPriority.HIGHEST)
     public static void onEntityJoinLevel(EntityJoinLevelEvent event) {
+        // L'événement se déclenche sur les DEUX côtés logiques : en solo/LAN intégré, les
+        // entités client passeraient ici et pollueraient l'état serveur (suivi des bonbons)
+        if (event.getLevel().isClientSide()) {
+            return;
+        }
         if (!estModeActif()) {
             return;
         }

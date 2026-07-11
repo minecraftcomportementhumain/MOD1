@@ -184,6 +184,11 @@ public class EcranEditeurCarte extends Screen {
     /** Morceaux (composantes connexes) par parcelle — > 1 = parcelle coupée en deux,
      *  signalée ⚠ dans le panneau et refusée à la sauvegarde */
     private int[] morceauxZones = new int[1];
+    /** État du nom par parcelle (index 0 inutilisé) : 0 = valide, 1 = vide, 2 = doublon —
+     *  rafraîchi avec les stats (500 ms) pour éviter un balayage O(parcelles²) par image */
+    private int[] etatNomsZones = new int[1];
+    private static final int NOM_ZONE_VIDE = 1;
+    private static final int NOM_ZONE_DOUBLON = 2;
     private EditBox champNomZone;
     private Button boutonNouvelleZone;
     private Button boutonSupprimerZone;
@@ -669,25 +674,15 @@ public class EcranEditeurCarte extends Screen {
         mettreAJourPanneauZones();
     }
 
-    /** Vrai si une parcelle AUTRE que {@code saufIndex} porte déjà ce nom (casse ignorée
-     *  laissée volontairement sensible : le HUD affiche le nom tel quel). */
-    private boolean nomParcelleUtilise(String nom, int saufIndex) {
-        for (int i = 0; i < carte.zones.size(); i++) {
-            if (i != saufIndex && carte.zones.get(i).nom.equals(nom)) {
-                return true;
-            }
-        }
-        return false;
-    }
-
     /** « Parcelle N » avec le plus petit N libre (jamais un doublon même après suppressions). */
     private String genererNomParcelleUnique() {
-        int n = carte.zones.size() + 1;
-        String nom = "Parcelle " + n;
-        while (nomParcelleUtilise(nom, -1)) {
-            nom = "Parcelle " + (++n);
+        Set<String> nomsUtilises = new HashSet<>();
+        for (com.example.mysubmod.cartes.ZoneCarte zone : carte.zones) {
+            if (zone.nom != null) {
+                nomsUtilises.add(zone.nom);
+            }
         }
-        return nom;
+        return CarteDonnees.genererNomParcelleLibre(nomsUtilises, carte.zones.size() + 1);
     }
 
     /** Retire toutes les cellules de la parcelle active (une action annulable). L'entrée
@@ -738,11 +733,8 @@ public class EcranEditeurCarte extends Screen {
                 enregistrerAction(action);
             }
         } else {
-            pileAnnulation.clear();
-            pileRetablissement.clear();
-            reperePileSauvegarde = new ActionEditeur(carte);
-            surCarteModifiee();
-            afficherToast("Parcelle retirée de " + cibles.size() + " blocs (trop volumineux pour l'annulation)", false);
+            conclureOperationNonAnnulable("Parcelle retirée de " + cibles.size()
+                + " blocs (trop volumineux pour l'annulation)");
         }
     }
 
@@ -791,10 +783,10 @@ public class EcranEditeurCarte extends Screen {
                     ? " §c⚠" + morceauxZones[id] : "";
                 // ⚠ nom vide ou en doublon (refusé à la sauvegarde) — seulement si non vide de cellules
                 String nomInvalide = "";
-                if (compte > 0) {
-                    if (carte.zones.get(i).nom == null || carte.zones.get(i).nom.isBlank()) {
+                if (compte > 0 && id < etatNomsZones.length) {
+                    if (etatNomsZones[id] == NOM_ZONE_VIDE) {
                         nomInvalide = " §c⚠sans nom";
-                    } else if (nomParcelleUtilise(carte.zones.get(i).nom, i)) {
+                    } else if (etatNomsZones[id] == NOM_ZONE_DOUBLON) {
                         nomInvalide = " §c⚠doublon";
                     }
                 }
@@ -863,6 +855,17 @@ public class EcranEditeurCarte extends Screen {
         surCarteModifiee();
     }
 
+    /** Conclut une opération de masse au-delà du seuil d'annulation : l'historique ne
+     *  reflète plus l'état, on le vide, et un repère jamais empilé garde l'indicateur ●
+     *  allumé jusqu'à la sauvegarde. Le toast explique la perte de l'annulation. */
+    private void conclureOperationNonAnnulable(String messageToast) {
+        pileAnnulation.clear();
+        pileRetablissement.clear();
+        reperePileSauvegarde = new ActionEditeur(carte);
+        surCarteModifiee();
+        afficherToast(messageToast, false);
+    }
+
     private void annuler() {
         if (pileAnnulation.isEmpty()) {
             return;
@@ -871,6 +874,7 @@ public class EcranEditeurCarte extends Screen {
         action.annuler(carte);
         pileRetablissement.push(action);
         cellulesSelectionnees.clear();
+        apresActionZones(action);
         surCarteModifiee();
         synchroniserChampsTaille();
         mettreAJourPanneauDelais();
@@ -884,9 +888,23 @@ public class EcranEditeurCarte extends Screen {
         action.retablir(carte);
         pileAnnulation.push(action);
         cellulesSelectionnees.clear();
+        apresActionZones(action);
         surCarteModifiee();
         synchroniserChampsTaille();
         mettreAJourPanneauDelais();
+    }
+
+    /** Après Annuler/Rétablir d'une action qui modifie le registre des parcelles :
+     *  resynchronise la sélection active et le panneau */
+    private void apresActionZones(ActionEditeur action) {
+        if (action.zonesAvant == null) {
+            return;
+        }
+        if (zoneActive > carte.zones.size()) {
+            zoneActive = 0;
+        }
+        zonesRegistreModifie = true;
+        mettreAJourPanneauZones();
     }
 
     /** À appeler après toute action sur la carte : statistiques, indicateur ●, boutons ↶/↷ */
@@ -1101,6 +1119,16 @@ public class EcranEditeurCarte extends Screen {
                 if (carte.apparitionX == cx && carte.apparitionZ == cz) {
                     carte.apparitionX = -1;
                     carte.apparitionZ = -1;
+                    // Refléter la suppression dans l'action collectrice (créée AVANT cette
+                    // mutation, elle a figé l'ancien point) : sans cela, Rétablir replanterait
+                    // l'apparition sur le bloc Limite
+                    if (peintureEnCours && actionPeinture != null) {
+                        actionPeinture.apparitionApresX = -1;
+                        actionPeinture.apparitionApresZ = -1;
+                    } else if (actionGroupe != null) {
+                        actionGroupe.apparitionApresX = -1;
+                        actionGroupe.apparitionApresZ = -1;
+                    }
                 }
             }
             case BONBON_VISIBLE -> {
@@ -1295,11 +1323,8 @@ public class EcranEditeurCarte extends Screen {
                 // Trait géant (pinceau large sur une grande carte) : même traitement que les
                 // remplissages géants — historique vidé, ● maintenu par un repère jamais empilé
                 int nombre = actionPeinture.nombreChangements();
-                pileAnnulation.clear();
-                pileRetablissement.clear();
-                reperePileSauvegarde = new ActionEditeur(carte);
-                surCarteModifiee();
-                afficherToast("Trait de " + nombre + " blocs appliqué (trop volumineux pour l'annulation)", false);
+                conclureOperationNonAnnulable("Trait de " + nombre
+                    + " blocs appliqué (trop volumineux pour l'annulation)");
             }
         }
         actionPeinture = null;
@@ -1494,13 +1519,8 @@ public class EcranEditeurCarte extends Screen {
         if (action != null) {
             enregistrerAction(action);
         } else {
-            // Même traitement que les remplissages géants : l'historique ne reflète plus
-            // l'état, on le vide, et un repère jamais empilé garde ● jusqu'à la sauvegarde
-            pileAnnulation.clear();
-            pileRetablissement.clear();
-            reperePileSauvegarde = new ActionEditeur(carte);
-            surCarteModifiee();
-            afficherToast("Élévation de " + aChanger + " blocs appliquée (trop volumineux pour l'annulation)", false);
+            conclureOperationNonAnnulable("Élévation de " + aChanger
+                + " blocs appliquée (trop volumineux pour l'annulation)");
         }
         recalculerResumeSelection();
     }
@@ -1530,11 +1550,8 @@ public class EcranEditeurCarte extends Screen {
         if (action != null) {
             enregistrerAction(action);
         } else {
-            pileAnnulation.clear();
-            pileRetablissement.clear();
-            reperePileSauvegarde = new ActionEditeur(carte);
-            surCarteModifiee();
-            afficherToast("Limite supprimée (" + aRetirer.size() + " blocs, trop volumineux pour l'annulation)", false);
+            conclureOperationNonAnnulable("Limite supprimée (" + aRetirer.size()
+                + " blocs, trop volumineux pour l'annulation)");
         }
     }
 
@@ -1647,12 +1664,8 @@ public class EcranEditeurCarte extends Screen {
                 carte.apparitionX = -1;
                 carte.apparitionZ = -1;
             }
-            pileAnnulation.clear();
-            pileRetablissement.clear();
-            reperePileSauvegarde = new ActionEditeur(carte);
-            surCarteModifiee();
-            afficherToast("Redimensionnement appliqué (" + aSupprimer
-                + " blocs supprimés, trop volumineux pour l'annulation)", false);
+            conclureOperationNonAnnulable("Redimensionnement appliqué (" + aSupprimer
+                + " blocs supprimés, trop volumineux pour l'annulation)");
         }
         cellulesSelectionnees.clear();
         recalculerResumeSelection();
@@ -1693,6 +1706,10 @@ public class EcranEditeurCarte extends Screen {
             action.hauteurApres = nouvelleHauteur;
             action.apparitionApresX = -1;
             action.apparitionApresZ = -1;
+            // L'import vide le registre des parcelles : le snapshot permet à Annuler de
+            // le restaurer (les blocs restaurés référencent leurs anciens ids de zone)
+            action.zonesAvant = new ArrayList<>(carte.zones);
+            action.zonesApres = new ArrayList<>();
             for (Map.Entry<Long, BlocCarte> entree : carte.blocs.entrySet()) {
                 action.ajouterChangement(CarteDonnees.cleX(entree.getKey()), CarteDonnees.cleZ(entree.getKey()),
                     entree.getValue().copier(), new BlocCarte());
@@ -1714,11 +1731,7 @@ public class EcranEditeurCarte extends Screen {
             for (Map.Entry<Long, BlocCarte> entree : nouveauxBlocs.entrySet()) {
                 carte.blocs.put(entree.getKey(), entree.getValue());
             }
-            pileAnnulation.clear();
-            pileRetablissement.clear();
-            reperePileSauvegarde = new ActionEditeur(carte);
-            surCarteModifiee();
-            afficherToast("Import CSV appliqué (trop volumineux pour l'annulation)", false);
+            conclureOperationNonAnnulable("Import CSV appliqué (trop volumineux pour l'annulation)");
         }
         // L'import réinitialise la carte : les parcelles de l'ancienne carte ne
         // correspondent plus à rien (blocs remplacés) — sinon elles réservent leurs noms
@@ -2050,66 +2063,55 @@ public class EcranEditeurCarte extends Screen {
         return valeur;
     }
 
+    /** Résultat sentinelle de {@link #analyserChampDelai} : saisie refusée, message déjà affiché */
+    private static final Integer DELAI_REFUSE = Integer.MIN_VALUE;
+
+    /** Parse et borne un champ de délai [min..DELAI_BONBON_MAX]. Retourne null si le champ
+     *  est masqué ou vide (rien à appliquer), DELAI_REFUSE après avoir affiché le message
+     *  d'erreur, sinon la valeur. min = 1 pour les délais (0 réservé au comportement par
+     *  défaut), 0 pour les apparitions initiales. */
+    private Integer analyserChampDelai(boolean champVisible, String texte, int min, String libelle) {
+        if (!champVisible || texte.trim().isEmpty()) {
+            return null;
+        }
+        int valeur;
+        try {
+            valeur = Integer.parseInt(texte.trim());
+        } catch (NumberFormatException e) {
+            afficherMessage("Valeur refusée", libelle + " : valeur non numérique");
+            return DELAI_REFUSE;
+        }
+        if (valeur < min || valeur > CarteDonnees.DELAI_BONBON_MAX) {
+            afficherMessage("Valeur refusée", min == 0
+                ? "L'apparition initiale doit être entre 0 et " + CarteDonnees.DELAI_BONBON_MAX + " secondes"
+                : "Le délai doit être entre 1 et " + CarteDonnees.DELAI_BONBON_MAX
+                    + " secondes (0 est réservé au comportement par défaut)");
+            return DELAI_REFUSE;
+        }
+        return valeur;
+    }
+
     /** Bouton « Appliquer » : assigne délais, apparition initiale et type aux blocs sélectionnés */
     private void appliquerDelais() {
-        Integer delaiVisible = null;
-        Integer delaiNonVisible = null;
-        Integer apparitionInitiale = null;
-
-        if (champDelaiVisible.visible && !texteDelaiVisible.trim().isEmpty()) {
-            try {
-                delaiVisible = Integer.parseInt(texteDelaiVisible.trim());
-            } catch (NumberFormatException e) {
-                afficherMessage("Valeur refusée", "Délai bonbon visible : valeur non numérique");
-                return;
-            }
-            if (delaiVisible < 1 || delaiVisible > CarteDonnees.DELAI_BONBON_MAX) {
-                afficherMessage("Valeur refusée",
-                    "Le délai doit être entre 1 et " + CarteDonnees.DELAI_BONBON_MAX
-                        + " secondes (0 est réservé au comportement par défaut)");
-                return;
-            }
+        Integer delaiVisible = analyserChampDelai(champDelaiVisible.visible,
+            texteDelaiVisible, 1, "Délai bonbon visible");
+        if (DELAI_REFUSE.equals(delaiVisible)) {
+            return;
         }
-        if (champDelaiNonVisible.visible && !texteDelaiNonVisible.trim().isEmpty()) {
-            try {
-                delaiNonVisible = Integer.parseInt(texteDelaiNonVisible.trim());
-            } catch (NumberFormatException e) {
-                afficherMessage("Valeur refusée", "Délai bonbon non-visible : valeur non numérique");
-                return;
-            }
-            if (delaiNonVisible < 1 || delaiNonVisible > CarteDonnees.DELAI_BONBON_MAX) {
-                afficherMessage("Valeur refusée",
-                    "Le délai doit être entre 1 et " + CarteDonnees.DELAI_BONBON_MAX
-                        + " secondes (0 est réservé au comportement par défaut)");
-                return;
-            }
+        Integer delaiNonVisible = analyserChampDelai(champDelaiNonVisible.visible,
+            texteDelaiNonVisible, 1, "Délai bonbon non-visible");
+        if (DELAI_REFUSE.equals(delaiNonVisible)) {
+            return;
         }
-        if (champApparitionInitiale.visible && !texteApparitionInitiale.trim().isEmpty()) {
-            try {
-                apparitionInitiale = Integer.parseInt(texteApparitionInitiale.trim());
-            } catch (NumberFormatException e) {
-                afficherMessage("Valeur refusée", "Apparition initiale visible : valeur non numérique");
-                return;
-            }
-            if (apparitionInitiale < 0 || apparitionInitiale > CarteDonnees.DELAI_BONBON_MAX) {
-                afficherMessage("Valeur refusée", "L'apparition initiale doit être entre 0 et "
-                    + CarteDonnees.DELAI_BONBON_MAX + " secondes");
-                return;
-            }
+        Integer apparitionInitiale = analyserChampDelai(champApparitionInitiale.visible,
+            texteApparitionInitiale, 0, "Apparition initiale visible");
+        if (DELAI_REFUSE.equals(apparitionInitiale)) {
+            return;
         }
-        Integer apparitionInitialeNonVisible = null;
-        if (champApparitionInitialeNonVisible.visible && !texteApparitionInitialeNonVisible.trim().isEmpty()) {
-            try {
-                apparitionInitialeNonVisible = Integer.parseInt(texteApparitionInitialeNonVisible.trim());
-            } catch (NumberFormatException e) {
-                afficherMessage("Valeur refusée", "Apparition initiale non-visible : valeur non numérique");
-                return;
-            }
-            if (apparitionInitialeNonVisible < 0 || apparitionInitialeNonVisible > CarteDonnees.DELAI_BONBON_MAX) {
-                afficherMessage("Valeur refusée", "L'apparition initiale doit être entre 0 et "
-                    + CarteDonnees.DELAI_BONBON_MAX + " secondes");
-                return;
-            }
+        Integer apparitionInitialeNonVisible = analyserChampDelai(champApparitionInitialeNonVisible.visible,
+            texteApparitionInitialeNonVisible, 0, "Apparition initiale non-visible");
+        if (DELAI_REFUSE.equals(apparitionInitialeNonVisible)) {
+            return;
         }
 
         com.example.mysubmod.cartes.TypeBonbonCarte typeApplique = typeBonbonChoisi;
@@ -2278,13 +2280,8 @@ public class EcranEditeurCarte extends Screen {
                 enregistrerAction(action);
             }
         } else if (aRemplir > 0) {
-            // Remplissage géant : l'historique ne reflète plus l'état, on le vide,
-            // et un repère jamais empilé garde l'indicateur ● allumé jusqu'à la sauvegarde
-            pileAnnulation.clear();
-            pileRetablissement.clear();
-            reperePileSauvegarde = new ActionEditeur(carte);
-            surCarteModifiee();
-            afficherToast("Remplissage de " + aRemplir + " blocs appliqué (trop volumineux pour l'annulation)", false);
+            conclureOperationNonAnnulable("Remplissage de " + aRemplir
+                + " blocs appliqué (trop volumineux pour l'annulation)");
         }
     }
 
@@ -2887,6 +2884,9 @@ public class EcranEditeurCarte extends Screen {
         // En fort dézoom, échantillonner d'un pas (comme le terrain) : sans cela une
         // sélection sur toute une carte 1800² = millions de contains par image.
         if (!cellulesSelectionnees.isEmpty()) {
+            // Chaque échantillon couvre jusqu'au suivant (comme le terrain) : sans cela,
+            // un pas > 1 laisserait des bandes non surlignées entre les échantillons
+            int cote = Math.max(taille, (int) Math.ceil(pasEchantillon * tailleCellule));
             for (int cx = cxMin; cx <= cxMax; cx += pasEchantillon) {
                 for (int cz = czMin; cz <= czMax; cz += pasEchantillon) {
                     if (!cellulesSelectionnees.contains(CarteDonnees.cle(cx, cz))) {
@@ -2894,7 +2894,6 @@ public class EcranEditeurCarte extends Screen {
                     }
                     int x0 = (int) Math.floor(gauche + decalageX + cx * tailleCellule);
                     int y0 = (int) Math.floor(haut + decalageY + cz * tailleCellule);
-                    int cote = Math.max(taille, pasEchantillon > 1 ? 1 : taille);
                     guiGraphics.fill(x0, y0, x0 + cote, y0 + cote, 0x6000FFFF);
                 }
             }
@@ -3055,6 +3054,24 @@ public class EcranEditeurCarte extends Screen {
         // Connexité des parcelles (⚠ dans le panneau quand une parcelle est en morceaux) —
         // même cadence throttlée que le reste des stats
         morceauxZones = carte.compterMorceauxParcelles();
+        // Validité des noms (vide / doublon), même cadence : un seul passage O(parcelles)
+        // au lieu d'un test quadratique à chaque image dans le panneau
+        int[] etatsNoms = new int[carte.zones.size() + 1];
+        Map<String, Integer> occurrencesNoms = new HashMap<>();
+        for (com.example.mysubmod.cartes.ZoneCarte zone : carte.zones) {
+            if (zone.nom != null && !zone.nom.isBlank()) {
+                occurrencesNoms.merge(zone.nom, 1, Integer::sum);
+            }
+        }
+        for (int i = 0; i < carte.zones.size(); i++) {
+            String nom = carte.zones.get(i).nom;
+            if (nom == null || nom.isBlank()) {
+                etatsNoms[i + 1] = NOM_ZONE_VIDE;
+            } else if (occurrencesNoms.get(nom) > 1) {
+                etatsNoms[i + 1] = NOM_ZONE_DOUBLON;
+            }
+        }
+        etatNomsZones = etatsNoms;
         statBonbonsVisibles = visibles;
         statBonbonsNonVisibles = nonVisibles;
         cellulesLimiteCache = new long[limites.size()];
@@ -3559,6 +3576,10 @@ public class EcranEditeurCarte extends Screen {
         final int apparitionAvantZ;
         int apparitionApresX;
         int apparitionApresZ;
+        // Registre des parcelles : snapshot optionnel, renseigné par les seules actions
+        // qui le modifient (import CSV) — null = zones inchangées par cette action
+        List<com.example.mysubmod.cartes.ZoneCarte> zonesAvant;
+        List<com.example.mysubmod.cartes.ZoneCarte> zonesApres;
 
         ActionEditeur(CarteDonnees carte) {
             this.largeurAvant = carte.largeur;
@@ -3594,6 +3615,10 @@ public class EcranEditeurCarte extends Screen {
             carte.hauteur = hauteurApres;
             carte.apparitionX = apparitionApresX;
             carte.apparitionZ = apparitionApresZ;
+            if (zonesApres != null) {
+                carte.zones.clear();
+                carte.zones.addAll(zonesApres);
+            }
             for (Map.Entry<Long, BlocCarte> entree : blocsApres.entrySet()) {
                 carte.definirBloc(CarteDonnees.cleX(entree.getKey()), CarteDonnees.cleZ(entree.getKey()),
                     entree.getValue().estVide() ? null : entree.getValue().copier());
@@ -3605,6 +3630,10 @@ public class EcranEditeurCarte extends Screen {
             carte.hauteur = hauteurAvant;
             carte.apparitionX = apparitionAvantX;
             carte.apparitionZ = apparitionAvantZ;
+            if (zonesAvant != null) {
+                carte.zones.clear();
+                carte.zones.addAll(zonesAvant);
+            }
             for (Map.Entry<Long, BlocCarte> entree : blocsAvant.entrySet()) {
                 carte.definirBloc(CarteDonnees.cleX(entree.getKey()), CarteDonnees.cleZ(entree.getKey()),
                     entree.getValue().estVide() ? null : entree.getValue().copier());

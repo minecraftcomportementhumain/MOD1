@@ -1384,6 +1384,9 @@ public class GestionnaireSousMode3 {
                 if (apparitionsParJoueur.containsKey(ancienUUID)) {
                     apparitionsParJoueur.put(nouveauUUID, apparitionsParJoueur.remove(ancienUUID));
                 }
+                if (inventairesStockes.containsKey(ancienUUID)) {
+                    inventairesStockes.put(nouveauUUID, inventairesStockes.remove(ancienUUID));
+                }
                 GestionnaireSpecialisationSousMode3.getInstance().migrerDonneesJoueur(ancienUUID, nouveauUUID);
                 nomsJoueurs.remove(ancienUUID);
                 nomsJoueurs.put(nouveauUUID, nomJoueur);
@@ -1484,11 +1487,7 @@ public class GestionnaireSousMode3 {
 
             // Restaurer l'inventaire sauvegardé à la déconnexion
             if (infoDeconnexion.inventaireSauvegarde != null && !infoDeconnexion.inventaireSauvegarde.isEmpty()) {
-                joueur.getInventory().clearContent();
-                for (int i = 0; i < Math.min(infoDeconnexion.inventaireSauvegarde.size(),
-                    joueur.getInventory().getContainerSize()); i++) {
-                    joueur.getInventory().setItem(i, infoDeconnexion.inventaireSauvegarde.get(i).copy());
-                }
+                appliquerInventaireStocke(joueur, infoDeconnexion.inventaireSauvegarde);
             } else if (!joueur.getInventory().isEmpty()) {
                 viderInventaireJoueur(joueur);
             }
@@ -1563,6 +1562,13 @@ public class GestionnaireSousMode3 {
     // ==================== Inventaires ====================
 
     private void stockerInventaireJoueur(ServerPlayer joueur) {
+        // Ne jamais écraser un instantané préservé : un joueur déconnecté pendant une
+        // partie précédente qui revient dans une nouvelle phase d'attente porte encore
+        // les items SM3 de l'ancienne partie — son vrai inventaire d'avant-partie est
+        // celui déjà stocké, pas son contenu actuel.
+        if (inventairesStockes.containsKey(joueur.getUUID())) {
+            return;
+        }
         List<ItemStack> inventaire = new ArrayList<>();
         for (int i = 0; i < joueur.getInventory().getContainerSize(); i++) {
             inventaire.add(joueur.getInventory().getItem(i).copy());
@@ -1574,14 +1580,22 @@ public class GestionnaireSousMode3 {
         joueur.getInventory().clearContent();
     }
 
+    /** Remplace le contenu de l'inventaire du joueur par la liste stockée (copies,
+     *  emplacement par emplacement). Point unique pour toutes les restaurations. */
+    private void appliquerInventaireStocke(ServerPlayer joueur, List<ItemStack> inventaire) {
+        joueur.getInventory().clearContent();
+        for (int i = 0; i < Math.min(inventaire.size(), joueur.getInventory().getContainerSize()); i++) {
+            joueur.getInventory().setItem(i, inventaire.get(i).copy());
+        }
+    }
+
     private void restaurerTousInventaires(MinecraftServer serveur) {
         for (ServerPlayer joueur : UtilitaireFiltreJoueurs.obtenirJoueursAuthentifies(serveur)) {
-            joueur.getInventory().clearContent();
             List<ItemStack> inventaire = inventairesStockes.remove(joueur.getUUID());
             if (inventaire != null) {
-                for (int i = 0; i < Math.min(inventaire.size(), joueur.getInventory().getContainerSize()); i++) {
-                    joueur.getInventory().setItem(i, inventaire.get(i));
-                }
+                appliquerInventaireStocke(joueur, inventaire);
+            } else {
+                joueur.getInventory().clearContent();
             }
         }
         // NE PAS vider inventairesStockes : les entrées restantes sont celles de
@@ -1594,10 +1608,7 @@ public class GestionnaireSousMode3 {
     public void restaurerInventaireStockeSiPresent(ServerPlayer joueur) {
         List<ItemStack> inventaire = inventairesStockes.remove(joueur.getUUID());
         if (inventaire != null) {
-            joueur.getInventory().clearContent();
-            for (int i = 0; i < Math.min(inventaire.size(), joueur.getInventory().getContainerSize()); i++) {
-                joueur.getInventory().setItem(i, inventaire.get(i));
-            }
+            appliquerInventaireStocke(joueur, inventaire);
         }
     }
 
