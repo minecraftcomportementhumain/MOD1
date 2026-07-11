@@ -1671,6 +1671,7 @@ public class EcranEditeurCarte extends Screen {
         recalculerResumeSelection();
         synchroniserChampsTaille();
         mettreAJourPanneauDelais();
+        ajusterVue(); // Nouvelles dimensions : recadrer toute la carte dans la vue
     }
 
     /** Import CSV : réinitialise complètement la carte */
@@ -1744,6 +1745,7 @@ public class EcranEditeurCarte extends Screen {
         recalculerResumeSelection();
         mettreAJourPanneauDelais();
         mettreAJourPanneauZones();
+        ajusterVue(); // Carte remplacée : recadrer toute la carte dans la vue
     }
 
     /**
@@ -1800,6 +1802,7 @@ public class EcranEditeurCarte extends Screen {
         synchroniserChampsTaille();
         mettreAJourPanneauDelais();
         mettreAJourPanneauZones();
+        ajusterVue(); // Carte chargée : recadrer toute la carte dans la vue
     }
 
     // ==================== Délais de réapparition ====================
