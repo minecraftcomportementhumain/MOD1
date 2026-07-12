@@ -43,6 +43,13 @@ public class GestionnaireBonbonsSousMode3 {
     /** Clé NBT persistante (survit au déchargement de chunk) marquant un bonbon visible
      *  posé par la carte avec sa cellule d'origine — voir reenregistrerBonbonVisibleSiConnu */
     private static final String TAG_CELLULE_ORIGINE = MonSubMod.MOD_ID + "_cellule_bonbon_visible";
+    /** Clé NBT persistante : horodatage (ms epoch) où le bonbon visible expire s'il n'est
+     *  pas collecté — permet de re-armer la minuterie après un déchargement de chunk */
+    private static final String TAG_EXPIRATION = MonSubMod.MOD_ID + "_expiration_bonbon_visible";
+    /** Clé NBT persistante : heure de début de LA partie qui a posé l'échéance ci-dessus.
+     *  Une échéance héritée d'une partie précédente (bonbon fantôme resté dans un chunk
+     *  déchargé) est ainsi détectée et ignorée au lieu d'expirer instantanément. */
+    private static final String TAG_EXPIRATION_PARTIE = MonSubMod.MOD_ID + "_expiration_partie";
 
     /** Données d'une zone pour le HUD (coordonnées monde) */
     public static class DonneesZone {
@@ -79,15 +86,20 @@ public class GestionnaireBonbonsSousMode3 {
         final int mondeZ;
         final int surfaceY; // Y du bloc de surface (l'objet apparaît au-dessus)
         final int delai;
+        final int finApparition; // secondes après le début de partie, 0 = jamais de fin
+        final int expiration; // secondes après son apparition où le bonbon non collecté disparaît, 0 = jamais
         final String zoneNom; // null si hors zone (ex. bonbon sur l'eau)
         final com.example.mysubmod.cartes.TypeBonbonCarte type; // type défini dans la carte
 
-        InfoCelluleVisible(int mondeX, int mondeZ, int surfaceY, int delai, String zoneNom,
+        InfoCelluleVisible(int mondeX, int mondeZ, int surfaceY, int delai, int finApparition,
+                           int expiration, String zoneNom,
                            com.example.mysubmod.cartes.TypeBonbonCarte type) {
             this.mondeX = mondeX;
             this.mondeZ = mondeZ;
             this.surfaceY = surfaceY;
             this.delai = delai;
+            this.finApparition = finApparition;
+            this.expiration = expiration;
             this.zoneNom = zoneNom;
             this.type = type;
         }
@@ -97,17 +109,29 @@ public class GestionnaireBonbonsSousMode3 {
     private static class InfoBonbonCache {
         final int quantite;
         final int delai;
+        final int finApparition; // secondes après le début de partie, 0 = jamais de fin
+        final int expiration; // secondes après son placement où le bloc non miné disparaît, 0 = jamais
         final boolean estPierre;
         final String zoneNom;
         final com.example.mysubmod.cartes.TypeBonbonCarte type; // type défini dans la carte
 
-        InfoBonbonCache(int quantite, int delai, boolean estPierre, String zoneNom,
+        InfoBonbonCache(int quantite, int delai, int finApparition, int expiration,
+                        boolean estPierre, String zoneNom,
                         com.example.mysubmod.cartes.TypeBonbonCarte type) {
             this.quantite = quantite;
             this.delai = delai;
+            this.finApparition = finApparition;
+            this.expiration = expiration;
             this.estPierre = estPierre;
             this.zoneNom = zoneNom;
             this.type = type;
+        }
+
+        /** Copie pour un NOUVEAU placement : l'identité d'instance distingue chaque
+         *  placement dans blocsBonbonsCaches (voir planifierExpirationBonbonCache). */
+        InfoBonbonCache copier() {
+            return new InfoBonbonCache(quantite, delai, finApparition, expiration,
+                estPierre, zoneNom, type);
         }
     }
 
@@ -150,6 +174,10 @@ public class GestionnaireBonbonsSousMode3 {
     public static final String NOM_ZONE_HORS = "Hors parcelle";
     private final List<ApparitionDifferee> apparitionsDifferees = new ArrayList<>();
     private final List<ApparitionDiffereeCache> apparitionsDiffereesCachees = new ArrayList<>();
+    /** Tâches d'expiration en attente, par entité bonbon : annulées au ramassage — sans
+     *  cela chaque tâche retiendrait son ItemEntity dans la file de la minuterie jusqu'à
+     *  son échéance (jusqu'à 24 h) même une fois le bonbon collecté */
+    private final Map<ItemEntity, TimerTask> tachesExpirationVisibles = new ConcurrentHashMap<>();
     private Timer minuterieReapparition;
     private MinecraftServer serveurJeu;
     /**
@@ -255,7 +283,8 @@ public class GestionnaireBonbonsSousMode3 {
                     : GenerateurCarteSousMode3.NIVEAU_MER + bloc.elevation;
                 long cleMonde = cleCellule(mondeX, mondeZ);
                 cellulesVisibles.put(cleMonde,
-                    new InfoCelluleVisible(mondeX, mondeZ, surfaceY, bloc.delaiBonbonVisible, zoneNom,
+                    new InfoCelluleVisible(mondeX, mondeZ, surfaceY, bloc.delaiBonbonVisible,
+                        bloc.finApparitionVisible, bloc.expirationVisible, zoneNom,
                         bloc.typeBonbonVisible));
                 if (bloc.delaiApparitionInitiale > 0) {
                     // Apparition différée : comptée dans la zone au moment de l'apparition
@@ -272,8 +301,9 @@ public class GestionnaireBonbonsSousMode3 {
                 if (yBonbon >= GenerateurCarteSousMode3.Y_BAS_COLONNE) {
                     BlockPos pos = new BlockPos(mondeX, yBonbon, mondeZ);
                     InfoBonbonCache info = new InfoBonbonCache(bloc.qteBonbonNonVisible,
-                        bloc.delaiBonbonNonVisible, bloc.type == TypeElementCarte.PIERRE, zoneNom,
-                        bloc.typeBonbonNonVisible);
+                        bloc.delaiBonbonNonVisible, bloc.finApparitionNonVisible,
+                        bloc.expirationNonVisible, bloc.type == TypeElementCarte.PIERRE,
+                        zoneNom, bloc.typeBonbonNonVisible);
                     if (bloc.delaiApparitionInitialeNonVisible > 0) {
                         // Apparition différée : le bloc bonbon est placé (et compté) au moment planifié
                         apparitionsDiffereesCachees.add(new ApparitionDiffereeCache(pos, info,
@@ -371,6 +401,95 @@ public class GestionnaireBonbonsSousMode3 {
         niveau.addFreshEntity(entite);
 
         entitesBonbonsVisibles.put(entite, cle);
+
+        // Expiration : le bonbon non collecté disparaît après le délai configuré. Pendant
+        // la phase d'attente (partie non lancée), la minuterie n'est PAS armée ici — les
+        // joueurs ne peuvent pas encore collecter ; elle l'est au lancement pour tous les
+        // bonbons déjà posés (planifierApparitionsInitiales).
+        if (info.expiration > 0 && GestionnaireSousMode3.getInstance().estPartieActive()) {
+            marquerExpiration(entite, System.currentTimeMillis() + info.expiration * 1000L);
+            planifierExpirationVisible(entite, info.expiration * 1000L);
+        }
+    }
+
+    /** Écrit l'échéance d'expiration en NBT persistant, liée à LA partie en cours (voir
+     *  {@link #TAG_EXPIRATION_PARTIE}) — reconstituable après un déchargement de chunk. */
+    private static void marquerExpiration(ItemEntity entite, long echeanceMs) {
+        entite.getPersistentData().putLong(TAG_EXPIRATION, echeanceMs);
+        entite.getPersistentData().putLong(TAG_EXPIRATION_PARTIE,
+            GestionnaireSousMode3.getInstance().obtenirHeureDebutPartie());
+    }
+
+    /**
+     * Planifie {@code action} sur le thread serveur après {@code delaiMs} (plancher 1 ms).
+     * Point unique du motif minuterie → garde serveur → {@code execute} : retourne la
+     * tâche planifiée, ou null si la minuterie est absente ou annulée (désactivation).
+     */
+    private TimerTask planifierTacheServeur(long delaiMs, Runnable action) {
+        if (minuterieReapparition == null) {
+            return null;
+        }
+        TimerTask tache = new TimerTask() {
+            @Override
+            public void run() {
+                MinecraftServer serveur = serveurJeu;
+                if (serveur == null || serveur.isStopped()) {
+                    return;
+                }
+                serveur.execute(action);
+            }
+        };
+        try {
+            minuterieReapparition.schedule(tache, Math.max(1L, delaiMs));
+            return tache;
+        } catch (IllegalStateException e) {
+            return null; // Minuterie annulée pendant la désactivation
+        }
+    }
+
+    /**
+     * Planifie la disparition d'un bonbon visible non collecté. Au déclenchement : si
+     * l'entité est toujours vivante et suivie (ni ramassée, ni fusionnée, ni déchargée),
+     * elle est retirée du monde et le compteur de sa zone décrémenté — comme un ramassage.
+     * Le cycle de réapparition est relancé selon le délai du bloc, sauf si la fenêtre
+     * « fin d'apparition » est close (vérifiée par la réapparition elle-même).
+     */
+    private void planifierExpirationVisible(ItemEntity entite, long delaiMs) {
+        TimerTask[] ref = new TimerTask[1];
+        ref[0] = planifierTacheServeur(delaiMs, () -> {
+            tachesExpirationVisibles.remove(entite, ref[0]);
+            if (!GestionnaireSousMode3.getInstance().estPartieActive() || !entite.isAlive()) {
+                return;
+            }
+            Long cle = entitesBonbonsVisibles.remove(entite);
+            if (cle == null) {
+                return; // Ramassé ou évacué entre-temps
+            }
+            int quantite = Math.max(1, entite.getItem().getCount());
+            entite.discard();
+            InfoCelluleVisible info = cellulesVisibles.get(cle);
+            if (info == null) {
+                return;
+            }
+            if (info.zoneNom != null && zonesParNom.containsKey(info.zoneNom)) {
+                ajusterCompteursZoneVisible(zonesParNom.get(info.zoneNom), info.type, -quantite);
+                envoyerCompteursZones();
+            }
+            // Relancer le cycle comme après un ramassage (la ressource
+            // « repousse ») ; la réapparition vérifie elle-même la fin d'apparition
+            if (info.delai > 0) {
+                for (int i = 0; i < quantite; i++) {
+                    planifierReapparitionVisible(info);
+                }
+            }
+        });
+        if (ref[0] == null) {
+            return;
+        }
+        TimerTask precedente = tachesExpirationVisibles.put(entite, ref[0]);
+        if (precedente != null) {
+            precedente.cancel(); // Ré-armement (une seule échéance par entité) : garder la dernière
+        }
     }
 
     /** Item d'un bonbon visible : typé Bleu/Rouge quand la spécialisation est active, sinon standard */
@@ -427,6 +546,7 @@ public class GestionnaireBonbonsSousMode3 {
             if (entite.isAlive()) {
                 entite.discard();
             }
+            annulerExpirationVisible(entite); // l'entité remplacée n'expirera plus
             if (info == null) {
                 continue;
             }
@@ -472,6 +592,7 @@ public class GestionnaireBonbonsSousMode3 {
         if (cle == null) {
             return null; // Bonbon issu d'un bloc miné ou autre : pas un bonbon visible de la carte
         }
+        annulerExpirationVisible(entite);
         InfoCelluleVisible info = cellulesVisibles.get(cle);
         if (info == null) {
             return null;
@@ -495,6 +616,19 @@ public class GestionnaireBonbonsSousMode3 {
         return new BlockPos(info.mondeX, info.surfaceY + 1, info.mondeZ);
     }
 
+    /** Annule la tâche d'expiration en attente d'une entité (ramassée, fusionnée...) et
+     *  la retire de la file de la minuterie — sinon elle y retiendrait l'entité jusqu'à
+     *  son échéance. */
+    private void annulerExpirationVisible(ItemEntity entite) {
+        TimerTask tache = tachesExpirationVisibles.remove(entite);
+        if (tache != null) {
+            tache.cancel();
+            if (minuterieReapparition != null) {
+                minuterieReapparition.purge();
+            }
+        }
+    }
+
     /**
      * Purge les entrées dont l'entité a disparu sans ramassage (fusion d'entités
      * bonbons voisines) : le bonbon existe toujours dans la pile fusionnée,
@@ -502,6 +636,11 @@ public class GestionnaireBonbonsSousMode3 {
      */
     public void purgerEntitesFusionnees() {
         entitesBonbonsVisibles.keySet().removeIf(entite -> !entite.isAlive());
+        for (ItemEntity entite : tachesExpirationVisibles.keySet()) {
+            if (!entite.isAlive()) {
+                annulerExpirationVisible(entite);
+            }
+        }
     }
 
     /**
@@ -521,40 +660,68 @@ public class GestionnaireBonbonsSousMode3 {
             return;
         }
         long cle = entite.getPersistentData().getLong(TAG_CELLULE_ORIGINE);
-        if (cellulesVisibles.containsKey(cle)) {
-            entitesBonbonsVisibles.put(entite, cle);
+        if (!cellulesVisibles.containsKey(cle)) {
+            return;
         }
+        entitesBonbonsVisibles.put(entite, cle);
+
+        // Ré-armer l'expiration : la minuterie visait l'ANCIENNE instance (invalidée par
+        // le déchargement). Hors partie active, rien à armer.
+        InfoCelluleVisible info = cellulesVisibles.get(cle);
+        if (info == null || info.expiration <= 0
+            || !GestionnaireSousMode3.getInstance().estPartieActive()) {
+            return;
+        }
+        long debut = GestionnaireSousMode3.getInstance().obtenirHeureDebutPartie();
+        long echeance;
+        if (entite.getPersistentData().getLong(TAG_EXPIRATION_PARTIE) == debut
+            && entite.getPersistentData().contains(TAG_EXPIRATION)) {
+            // Échéance posée par CETTE partie : le NBT donne le temps restant exact
+            echeance = entite.getPersistentData().getLong(TAG_EXPIRATION);
+        } else {
+            // Marque absente (chunk déchargé au lancement : l'armement du lancement n'a pas
+            // pu atteindre l'entité) ou héritée d'une partie PRÉCÉDENTE (bonbon fantôme) :
+            // la fenêtre court depuis le début de la partie en cours, jamais d'expiration
+            // instantanée sur une échéance périmée
+            echeance = debut + info.expiration * 1000L;
+            marquerExpiration(entite, echeance);
+        }
+        planifierExpirationVisible(entite, echeance - System.currentTimeMillis());
+    }
+
+    /** Vrai si la fenêtre d'apparition de ce bonbon est close À L'INSTANT PRÉVU de
+     *  l'apparition ({@code instantPrevuMs}, ms epoch) : « fin d'apparition » comptée
+     *  depuis le début de la partie (0 = jamais de fin). Comparer l'instant PRÉVU — et non
+     *  l'heure d'exécution de la tâche — évite qu'un retard de minuterie (GC, lag serveur)
+     *  supprime une apparition planifiée à l'intérieur de la fenêtre (ex. apparition
+     *  initiale 60 s, fin 61 s). */
+    private static boolean finApparitionAtteinte(int finApparitionSecondes, long instantPrevuMs) {
+        if (finApparitionSecondes <= 0) {
+            return false;
+        }
+        long debut = GestionnaireSousMode3.getInstance().obtenirHeureDebutPartie();
+        return debut > 0 && instantPrevuMs - debut >= finApparitionSecondes * 1000L;
     }
 
     private void planifierReapparitionVisible(InfoCelluleVisible info) {
-        try {
-            minuterieReapparition.schedule(new TimerTask() {
-                @Override
-                public void run() {
-                    MinecraftServer serveur = serveurJeu;
-                    if (serveur == null || serveur.isStopped()) {
-                        return;
-                    }
-                    serveur.execute(() -> {
-                        if (!GestionnaireSousMode3.getInstance().estPartieActive()
-                            || !cellulesVisibles.containsKey(cleCellule(info.mondeX, info.mondeZ))) {
-                            return;
-                        }
-                        ServerLevel niveau = serveur.getLevel(ServerLevel.OVERWORLD);
-                        if (niveau == null) {
-                            return;
-                        }
-                        fairApparaitreBonbonVisible(niveau, info, new Random());
-                        if (info.zoneNom != null && zonesParNom.containsKey(info.zoneNom)) {
-                            ajusterCompteursZoneVisible(zonesParNom.get(info.zoneNom), info.type, 1);
-                            envoyerCompteursZones();
-                        }
-                    });
-                }
-            }, info.delai * 1000L);
-        } catch (IllegalStateException e) {
-            // Minuterie annulée pendant la désactivation : ignorer
-        }
+        long instantPrevu = System.currentTimeMillis() + info.delai * 1000L;
+        planifierTacheServeur(info.delai * 1000L, () -> {
+            if (!GestionnaireSousMode3.getInstance().estPartieActive()
+                || !cellulesVisibles.containsKey(cleCellule(info.mondeX, info.mondeZ))
+                || finApparitionAtteinte(info.finApparition, instantPrevu)) {
+                return;
+            }
+            MinecraftServer serveur = serveurJeu;
+            ServerLevel niveau = serveur != null ? serveur.getLevel(ServerLevel.OVERWORLD) : null;
+            if (niveau == null) {
+                return;
+            }
+            fairApparaitreBonbonVisible(niveau, info, new Random());
+            if (info.zoneNom != null && zonesParNom.containsKey(info.zoneNom)) {
+                ajusterCompteursZoneVisible(zonesParNom.get(info.zoneNom), info.type, 1);
+                envoyerCompteursZones();
+            }
+        });
     }
 
     /**
@@ -562,8 +729,38 @@ public class GestionnaireBonbonsSousMode3 {
      * compté à partir du début de la partie). Appelé au lancement de la partie.
      */
     public void planifierApparitionsInitiales() {
-        if (minuterieReapparition == null
-            || (apparitionsDifferees.isEmpty() && apparitionsDiffereesCachees.isEmpty())) {
+        if (minuterieReapparition == null) {
+            return;
+        }
+
+        // Armer l'expiration des bonbons/blocs déjà posés pendant la phase d'attente :
+        // leur fenêtre court à partir du LANCEMENT (les joueurs ne pouvaient pas
+        // collecter avant). Les apparitions ultérieures (réapparitions, différées)
+        // arment la leur au moment où elles se produisent. Une entité déchargée à cet
+        // instant (chunk lointain) est ré-armée à son rechargement, depuis le début de
+        // partie (reenregistrerBonbonVisibleSiConnu).
+        long maintenant = System.currentTimeMillis();
+        long debutPartie = GestionnaireSousMode3.getInstance().obtenirHeureDebutPartie();
+        for (Map.Entry<ItemEntity, Long> entree : entitesBonbonsVisibles.entrySet()) {
+            InfoCelluleVisible info = cellulesVisibles.get(entree.getValue());
+            ItemEntity entite = entree.getKey();
+            if (info == null || info.expiration <= 0 || !entite.isAlive()
+                // Déjà armé pour CETTE partie (bonbon retypé par la spécialisation,
+                // réapparu après le passage de partieActive à vrai) : ne pas doubler
+                || entite.getPersistentData().getLong(TAG_EXPIRATION_PARTIE) == debutPartie) {
+                continue;
+            }
+            marquerExpiration(entite, maintenant + info.expiration * 1000L);
+            planifierExpirationVisible(entite, info.expiration * 1000L);
+        }
+        for (Map.Entry<BlockPos, InfoBonbonCache> entree : blocsBonbonsCaches.entrySet()) {
+            if (entree.getValue().expiration > 0) {
+                planifierExpirationBonbonCache(entree.getKey(), entree.getValue(),
+                    entree.getValue().expiration * 1000L);
+            }
+        }
+
+        if (apparitionsDifferees.isEmpty() && apparitionsDiffereesCachees.isEmpty()) {
             return;
         }
 
@@ -586,38 +783,28 @@ public class GestionnaireBonbonsSousMode3 {
             apparitionsDifferees.size());
 
         for (ApparitionDifferee apparition : new ArrayList<>(apparitionsDifferees)) {
-            try {
-                minuterieReapparition.schedule(new TimerTask() {
-                    @Override
-                    public void run() {
-                        MinecraftServer serveur = serveurJeu;
-                        if (serveur == null || serveur.isStopped()) {
-                            return;
-                        }
-                        serveur.execute(() -> {
-                            if (!GestionnaireSousMode3.getInstance().estPartieActive()) {
-                                return;
-                            }
-                            InfoCelluleVisible info = cellulesVisibles.get(apparition.celluleCle);
-                            ServerLevel niveau = serveur.getLevel(ServerLevel.OVERWORLD);
-                            if (info == null || niveau == null) {
-                                return;
-                            }
-                            Random aleatoire = new Random();
-                            for (int i = 0; i < apparition.quantite; i++) {
-                                fairApparaitreBonbonVisible(niveau, info, aleatoire);
-                            }
-                            if (info.zoneNom != null && zonesParNom.containsKey(info.zoneNom)) {
-                                ajusterCompteursZoneVisible(zonesParNom.get(info.zoneNom), info.type,
-                                    apparition.quantite);
-                                envoyerCompteursZones();
-                            }
-                        });
-                    }
-                }, apparition.delaiSecondes * 1000L);
-            } catch (IllegalStateException e) {
-                // Minuterie annulée pendant la désactivation : ignorer
-            }
+            long instantPrevu = maintenant + apparition.delaiSecondes * 1000L;
+            planifierTacheServeur(apparition.delaiSecondes * 1000L, () -> {
+                if (!GestionnaireSousMode3.getInstance().estPartieActive()) {
+                    return;
+                }
+                InfoCelluleVisible info = cellulesVisibles.get(apparition.celluleCle);
+                MinecraftServer serveur = serveurJeu;
+                ServerLevel niveau = serveur != null ? serveur.getLevel(ServerLevel.OVERWORLD) : null;
+                if (info == null || niveau == null
+                    || finApparitionAtteinte(info.finApparition, instantPrevu)) {
+                    return;
+                }
+                Random aleatoire = new Random();
+                for (int i = 0; i < apparition.quantite; i++) {
+                    fairApparaitreBonbonVisible(niveau, info, aleatoire);
+                }
+                if (info.zoneNom != null && zonesParNom.containsKey(info.zoneNom)) {
+                    ajusterCompteursZoneVisible(zonesParNom.get(info.zoneNom), info.type,
+                        apparition.quantite);
+                    envoyerCompteursZones();
+                }
+            });
         }
         apparitionsDifferees.clear();
     }
@@ -682,38 +869,66 @@ public class GestionnaireBonbonsSousMode3 {
     }
 
     private void planifierReapparitionBonbonCache(BlockPos pos, InfoBonbonCache info, long delaiMs) {
-        try {
-            minuterieReapparition.schedule(new TimerTask() {
-                @Override
-                public void run() {
-                    MinecraftServer serveur = serveurJeu;
-                    if (serveur == null || serveur.isStopped()) {
-                        return;
-                    }
-                    serveur.execute(() -> {
-                        if (!GestionnaireSousMode3.getInstance().estPartieActive()) {
-                            return;
-                        }
-                        ServerLevel niveau = serveur.getLevel(ServerLevel.OVERWORLD);
-                        if (niveau == null) {
-                            return;
-                        }
-                        // Le bloc bonbon remplace tout bloc présent à cet endroit
-                        // (y compris un bloc placé par un joueur)
-                        Block bloc = info.estPierre ? BlocsMod.BONBON_CACHE_PIERRE.get() : BlocsMod.BONBON_CACHE_TERRE.get();
-                        niveau.setBlock(pos, bloc.defaultBlockState(), 3);
-                        GestionnaireSousMode3.getInstance().suivreBlocPlace(pos);
-                        blocsBonbonsCaches.put(pos, info);
-                        if (info.zoneNom != null && zonesParNom.containsKey(info.zoneNom)) {
-                            zonesParNom.get(info.zoneNom).bonbonsNonVisibles += info.quantite;
-                            envoyerCompteursZones();
-                        }
-                    });
-                }
-            }, delaiMs);
-        } catch (IllegalStateException e) {
-            // Minuterie annulée pendant la désactivation : ignorer
-        }
+        long instantPrevu = System.currentTimeMillis() + delaiMs;
+        planifierTacheServeur(delaiMs, () -> {
+            if (!GestionnaireSousMode3.getInstance().estPartieActive()
+                || finApparitionAtteinte(info.finApparition, instantPrevu)) {
+                return;
+            }
+            MinecraftServer serveur = serveurJeu;
+            ServerLevel niveau = serveur != null ? serveur.getLevel(ServerLevel.OVERWORLD) : null;
+            if (niveau == null) {
+                return;
+            }
+            // Le bloc bonbon remplace tout bloc présent à cet endroit
+            // (y compris un bloc placé par un joueur)
+            Block bloc = info.estPierre ? BlocsMod.BONBON_CACHE_PIERRE.get() : BlocsMod.BONBON_CACHE_TERRE.get();
+            niveau.setBlock(pos, bloc.defaultBlockState(), 3);
+            GestionnaireSousMode3.getInstance().suivreBlocPlace(pos);
+            // Copie par placement : l'identité d'instance permet à l'expiration
+            // de ne retirer QUE ce placement (pas un futur bloc réapparu ici)
+            InfoBonbonCache place = info.copier();
+            blocsBonbonsCaches.put(pos, place);
+            if (place.expiration > 0) {
+                planifierExpirationBonbonCache(pos, place, place.expiration * 1000L);
+            }
+            if (info.zoneNom != null && zonesParNom.containsKey(info.zoneNom)) {
+                zonesParNom.get(info.zoneNom).bonbonsNonVisibles += info.quantite;
+                envoyerCompteursZones();
+            }
+        });
+    }
+
+    /**
+     * Planifie la disparition d'un bloc bonbon non-visible non miné. L'identité d'instance
+     * ({@code blocsBonbonsCaches.get(pos) == info}) garantit que seul le placement qui a
+     * armé cette expiration est retiré : un bloc miné puis réapparu à la même position est
+     * un NOUVEAU placement (copie) avec sa propre minuterie.
+     */
+    private void planifierExpirationBonbonCache(BlockPos pos, InfoBonbonCache info, long delaiMs) {
+        planifierTacheServeur(delaiMs, () -> {
+            if (!GestionnaireSousMode3.getInstance().estPartieActive()
+                || blocsBonbonsCaches.get(pos) != info) {
+                return; // Miné entre-temps (ou remplacé par un nouveau placement)
+            }
+            MinecraftServer serveur = serveurJeu;
+            ServerLevel niveau = serveur != null ? serveur.getLevel(ServerLevel.OVERWORLD) : null;
+            if (niveau == null) {
+                return;
+            }
+            blocsBonbonsCaches.remove(pos);
+            niveau.setBlock(pos, net.minecraft.world.level.block.Blocks.AIR.defaultBlockState(), 3);
+            if (info.zoneNom != null && zonesParNom.containsKey(info.zoneNom)) {
+                DonneesZone zone = zonesParNom.get(info.zoneNom);
+                zone.bonbonsNonVisibles = Math.max(0, zone.bonbonsNonVisibles - info.quantite);
+                envoyerCompteursZones();
+            }
+            // Relancer le cycle comme après un minage (la ressource « repousse ») ;
+            // la réapparition vérifie elle-même la fin d'apparition
+            if (info.delai > 0) {
+                planifierReapparitionBonbonCache(pos, info, info.delai * 1000L);
+            }
+        });
     }
 
     // ==================== Zones (HUD) ====================
@@ -833,6 +1048,7 @@ public class GestionnaireBonbonsSousMode3 {
         bonbonsTypesActifs = false;
         cellulesVisibles.clear();
         entitesBonbonsVisibles.clear();
+        tachesExpirationVisibles.clear(); // les tâches meurent avec la minuterie annulée
         blocsBonbonsCaches.clear();
         zones.clear();
         zonesParNom.clear();

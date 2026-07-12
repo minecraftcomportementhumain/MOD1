@@ -82,9 +82,16 @@ public class EcranConfigurationPartieSousMode3 extends Screen {
         int xB = xA + largeurColonne + ECART_COLONNE;
         int xC = xB + largeurColonne + ECART_COLONNE;
 
-        // ---- Réinitialisation aux valeurs par défaut ----
+        // ---- Barre du haut : réinitialisation + réglages du soin des bonbons ----
+        // (sous-écran : les trois colonnes sont déjà à pleine capacité à la hauteur minimale)
         addRenderableWidget(Button.builder(Component.literal("Par défaut"), b -> reinitialiserConfig())
-            .bounds(this.width / 2 - largeurColonne / 2, yPresets, largeurColonne, hPresets).build());
+            .bounds(this.width / 2 - largeurColonne - 4, yPresets, largeurColonne, hPresets).build());
+        addRenderableWidget(Button.builder(Component.literal("Soin bonbons…"),
+                b -> this.minecraft.setScreen(new EcranSoinBonbonsSousMode3(this, config)))
+            .bounds(this.width / 2 + 4, yPresets, largeurColonne, hPresets)
+            .tooltip(net.minecraft.client.gui.components.Tooltip.create(Component.literal(
+                "Santé rendue par chaque type de bonbon (standard, Bleu, Rouge)")))
+            .build());
 
         // ---- Colonne A : Durée & Santé ----
         int[] ya = {yDepart};
@@ -233,6 +240,9 @@ public class EcranConfigurationPartieSousMode3 extends Screen {
         cible.regenerationNaturelle = source.regenerationNaturelle;
         cible.reapparitionAutorisee = source.reapparitionAutorisee;
         cible.santeMaxPoints = source.santeMaxPoints;
+        cible.soinBonbonStandard = source.soinBonbonStandard;
+        cible.soinBonbonBleu = source.soinBonbonBleu;
+        cible.soinBonbonRouge = source.soinBonbonRouge;
         cible.specialisation = source.specialisation;
         cible.dureePenaliteSpecialisationSecondes = source.dureePenaliteSpecialisationSecondes;
         cible.multiplicateurSantePenalite = source.multiplicateurSantePenalite;

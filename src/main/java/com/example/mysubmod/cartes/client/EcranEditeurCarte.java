@@ -133,6 +133,10 @@ public class EcranEditeurCarte extends Screen {
     private String texteDelaiNonVisible = "";
     private String texteApparitionInitiale = "";
     private String texteApparitionInitialeNonVisible = "";
+    private String texteFinApparition = "";
+    private String texteFinApparitionNonVisible = "";
+    private String texteExpiration = "";
+    private String texteExpirationNonVisible = "";
     private com.example.mysubmod.cartes.TypeBonbonCarte typeBonbonChoisi = null; // null = inchangé
     private com.example.mysubmod.cartes.TypeBonbonCarte typeBonbonNonVisibleChoisi = null; // null = inchangé
 
@@ -143,6 +147,10 @@ public class EcranEditeurCarte extends Screen {
     private EditBox champDelaiNonVisible;
     private EditBox champApparitionInitiale;
     private EditBox champApparitionInitialeNonVisible;
+    private EditBox champFinApparition;
+    private EditBox champFinApparitionNonVisible;
+    private EditBox champExpiration;
+    private EditBox champExpirationNonVisible;
     private Button boutonTypeBonbon;
     private Button boutonTypeBonbonNonVisible;
     private Button boutonAppliquerDelais;
@@ -458,10 +466,15 @@ public class EcranEditeurCarte extends Screen {
         // GUI minimale (240 px) ; les positions verticales sont posées par
         // mettreAJourPanneauDelais() selon les familles présentes dans la sélection -----
         int basPanneau = this.height - HAUTEUR_BARRE_ETAT;
-        int dispoSelection = basPanneau - (hautGrille + 18) - 24;
-        pitchSelection = Math.max(14, Math.min(20, (dispoSelection / 2 - 18) / 3));
-        hauteurCarteSelection = 18 + 3 * pitchSelection;
-        int hauteurChamp = Math.min(14, pitchSelection - 2);
+        // Budget : deux cartes de 5 rangées + écarts (2×2) + bouton Appliquer (16), à partir
+        // de hautGrille+16. Plancher à 10 px : à la hauteur GUI minimale (240 px), les deux
+        // cartes remplissent alors exactement l'espace jusqu'à la barre d'état.
+        int dispoSelection = basPanneau - (hautGrille + 16) - 20;
+        pitchSelection = Math.max(10, Math.min(20, (dispoSelection / 2 - 18) / 5));
+        hauteurCarteSelection = 18 + 5 * pitchSelection;
+        // Plancher à 10 px : sous cela la police (9 px) chevauche les bordures du champ.
+        // Au pas minimal les champs se touchent bord à bord, mais restent lisibles.
+        int hauteurChamp = Math.min(14, Math.max(10, pitchSelection - 2));
         int largeurChamp = LARGEUR_CHAMP_SELECTION;
         int xChamp = xChampSelection();
         int xType = xTypeSelection();
@@ -502,6 +515,42 @@ public class EcranEditeurCarte extends Screen {
         champApparitionInitialeNonVisible.setTooltip(net.minecraft.client.gui.components.Tooltip.create(Component.literal(
             "Secondes après le début de partie avant l'apparition du bloc bonbon non-visible (0 = dès le début)")));
         addRenderableWidget(champApparitionInitialeNonVisible);
+
+        champFinApparition = new EditBox(this.font, xChamp, 0, largeurChamp, hauteurChamp,
+            Component.literal("Fin d'apparition visible (s)"));
+        champFinApparition.setMaxLength(8);
+        champFinApparition.setValue(texteFinApparition);
+        champFinApparition.setResponder(texte -> texteFinApparition = texte);
+        champFinApparition.setTooltip(net.minecraft.client.gui.components.Tooltip.create(Component.literal(
+            "Secondes après le début de partie où le bonbon visible cesse d'apparaître/réapparaître (0 = jamais)")));
+        addRenderableWidget(champFinApparition);
+
+        champFinApparitionNonVisible = new EditBox(this.font, xChamp, 0, largeurChamp, hauteurChamp,
+            Component.literal("Fin d'apparition non-visible (s)"));
+        champFinApparitionNonVisible.setMaxLength(8);
+        champFinApparitionNonVisible.setValue(texteFinApparitionNonVisible);
+        champFinApparitionNonVisible.setResponder(texte -> texteFinApparitionNonVisible = texte);
+        champFinApparitionNonVisible.setTooltip(net.minecraft.client.gui.components.Tooltip.create(Component.literal(
+            "Secondes après le début de partie où le bloc bonbon non-visible cesse d'apparaître/réapparaître (0 = jamais)")));
+        addRenderableWidget(champFinApparitionNonVisible);
+
+        champExpiration = new EditBox(this.font, xChamp, 0, largeurChamp, hauteurChamp,
+            Component.literal("Expiration visible (s)"));
+        champExpiration.setMaxLength(8);
+        champExpiration.setValue(texteExpiration);
+        champExpiration.setResponder(texte -> texteExpiration = texte);
+        champExpiration.setTooltip(net.minecraft.client.gui.components.Tooltip.create(Component.literal(
+            "Secondes après son apparition où le bonbon visible non collecté disparaît (0 = jamais)")));
+        addRenderableWidget(champExpiration);
+
+        champExpirationNonVisible = new EditBox(this.font, xChamp, 0, largeurChamp, hauteurChamp,
+            Component.literal("Expiration non-visible (s)"));
+        champExpirationNonVisible.setMaxLength(8);
+        champExpirationNonVisible.setValue(texteExpirationNonVisible);
+        champExpirationNonVisible.setResponder(texte -> texteExpirationNonVisible = texte);
+        champExpirationNonVisible.setTooltip(net.minecraft.client.gui.components.Tooltip.create(Component.literal(
+            "Secondes après son placement où le bloc bonbon non-visible non miné disparaît (0 = jamais)")));
+        addRenderableWidget(champExpirationNonVisible);
 
         boutonTypeBonbon = Button.builder(Component.literal("(inchangé)"), b -> cyclerTypeBonbon())
             .bounds(xType, 0, largeurType, hauteurChamp)
@@ -1348,6 +1397,8 @@ public class EcranEditeurCarte extends Screen {
                 if (apres.qteBonbonVisible == 0) {
                     apres.delaiBonbonVisible = 0;
                     apres.delaiApparitionInitiale = 0;
+                    apres.finApparitionVisible = 0;
+                    apres.expirationVisible = 0;
                     apres.typeBonbonVisible = com.example.mysubmod.cartes.TypeBonbonCarte.STANDARD;
                 }
             } else if (outilActif == OutilPalette.BONBON_NON_VISIBLE && existant.qteBonbonNonVisible > 0) {
@@ -1355,6 +1406,8 @@ public class EcranEditeurCarte extends Screen {
                 if (apres.qteBonbonNonVisible == 0) {
                     apres.delaiBonbonNonVisible = 0;
                     apres.delaiApparitionInitialeNonVisible = 0;
+                    apres.finApparitionNonVisible = 0;
+                    apres.expirationNonVisible = 0;
                     apres.typeBonbonNonVisible = com.example.mysubmod.cartes.TypeBonbonCarte.STANDARD;
                 }
             } else {
@@ -1403,11 +1456,15 @@ public class EcranEditeurCarte extends Screen {
             apres.qteBonbonVisible = 0;
             apres.delaiBonbonVisible = 0;
             apres.delaiApparitionInitiale = 0;
+            apres.finApparitionVisible = 0;
+            apres.expirationVisible = 0;
             apres.typeBonbonVisible = com.example.mysubmod.cartes.TypeBonbonCarte.STANDARD;
         } else if (existant.qteBonbonNonVisible > 0) {
             apres.qteBonbonNonVisible = 0;
             apres.delaiBonbonNonVisible = 0;
             apres.delaiApparitionInitialeNonVisible = 0;
+            apres.finApparitionNonVisible = 0;
+            apres.expirationNonVisible = 0;
             apres.typeBonbonNonVisible = com.example.mysubmod.cartes.TypeBonbonCarte.STANDARD;
         } else if (existant.type != TypeElementCarte.VIDE) {
             apres.type = TypeElementCarte.VIDE;
@@ -1859,6 +1916,8 @@ public class EcranEditeurCarte extends Screen {
     private void mettreAJourPanneauDelais() {
         if (champDelaiVisible == null || champDelaiNonVisible == null || boutonAppliquerDelais == null
             || champApparitionInitiale == null || champApparitionInitialeNonVisible == null
+            || champFinApparition == null || champFinApparitionNonVisible == null
+            || champExpiration == null || champExpirationNonVisible == null
             || boutonTypeBonbon == null || boutonTypeBonbonNonVisible == null) {
             return;
         }
@@ -1875,6 +1934,14 @@ public class EcranEditeurCarte extends Screen {
         champApparitionInitiale.active = aVisible;
         champApparitionInitialeNonVisible.visible = aNonVisible;
         champApparitionInitialeNonVisible.active = aNonVisible;
+        champFinApparition.visible = aVisible;
+        champFinApparition.active = aVisible;
+        champFinApparitionNonVisible.visible = aNonVisible;
+        champFinApparitionNonVisible.active = aNonVisible;
+        champExpiration.visible = aVisible;
+        champExpiration.active = aVisible;
+        champExpirationNonVisible.visible = aNonVisible;
+        champExpirationNonVisible.active = aNonVisible;
         boutonTypeBonbon.visible = aVisible;
         boutonTypeBonbon.active = aVisible;
         boutonTypeBonbonNonVisible.visible = aNonVisible;
@@ -1882,8 +1949,14 @@ public class EcranEditeurCarte extends Screen {
         boutonAppliquerDelais.visible = panneauVisible;
         boutonAppliquerDelais.active = panneauVisible;
 
+        // Une seule passe sur la sélection pour toutes les valeurs communes : une sélection
+        // rectangulaire peut compter des millions de cellules — un balayage par champ
+        // multiplierait le coût par dix à chaque changement de sélection
+        ValeursCommunesSelection communes = panneauVisible
+            ? calculerValeursCommunesSelection() : new ValeursCommunesSelection();
+
         if (aVisible) {
-            Integer valeurCommune = valeurDelaiCommune(true);
+            Integer valeurCommune = communes.delaiVisible;
             if (valeurCommune == null) {
                 texteDelaiVisible = "";
                 champDelaiVisible.setValue("");
@@ -1895,7 +1968,7 @@ public class EcranEditeurCarte extends Screen {
             }
 
             // Apparition initiale : valeur commune ou « — » si valeurs mixtes
-            Integer apparitionCommune = valeurApparitionInitialeCommune(true);
+            Integer apparitionCommune = communes.apparitionVisible;
             if (apparitionCommune == null) {
                 texteApparitionInitiale = "";
                 champApparitionInitiale.setValue("");
@@ -1906,21 +1979,45 @@ public class EcranEditeurCarte extends Screen {
                 champApparitionInitiale.setHint(Component.literal(""));
             }
 
+            // Fin d'apparition : valeur commune ou « — » si valeurs mixtes
+            Integer finCommune = communes.finVisible;
+            if (finCommune == null) {
+                texteFinApparition = "";
+                champFinApparition.setValue("");
+                champFinApparition.setHint(Component.literal("—"));
+            } else {
+                texteFinApparition = finCommune > 0 ? String.valueOf(finCommune) : "";
+                champFinApparition.setValue(texteFinApparition);
+                champFinApparition.setHint(Component.literal(finCommune == 0 ? "0 (jamais)" : ""));
+            }
+
+            // Expiration : valeur commune ou « — » si valeurs mixtes
+            Integer expirationCommune = communes.expirationVisible;
+            if (expirationCommune == null) {
+                texteExpiration = "";
+                champExpiration.setValue("");
+                champExpiration.setHint(Component.literal("—"));
+            } else {
+                texteExpiration = expirationCommune > 0 ? String.valueOf(expirationCommune) : "";
+                champExpiration.setValue(texteExpiration);
+                champExpiration.setHint(Component.literal(expirationCommune == 0 ? "0 (jamais)" : ""));
+            }
+
             // Type de bonbon : réinitialisé à « inchangé » à chaque nouvelle sélection
             // (la carte « Bonbon visible » de l'inspecteur donne le contexte du bouton)
             typeBonbonChoisi = null;
-            com.example.mysubmod.cartes.TypeBonbonCarte typeCommun = typeBonbonCommun();
+            com.example.mysubmod.cartes.TypeBonbonCarte typeCommun = communes.typeVisible;
             boutonTypeBonbon.setMessage(Component.literal(
                 typeCommun != null ? typeCommun.obtenirNomAffichage() + " (inchangé)" : "— (inchangé)"));
         }
         if (aNonVisible) {
             // Type de bonbon non-visible : réinitialisé à « inchangé » à chaque nouvelle sélection
             typeBonbonNonVisibleChoisi = null;
-            com.example.mysubmod.cartes.TypeBonbonCarte typeCommunNonVisible = typeBonbonNonVisibleCommun();
+            com.example.mysubmod.cartes.TypeBonbonCarte typeCommunNonVisible = communes.typeNonVisible;
             boutonTypeBonbonNonVisible.setMessage(Component.literal(
                 typeCommunNonVisible != null
                     ? typeCommunNonVisible.obtenirNomAffichage() + " (inchangé)" : "— (inchangé)"));
-            Integer valeurCommune = valeurDelaiCommune(false);
+            Integer valeurCommune = communes.delaiNonVisible;
             if (valeurCommune == null) {
                 texteDelaiNonVisible = "";
                 champDelaiNonVisible.setValue("");
@@ -1932,7 +2029,7 @@ public class EcranEditeurCarte extends Screen {
             }
 
             // Apparition initiale non-visible : valeur commune ou « — » si valeurs mixtes
-            Integer apparitionCommune = valeurApparitionInitialeCommune(false);
+            Integer apparitionCommune = communes.apparitionNonVisible;
             if (apparitionCommune == null) {
                 texteApparitionInitialeNonVisible = "";
                 champApparitionInitialeNonVisible.setValue("");
@@ -1942,6 +2039,30 @@ public class EcranEditeurCarte extends Screen {
                 champApparitionInitialeNonVisible.setValue(texteApparitionInitialeNonVisible);
                 champApparitionInitialeNonVisible.setHint(Component.literal(""));
             }
+
+            // Fin d'apparition non-visible : valeur commune ou « — » si valeurs mixtes
+            Integer finCommune = communes.finNonVisible;
+            if (finCommune == null) {
+                texteFinApparitionNonVisible = "";
+                champFinApparitionNonVisible.setValue("");
+                champFinApparitionNonVisible.setHint(Component.literal("—"));
+            } else {
+                texteFinApparitionNonVisible = finCommune > 0 ? String.valueOf(finCommune) : "";
+                champFinApparitionNonVisible.setValue(texteFinApparitionNonVisible);
+                champFinApparitionNonVisible.setHint(Component.literal(finCommune == 0 ? "0 (jamais)" : ""));
+            }
+
+            // Expiration non-visible : valeur commune ou « — » si valeurs mixtes
+            Integer expirationCommune = communes.expirationNonVisible;
+            if (expirationCommune == null) {
+                texteExpirationNonVisible = "";
+                champExpirationNonVisible.setValue("");
+                champExpirationNonVisible.setHint(Component.literal("—"));
+            } else {
+                texteExpirationNonVisible = expirationCommune > 0 ? String.valueOf(expirationCommune) : "";
+                champExpirationNonVisible.setValue(texteExpirationNonVisible);
+                champExpirationNonVisible.setHint(Component.literal(expirationCommune == 0 ? "0 (jamais)" : ""));
+            }
         }
 
         // Repositionnement : les cartes de l'inspecteur s'empilent selon les familles
@@ -1949,55 +2070,103 @@ public class EcranEditeurCarte extends Screen {
         // aux mêmes positions, dérivées des flags de visibilité des champs)
         int xChampSel = xChampSelection();
         int xTypeSel = xTypeSelection();
-        int ySel = hautGrille + 18;
+        int ySel = hautGrille + 16;
         if (aVisible) {
             champDelaiVisible.setPosition(xChampSel, ySel + 16);
             champApparitionInitiale.setPosition(xChampSel, ySel + 16 + pitchSelection);
-            boutonTypeBonbon.setPosition(xTypeSel, ySel + 16 + 2 * pitchSelection);
-            ySel += hauteurCarteSelection + 4;
+            champFinApparition.setPosition(xChampSel, ySel + 16 + 2 * pitchSelection);
+            champExpiration.setPosition(xChampSel, ySel + 16 + 3 * pitchSelection);
+            boutonTypeBonbon.setPosition(xTypeSel, ySel + 16 + 4 * pitchSelection);
+            ySel += hauteurCarteSelection + 2;
         }
         if (aNonVisible) {
             champDelaiNonVisible.setPosition(xChampSel, ySel + 16);
             champApparitionInitialeNonVisible.setPosition(xChampSel, ySel + 16 + pitchSelection);
-            boutonTypeBonbonNonVisible.setPosition(xTypeSel, ySel + 16 + 2 * pitchSelection);
-            ySel += hauteurCarteSelection + 4;
+            champFinApparitionNonVisible.setPosition(xChampSel, ySel + 16 + 2 * pitchSelection);
+            champExpirationNonVisible.setPosition(xChampSel, ySel + 16 + 3 * pitchSelection);
+            boutonTypeBonbonNonVisible.setPosition(xTypeSel, ySel + 16 + 4 * pitchSelection);
+            ySel += hauteurCarteSelection + 2;
         }
         boutonAppliquerDelais.setPosition(this.width - largeurPanneauDroit + 8, ySel);
     }
 
-    /** Valeur d'apparition initiale commune aux blocs sélectionnés contenant ce type de bonbon (null = mixte) */
-    private Integer valeurApparitionInitialeCommune(boolean visible) {
-        Integer valeur = null;
-        for (long cle : cellulesSelectionnees) {
-            BlocCarte bloc = carte.blocs.get(cle);
-            if (bloc == null || (visible ? bloc.qteBonbonVisible : bloc.qteBonbonNonVisible) <= 0) {
-                continue;
-            }
-            int delai = visible ? bloc.delaiApparitionInitiale : bloc.delaiApparitionInitialeNonVisible;
-            if (valeur == null) {
-                valeur = delai;
-            } else if (valeur != delai) {
-                return null;
-            }
-        }
-        return valeur;
+    /** Valeurs communes des blocs sélectionnés, par famille de bonbon : null = valeurs
+     *  mixtes (ou aucun bloc de cette famille). Remplies par
+     *  {@link #calculerValeursCommunesSelection()} en UNE passe sur la sélection. */
+    private static class ValeursCommunesSelection {
+        Integer delaiVisible, delaiNonVisible;
+        Integer apparitionVisible, apparitionNonVisible;
+        Integer finVisible, finNonVisible;
+        Integer expirationVisible, expirationNonVisible;
+        com.example.mysubmod.cartes.TypeBonbonCarte typeVisible, typeNonVisible;
     }
 
-    /** Type de bonbon commun aux blocs sélectionnés à bonbons visibles (null = mixte) */
-    private com.example.mysubmod.cartes.TypeBonbonCarte typeBonbonCommun() {
-        com.example.mysubmod.cartes.TypeBonbonCarte type = null;
+    /** Calcule toutes les valeurs communes de la sélection en une seule passe (une
+     *  sélection rectangulaire peut compter des millions de cellules). */
+    private ValeursCommunesSelection calculerValeursCommunesSelection() {
+        ValeursCommunesSelection v = new ValeursCommunesSelection();
+        boolean visibleVu = false;
+        boolean nonVisibleVu = false;
         for (long cle : cellulesSelectionnees) {
             BlocCarte bloc = carte.blocs.get(cle);
-            if (bloc == null || bloc.qteBonbonVisible <= 0) {
+            if (bloc == null) {
                 continue;
             }
-            if (type == null) {
-                type = bloc.typeBonbonVisible;
-            } else if (type != bloc.typeBonbonVisible) {
-                return null;
+            if (bloc.qteBonbonVisible > 0) {
+                if (!visibleVu) {
+                    visibleVu = true;
+                    v.delaiVisible = bloc.delaiBonbonVisible;
+                    v.apparitionVisible = bloc.delaiApparitionInitiale;
+                    v.finVisible = bloc.finApparitionVisible;
+                    v.expirationVisible = bloc.expirationVisible;
+                    v.typeVisible = bloc.typeBonbonVisible;
+                } else {
+                    if (v.delaiVisible != null && v.delaiVisible != bloc.delaiBonbonVisible) {
+                        v.delaiVisible = null;
+                    }
+                    if (v.apparitionVisible != null && v.apparitionVisible != bloc.delaiApparitionInitiale) {
+                        v.apparitionVisible = null;
+                    }
+                    if (v.finVisible != null && v.finVisible != bloc.finApparitionVisible) {
+                        v.finVisible = null;
+                    }
+                    if (v.expirationVisible != null && v.expirationVisible != bloc.expirationVisible) {
+                        v.expirationVisible = null;
+                    }
+                    if (v.typeVisible != null && v.typeVisible != bloc.typeBonbonVisible) {
+                        v.typeVisible = null;
+                    }
+                }
+            }
+            if (bloc.qteBonbonNonVisible > 0) {
+                if (!nonVisibleVu) {
+                    nonVisibleVu = true;
+                    v.delaiNonVisible = bloc.delaiBonbonNonVisible;
+                    v.apparitionNonVisible = bloc.delaiApparitionInitialeNonVisible;
+                    v.finNonVisible = bloc.finApparitionNonVisible;
+                    v.expirationNonVisible = bloc.expirationNonVisible;
+                    v.typeNonVisible = bloc.typeBonbonNonVisible;
+                } else {
+                    if (v.delaiNonVisible != null && v.delaiNonVisible != bloc.delaiBonbonNonVisible) {
+                        v.delaiNonVisible = null;
+                    }
+                    if (v.apparitionNonVisible != null
+                        && v.apparitionNonVisible != bloc.delaiApparitionInitialeNonVisible) {
+                        v.apparitionNonVisible = null;
+                    }
+                    if (v.finNonVisible != null && v.finNonVisible != bloc.finApparitionNonVisible) {
+                        v.finNonVisible = null;
+                    }
+                    if (v.expirationNonVisible != null && v.expirationNonVisible != bloc.expirationNonVisible) {
+                        v.expirationNonVisible = null;
+                    }
+                    if (v.typeNonVisible != null && v.typeNonVisible != bloc.typeBonbonNonVisible) {
+                        v.typeNonVisible = null;
+                    }
+                }
             }
         }
-        return type;
+        return v;
     }
 
     /** Fait tourner le choix de type : (inchangé) → Standard → Bleu → Rouge → (inchangé) */
@@ -2013,23 +2182,6 @@ public class EcranEditeurCarte extends Screen {
             typeBonbonChoisi == null ? "(inchangé)" : typeBonbonChoisi.obtenirNomAffichage()));
     }
 
-    /** Type de bonbon commun aux blocs sélectionnés à bonbons non-visibles (null = mixte) */
-    private com.example.mysubmod.cartes.TypeBonbonCarte typeBonbonNonVisibleCommun() {
-        com.example.mysubmod.cartes.TypeBonbonCarte type = null;
-        for (long cle : cellulesSelectionnees) {
-            BlocCarte bloc = carte.blocs.get(cle);
-            if (bloc == null || bloc.qteBonbonNonVisible <= 0) {
-                continue;
-            }
-            if (type == null) {
-                type = bloc.typeBonbonNonVisible;
-            } else if (type != bloc.typeBonbonNonVisible) {
-                return null;
-            }
-        }
-        return type;
-    }
-
     /** Fait tourner le choix de type non-visible : (inchangé) → Standard → Bleu → Rouge → (inchangé) */
     private void cyclerTypeBonbonNonVisible() {
         if (typeBonbonNonVisibleChoisi == null) {
@@ -2042,28 +2194,6 @@ public class EcranEditeurCarte extends Screen {
         boutonTypeBonbonNonVisible.setMessage(Component.literal(
             typeBonbonNonVisibleChoisi == null ? "(inchangé)"
                 : typeBonbonNonVisibleChoisi.obtenirNomAffichage()));
-    }
-
-    /** Valeur de délai commune aux blocs sélectionnés contenant ce type de bonbon (null = valeurs mixtes) */
-    private Integer valeurDelaiCommune(boolean visible) {
-        Integer valeur = null;
-        for (long cle : cellulesSelectionnees) {
-            BlocCarte bloc = carte.blocs.get(cle);
-            if (bloc == null) {
-                continue;
-            }
-            int quantite = visible ? bloc.qteBonbonVisible : bloc.qteBonbonNonVisible;
-            if (quantite <= 0) {
-                continue;
-            }
-            int delai = visible ? bloc.delaiBonbonVisible : bloc.delaiBonbonNonVisible;
-            if (valeur == null) {
-                valeur = delai;
-            } else if (valeur != delai) {
-                return null; // Valeurs mixtes
-            }
-        }
-        return valeur;
     }
 
     /** Résultat sentinelle de {@link #analyserChampDelai} : saisie refusée, message déjà affiché */
@@ -2085,9 +2215,10 @@ public class EcranEditeurCarte extends Screen {
             return DELAI_REFUSE;
         }
         if (valeur < min || valeur > CarteDonnees.DELAI_BONBON_MAX) {
+            // Toujours nommer le champ fautif : plusieurs champs partagent chaque borne
             afficherMessage("Valeur refusée", min == 0
-                ? "L'apparition initiale doit être entre 0 et " + CarteDonnees.DELAI_BONBON_MAX + " secondes"
-                : "Le délai doit être entre 1 et " + CarteDonnees.DELAI_BONBON_MAX
+                ? libelle + " : la valeur doit être entre 0 et " + CarteDonnees.DELAI_BONBON_MAX + " secondes"
+                : libelle + " : le délai doit être entre 1 et " + CarteDonnees.DELAI_BONBON_MAX
                     + " secondes (0 est réservé au comportement par défaut)");
             return DELAI_REFUSE;
         }
@@ -2116,12 +2247,34 @@ public class EcranEditeurCarte extends Screen {
         if (DELAI_REFUSE.equals(apparitionInitialeNonVisible)) {
             return;
         }
+        Integer finApparition = analyserChampDelai(champFinApparition.visible,
+            texteFinApparition, 0, "Fin d'apparition visible");
+        if (DELAI_REFUSE.equals(finApparition)) {
+            return;
+        }
+        Integer finApparitionNonVisible = analyserChampDelai(champFinApparitionNonVisible.visible,
+            texteFinApparitionNonVisible, 0, "Fin d'apparition non-visible");
+        if (DELAI_REFUSE.equals(finApparitionNonVisible)) {
+            return;
+        }
+        Integer expiration = analyserChampDelai(champExpiration.visible,
+            texteExpiration, 0, "Expiration visible");
+        if (DELAI_REFUSE.equals(expiration)) {
+            return;
+        }
+        Integer expirationNonVisible = analyserChampDelai(champExpirationNonVisible.visible,
+            texteExpirationNonVisible, 0, "Expiration non-visible");
+        if (DELAI_REFUSE.equals(expirationNonVisible)) {
+            return;
+        }
 
         com.example.mysubmod.cartes.TypeBonbonCarte typeApplique = typeBonbonChoisi;
         com.example.mysubmod.cartes.TypeBonbonCarte typeNonVisibleApplique = typeBonbonNonVisibleChoisi;
 
         if (delaiVisible == null && delaiNonVisible == null && apparitionInitiale == null
-            && apparitionInitialeNonVisible == null && typeApplique == null
+            && apparitionInitialeNonVisible == null && finApparition == null
+            && finApparitionNonVisible == null && expiration == null
+            && expirationNonVisible == null && typeApplique == null
             && typeNonVisibleApplique == null) {
             return; // Rien à appliquer (les valeurs existantes ne sont pas écrasées)
         }
@@ -2151,6 +2304,26 @@ public class EcranEditeurCarte extends Screen {
             if (apparitionInitialeNonVisible != null && bloc.qteBonbonNonVisible > 0
                 && bloc.delaiApparitionInitialeNonVisible != apparitionInitialeNonVisible) {
                 apres.delaiApparitionInitialeNonVisible = apparitionInitialeNonVisible;
+                changement = true;
+            }
+            if (finApparition != null && bloc.qteBonbonVisible > 0
+                && bloc.finApparitionVisible != finApparition) {
+                apres.finApparitionVisible = finApparition;
+                changement = true;
+            }
+            if (finApparitionNonVisible != null && bloc.qteBonbonNonVisible > 0
+                && bloc.finApparitionNonVisible != finApparitionNonVisible) {
+                apres.finApparitionNonVisible = finApparitionNonVisible;
+                changement = true;
+            }
+            if (expiration != null && bloc.qteBonbonVisible > 0
+                && bloc.expirationVisible != expiration) {
+                apres.expirationVisible = expiration;
+                changement = true;
+            }
+            if (expirationNonVisible != null && bloc.qteBonbonNonVisible > 0
+                && bloc.expirationNonVisible != expirationNonVisible) {
+                apres.expirationNonVisible = expirationNonVisible;
                 changement = true;
             }
             if (typeApplique != null && bloc.qteBonbonVisible > 0 && bloc.typeBonbonVisible != typeApplique) {
@@ -3106,10 +3279,10 @@ public class EcranEditeurCarte extends Screen {
         if (panneauDelaisVisible()) {
             guiGraphics.drawString(this.font, "§6Sélection : §7" + cellulesSelectionnees.size() + " bloc(s)",
                 xCarte + 2, hautGrille + 6, 0xFFFFFF);
-            int y = hautGrille + 18;
+            int y = hautGrille + 16;
             if (champDelaiVisible.visible) {
                 dessinerCarteSelection(guiGraphics, xCarte, y, largeurCarte, "Bonbon visible", COULEUR_BONBON_VISIBLE);
-                y += hauteurCarteSelection + 4;
+                y += hauteurCarteSelection + 2;
             }
             if (champDelaiNonVisible.visible) {
                 dessinerCarteSelection(guiGraphics, xCarte, y, largeurCarte, "Bonbon non-visible",
@@ -3188,7 +3361,8 @@ public class EcranEditeurCarte extends Screen {
             lignes.add(new LigneInspecteur("Visible",
                 "×" + bloc.qteBonbonVisible + " · " + bloc.typeBonbonVisible.obtenirNomAffichage(),
                 COULEUR_BONBON_VISIBLE));
-            String details = detailsBonbon(bloc.delaiBonbonVisible, bloc.delaiApparitionInitiale);
+            String details = detailsBonbon(bloc.delaiBonbonVisible, bloc.delaiApparitionInitiale,
+                bloc.finApparitionVisible, bloc.expirationVisible);
             if (!details.isEmpty()) {
                 lignes.add(new LigneInspecteur("", details, COULEUR_TEXTE_ESTOMPE));
             }
@@ -3197,7 +3371,8 @@ public class EcranEditeurCarte extends Screen {
             lignes.add(new LigneInspecteur("Non-visible",
                 "×" + bloc.qteBonbonNonVisible + " · " + bloc.typeBonbonNonVisible.obtenirNomAffichage(),
                 COULEUR_BONBON_NON_VISIBLE));
-            String details = detailsBonbon(bloc.delaiBonbonNonVisible, bloc.delaiApparitionInitialeNonVisible);
+            String details = detailsBonbon(bloc.delaiBonbonNonVisible, bloc.delaiApparitionInitialeNonVisible,
+                bloc.finApparitionNonVisible, bloc.expirationNonVisible);
             if (!details.isEmpty()) {
                 lignes.add(new LigneInspecteur("", details, COULEUR_TEXTE_ESTOMPE));
             }
@@ -3205,8 +3380,9 @@ public class EcranEditeurCarte extends Screen {
         return lignes;
     }
 
-    /** « réap. Ns · appar. Ns » (parties non nulles seulement) */
-    private static String detailsBonbon(int delaiReapparition, int apparitionInitiale) {
+    /** « réap. Ns · appar. Ns · fin Ns · exp. Ns » (parties non nulles seulement) */
+    private static String detailsBonbon(int delaiReapparition, int apparitionInitiale,
+                                        int finApparition, int expiration) {
         StringBuilder details = new StringBuilder();
         if (delaiReapparition > 0) {
             details.append("réap. ").append(delaiReapparition).append(" s");
@@ -3216,6 +3392,18 @@ public class EcranEditeurCarte extends Screen {
                 details.append(" · ");
             }
             details.append("appar. ").append(apparitionInitiale).append(" s");
+        }
+        if (finApparition > 0) {
+            if (!details.isEmpty()) {
+                details.append(" · ");
+            }
+            details.append("fin ").append(finApparition).append(" s");
+        }
+        if (expiration > 0) {
+            if (!details.isEmpty()) {
+                details.append(" · ");
+            }
+            details.append("exp. ").append(expiration).append(" s");
         }
         return details.toString();
     }
@@ -3227,7 +3415,7 @@ public class EcranEditeurCarte extends Screen {
         dessinerCadre(guiGraphics, x, y, x + largeur, y + hauteurCarteSelection,
             (couleurTitre & 0x00FFFFFF) | 0x60000000);
         guiGraphics.drawString(this.font, titre, x + 5, y + 5, couleurTitre);
-        String[] etiquettes = {"Réapp. (s)", "Appar. (s)", "Type"};
+        String[] etiquettes = {"Réapp. (s)", "Appar. (s)", "Fin (s)", "Expir. (s)", "Type"};
         int yRangee = y + 16;
         for (String etiquette : etiquettes) {
             guiGraphics.drawString(this.font, etiquette, x + 4, yRangee + 3, COULEUR_ETIQUETTE);

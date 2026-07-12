@@ -53,7 +53,7 @@ public class ItemBonbonRouge extends Item {
     @Override
     public void appendHoverText(ItemStack stack, Level level, List<Component> tooltip, TooltipFlag flag) {
         tooltip.add(Component.literal("§cBonbon Rouge (Type B)"));
-        tooltip.add(Component.literal("§7Restaure §c1 cœur §7(réduit si pénalité)"));
+        tooltip.add(Component.literal("§7Restaure de la santé (selon la partie, réduit si pénalité)"));
         tooltip.add(Component.literal("§eUtilisable en sous-mode 3"));
     }
 }

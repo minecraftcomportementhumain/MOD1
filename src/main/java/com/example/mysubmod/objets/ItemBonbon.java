@@ -18,7 +18,6 @@ import net.minecraft.world.level.Level;
 import java.util.List;
 
 public class ItemBonbon extends Item {
-    private static final float MONTANT_SOIN = 2.0f; // 1 coeur
 
     public ItemBonbon() {
         super(new Properties()
@@ -52,7 +51,8 @@ public class ItemBonbon extends Item {
                         ? com.example.mysubmod.sousmodes.sousmode3.GestionnaireSpecialisationSousMode3
                             .getInstance().obtenirMultiplicateurSanteActuel(joueurServeur.getUUID())
                         : 1.0f;
-                    float soinReel = MONTANT_SOIN * multiplicateur;
+                    // Santé rendue configurable par partie (menu N › Soin bonbons)
+                    float soinReel = gestionnaireSM3.obtenirConfig().soinBonbonStandard * multiplicateur;
 
                     // Par défaut, on refuse de gaspiller un bonbon qui dépasserait le maximum.
                     // Si l'admin a coché « manger même à vie pleine », on autorise la consommation
@@ -72,7 +72,7 @@ public class ItemBonbon extends Item {
                         joueurServeur.level().playSound(null, joueurServeur.getX(), joueurServeur.getY(),
                             joueurServeur.getZ(), SoundEvents.PLAYER_BURP, SoundSource.PLAYERS, 0.5f, 1.0f);
                     } else {
-                        soignerJoueur(joueurServeur);
+                        soignerJoueur(joueurServeur, soinReel);
                     }
                     pileObjets.shrink(1);
 
@@ -96,13 +96,15 @@ public class ItemBonbon extends Item {
         return InteractionResultHolder.consume(pileObjets);
     }
 
-    private void soignerJoueur(ServerPlayer joueur) {
+    private void soignerJoueur(ServerPlayer joueur, float soin) {
         float vieActuelle = joueur.getHealth();
         float vieMaximale = joueur.getMaxHealth();
-        float nouvelleVie = Math.min(vieMaximale, vieActuelle + MONTANT_SOIN);
+        float nouvelleVie = Math.min(vieMaximale, vieActuelle + soin);
 
         joueur.setHealth(nouvelleVie);
-        joueur.sendSystemMessage(Component.literal("§a✓ Vous avez récupéré " + (MONTANT_SOIN / 2) + " cœurs !"));
+        // Locale fixe : le format ne doit pas dépendre de la locale de l'OS hôte
+        joueur.sendSystemMessage(Component.literal(
+            String.format(java.util.Locale.ROOT, "§a✓ Vous avez récupéré %.1f cœur(s) !", soin / 2.0f)));
 
         // Jouer le son de consommation
         joueur.level().playSound(null, joueur.getX(), joueur.getY(), joueur.getZ(),
@@ -113,7 +115,8 @@ public class ItemBonbon extends Item {
 
     @Override
     public void appendHoverText(ItemStack stack, Level level, List<Component> tooltip, TooltipFlag flag) {
-        tooltip.add(Component.literal("§7Restaure §c1 cœur §7de santé"));
+        // Valeur définie par la config de partie (menu N), inconnue côté client : rester générique
+        tooltip.add(Component.literal("§7Restaure de la santé (selon la partie)"));
         tooltip.add(Component.literal("§eUtilisable en sous-mode 3"));
     }
 

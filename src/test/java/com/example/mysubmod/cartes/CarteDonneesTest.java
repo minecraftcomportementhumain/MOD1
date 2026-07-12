@@ -51,6 +51,42 @@ class CarteDonneesTest {
         verifierCartesEgales(carte, relueV1);
     }
 
+    /** La fin d'apparition et l'expiration survivent à l'aller-retour v2 et valent 0 dans
+     *  les fichiers antérieurs (entrées bonbons à 10 éléments, sans les indices 10-13). */
+    @Test
+    void finApparitionEtExpirationSerialiseesEtCompatiblesAnciensFichiers() {
+        CarteDonnees carte = carteVariee(30, 30, 7);
+        for (BlocCarte bloc : carte.blocs.values()) {
+            if (bloc.qteBonbonVisible > 0) {
+                bloc.finApparitionVisible = 120;
+                bloc.expirationVisible = 30;
+            }
+            if (bloc.qteBonbonNonVisible > 0) {
+                bloc.finApparitionNonVisible = 240;
+                bloc.expirationNonVisible = 45;
+            }
+        }
+        carte.recalculerZones();
+        verifierCartesEgales(carte, CarteDonnees.depuisJson(carte.versJson()));
+
+        // Ancien fichier : tronquer chaque entrée bonbon à 10 éléments → relu comme 0 (jamais)
+        com.google.gson.JsonObject racine =
+            com.google.gson.JsonParser.parseString(carte.versJson()).getAsJsonObject();
+        for (com.google.gson.JsonElement e : racine.getAsJsonArray("bonbons")) {
+            com.google.gson.JsonArray entree = e.getAsJsonArray();
+            for (int i = entree.size() - 1; i >= 10; i--) {
+                entree.remove(i);
+            }
+        }
+        CarteDonnees ancienne = CarteDonnees.depuisJson(racine.toString());
+        for (BlocCarte bloc : ancienne.blocs.values()) {
+            assertEquals(0, bloc.finApparitionVisible);
+            assertEquals(0, bloc.finApparitionNonVisible);
+            assertEquals(0, bloc.expirationVisible);
+            assertEquals(0, bloc.expirationNonVisible);
+        }
+    }
+
     @Test
     void seedLisibleEnFluxSurLesDeuxFormats() {
         CarteDonnees carte = carteVariee(30, 30, 42);
@@ -682,6 +718,56 @@ class CarteDonneesTest {
         parcelle.type = TypeElementCarte.ILE;
         carte.zones.add(parcelle);
         carte.blocs.get(CarteDonnees.cle(2, 2)).zone = 1;
+        assertEquals(List.of(), carte.validerPourSauvegarde());
+    }
+
+    /** Fin d'apparition antérieure ou égale à l'apparition initiale : le bonbon
+     *  n'apparaîtrait jamais — sauvegarde refusée. */
+    @Test
+    void validationRefuseFinApparitionAvantApparitionInitiale() {
+        CarteDonnees carte = new CarteDonnees();
+        carte.nom = "fin_apparition";
+        carte.largeur = 8;
+        carte.hauteur = 6;
+        for (int x = 0; x < 8; x++) {
+            for (int z = 0; z < 6; z++) {
+                boolean bord = x == 0 || z == 0 || x == 7 || z == 5;
+                carte.blocs.put(CarteDonnees.cle(x, z),
+                    new BlocCarte(bord ? TypeElementCarte.LIMITE : TypeElementCarte.ILE, 0));
+            }
+        }
+        carte.apparitionX = 4;
+        carte.apparitionZ = 3;
+        ZoneCarte parcelle = new ZoneCarte();
+        parcelle.nom = "Ile";
+        parcelle.type = TypeElementCarte.ILE;
+        carte.zones.add(parcelle);
+        BlocCarte bloc = carte.blocs.get(CarteDonnees.cle(2, 2));
+        bloc.zone = 1;
+        bloc.qteBonbonVisible = 1;
+        bloc.delaiApparitionInitiale = 60;
+        bloc.finApparitionVisible = 60; // fin ≤ apparition initiale : jamais apparu
+
+        assertTrue(carte.validerPourSauvegarde().stream()
+            .anyMatch(e -> e.contains("n'apparaîtraient jamais")));
+
+        // Fin postérieure à l'apparition initiale : valide
+        bloc.finApparitionVisible = 61;
+        assertEquals(List.of(), carte.validerPourSauvegarde());
+
+        // 0 = jamais de fin : valide
+        bloc.finApparitionVisible = 0;
+        assertEquals(List.of(), carte.validerPourSauvegarde());
+
+        // Même règle sur la branche NON-VISIBLE (champs miroirs : copie facile à rater)
+        BlocCarte blocCache = carte.blocs.get(CarteDonnees.cle(3, 2));
+        blocCache.zone = 1;
+        blocCache.qteBonbonNonVisible = 1;
+        blocCache.delaiApparitionInitialeNonVisible = 30;
+        blocCache.finApparitionNonVisible = 30;
+        assertTrue(carte.validerPourSauvegarde().stream()
+            .anyMatch(e -> e.contains("n'apparaîtraient jamais")));
+        blocCache.finApparitionNonVisible = 31;
         assertEquals(List.of(), carte.validerPourSauvegarde());
     }
 

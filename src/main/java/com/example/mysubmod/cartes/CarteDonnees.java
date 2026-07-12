@@ -315,6 +315,24 @@ public class CarteDonnees {
                 + "(outil Parcelle : peignez une parcelle sur chaque bloc à bonbons)");
         }
 
+        // Fin d'apparition antérieure ou égale à l'apparition initiale : le bonbon ne
+        // pourrait JAMAIS apparaître — erreur de conception de la carte
+        int bonbonsJamaisApparus = 0;
+        for (BlocCarte bloc : blocs.values()) {
+            if (bloc.qteBonbonVisible > 0 && bloc.finApparitionVisible > 0
+                && bloc.finApparitionVisible <= bloc.delaiApparitionInitiale) {
+                bonbonsJamaisApparus++;
+            }
+            if (bloc.qteBonbonNonVisible > 0 && bloc.finApparitionNonVisible > 0
+                && bloc.finApparitionNonVisible <= bloc.delaiApparitionInitialeNonVisible) {
+                bonbonsJamaisApparus++;
+            }
+        }
+        if (bonbonsJamaisApparus > 0) {
+            erreurs.add(bonbonsJamaisApparus + " bonbon(s) dont la fin d'apparition est antérieure "
+                + "ou égale à l'apparition initiale — ils n'apparaîtraient jamais");
+        }
+
         // Noms de parcelles uniques : le runtime en jeu (compteurs, HUD, flèche, spawn de
         // départ) indexe les parcelles PAR NOM — deux parcelles homonymes fausseraient
         // tout. Deux « Parcelle A » sont conceptuellement une seule parcelle. On ne compte
@@ -714,6 +732,12 @@ public class CarteDonnees {
             entreeBonbon.add(bloc.delaiBonbonNonVisible);
             entreeBonbon.add(codePourTypeBonbon(bloc.typeBonbonNonVisible));
             entreeBonbon.add(bloc.delaiApparitionInitialeNonVisible);
+            // Ajoutés en fin d'entrée (indices 10-13) : les anciens fichiers s'arrêtent avant
+            // et le décodeur traite les éléments absents comme 0 (= jamais)
+            entreeBonbon.add(bloc.finApparitionVisible);
+            entreeBonbon.add(bloc.finApparitionNonVisible);
+            entreeBonbon.add(bloc.expirationVisible);
+            entreeBonbon.add(bloc.expirationNonVisible);
             tableauBonbons.add(entreeBonbon);
         }
         racine.add("bonbons", tableauBonbons);
@@ -1058,6 +1082,16 @@ public class CarteDonnees {
             bloc.delaiBonbonNonVisible = borneDelai(entree.get(7).getAsInt());
             bloc.typeBonbonNonVisible = typeBonbonPourCode(entree.get(8).getAsInt());
             bloc.delaiApparitionInitialeNonVisible = borneDelai(entree.get(9).getAsInt());
+            // Fin d'apparition (10-11) et expiration (12-13) : absentes des fichiers
+            // antérieurs → 0 (jamais)
+            if (entree.size() > 11) {
+                bloc.finApparitionVisible = borneDelai(entree.get(10).getAsInt());
+                bloc.finApparitionNonVisible = borneDelai(entree.get(11).getAsInt());
+            }
+            if (entree.size() > 13) {
+                bloc.expirationVisible = borneDelai(entree.get(12).getAsInt());
+                bloc.expirationNonVisible = borneDelai(entree.get(13).getAsInt());
+            }
         }
     }
 

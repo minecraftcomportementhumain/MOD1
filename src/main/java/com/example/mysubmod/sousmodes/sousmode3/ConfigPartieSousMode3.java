@@ -37,6 +37,12 @@ public class ConfigPartieSousMode3 {
     public boolean reapparitionAutorisee = false;
     /** Santé maximale des joueurs, en points (20 = 10 cœurs). Défaut : 20. */
     public int santeMaxPoints = 20;
+    /** Santé rendue par un bonbon standard, en points (2 = 1 cœur). Défaut historique : 2. */
+    public float soinBonbonStandard = 2.0f;
+    /** Santé rendue par un bonbon Bleu, en points. Défaut historique : 2. */
+    public float soinBonbonBleu = 2.0f;
+    /** Santé rendue par un bonbon Rouge, en points. Défaut historique : 2. */
+    public float soinBonbonRouge = 2.0f;
 
     // ==================== Groupe 3 : Mécaniques importées (SM1/SM2) ====================
     /** Spécialisation Bleu/Rouge (Sous-mode 2). Nécessite une carte à bonbons typés. Défaut : non. */
@@ -102,6 +108,9 @@ public class ConfigPartieSousMode3 {
         perteSanteParTick = clampFloat(perteSanteParTick, 0.5f, 20.0f);
         intervalleDegradationSecondes = clampInt(intervalleDegradationSecondes, 1, 300);
         santeMaxPoints = clampInt(santeMaxPoints, 2, 40);
+        soinBonbonStandard = clampFloat(soinBonbonStandard, 0.0f, 40.0f);
+        soinBonbonBleu = clampFloat(soinBonbonBleu, 0.0f, 40.0f);
+        soinBonbonRouge = clampFloat(soinBonbonRouge, 0.0f, 40.0f);
         dureePenaliteSpecialisationSecondes = clampInt(dureePenaliteSpecialisationSecondes, 0, 900);
         multiplicateurSantePenalite = clampFloat(multiplicateurSantePenalite, 0.1f, 1.0f);
     }
@@ -128,6 +137,11 @@ public class ConfigPartieSousMode3 {
     }
 
     private static float clampFloat(float v, float min, float max) {
+        // NaN traverse Math.max/min sans être borné : un client modifié pourrait injecter
+        // NaN dans setHealth (santé cassée, joueur intuable) — ramené à la borne basse
+        if (Float.isNaN(v)) {
+            return min;
+        }
         return Math.max(min, Math.min(max, v));
     }
 
@@ -146,6 +160,9 @@ public class ConfigPartieSousMode3 {
         tampon.writeBoolean(regenerationNaturelle);
         tampon.writeBoolean(reapparitionAutorisee);
         tampon.writeVarInt(santeMaxPoints);
+        tampon.writeFloat(soinBonbonStandard);
+        tampon.writeFloat(soinBonbonBleu);
+        tampon.writeFloat(soinBonbonRouge);
         // Groupe 3
         tampon.writeBoolean(specialisation);
         tampon.writeVarInt(dureePenaliteSpecialisationSecondes);
@@ -186,6 +203,9 @@ public class ConfigPartieSousMode3 {
         c.regenerationNaturelle = tampon.readBoolean();
         c.reapparitionAutorisee = tampon.readBoolean();
         c.santeMaxPoints = tampon.readVarInt();
+        c.soinBonbonStandard = tampon.readFloat();
+        c.soinBonbonBleu = tampon.readFloat();
+        c.soinBonbonRouge = tampon.readFloat();
         // Groupe 3
         c.specialisation = tampon.readBoolean();
         c.dureePenaliteSpecialisationSecondes = tampon.readVarInt();

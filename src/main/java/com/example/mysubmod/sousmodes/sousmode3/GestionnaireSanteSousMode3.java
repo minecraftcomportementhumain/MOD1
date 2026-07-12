@@ -172,7 +172,10 @@ public class GestionnaireSanteSousMode3 {
 
         float multiplicateur = GestionnaireSpecialisationSousMode3.getInstance()
             .gererCollecteRessource(joueur, typeRessource);
-        float restaurationReelle = 2.0f * multiplicateur;
+        // Santé rendue configurable par partie et par type (menu N › Soin bonbons)
+        float soinBase = typeRessource == TypeRessource.BONBON_BLEU
+            ? config().soinBonbonBleu : config().soinBonbonRouge;
+        float restaurationReelle = soinBase * multiplicateur;
 
         float nouvelleSante = Math.min(santeMax, santeActuelle + restaurationReelle);
         joueur.setHealth(nouvelleSante);
