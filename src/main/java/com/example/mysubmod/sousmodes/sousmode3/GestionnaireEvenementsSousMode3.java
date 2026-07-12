@@ -767,6 +767,23 @@ public class GestionnaireEvenementsSousMode3 {
         if (gestionnaire.estJoueurVivant(joueur.getUUID())) {
             event.setCanceled(true);
             joueur.setHealth(joueur.getMaxHealth());
+            return;
+        }
+        // Joueur en attente ou spectateur (jamais dans joueursVivants) : la réapparition
+        // vanilla l'enverrait au spawn du monde, HORS de la plateforme, sans aucun rappel
+        // (le confinement ne suit que les ensembles attente/spectateur). Annuler la mort
+        // (famine pendant une longue génération, /kill...), resoigner et ramener sur place.
+        if (gestionnaire.estEnAttente(joueur.getUUID())
+            || gestionnaire.estJoueurSpectateur(joueur.getUUID())) {
+            event.setCanceled(true);
+            joueur.setHealth(joueur.getMaxHealth());
+            joueur.getFoodData().setFoodLevel(20);
+            joueur.getFoodData().setSaturation(5.0f);
+            if (gestionnaire.estJoueurSpectateur(joueur.getUUID())) {
+                gestionnaire.teleporterVersSpectateur(joueur);
+            } else {
+                gestionnaire.teleporterVersPlateforme(joueur);
+            }
         }
     }
 }

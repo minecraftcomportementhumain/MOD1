@@ -896,6 +896,15 @@ public class GestionnaireSousMode3 {
     public void teleporterVersSpectateur(ServerPlayer joueur) {
         ServerLevel overworld = joueur.server.getLevel(ServerLevel.OVERWORLD);
         if (overworld != null) {
+            // Un spectateur reste en SURVIVAL : un inventaire conservé (arrivée tardive,
+            // mort sans drop d'inventaire) contiendrait perles d'ender, chorus ou élytres —
+            // autant de moyens de quitter la plateforme. Stocker puis vider, comme pour les
+            // joueurs en attente (le garde anti-écrasement de stockerInventaireJoueur
+            // préserve l'instantané d'avant-partie d'un ancien participant).
+            if (!GestionnaireSousModes.getInstance().estAdmin(joueur)) {
+                stockerInventaireJoueur(joueur);
+                viderInventaireJoueur(joueur);
+            }
             teleportationSecurisee(joueur, overworld,
                 plateformeSpectateur.getX() + 0.5,
                 plateformeSpectateur.getY() + 1,

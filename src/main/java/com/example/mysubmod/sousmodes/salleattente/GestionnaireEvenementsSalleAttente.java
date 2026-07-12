@@ -179,6 +179,27 @@ public class GestionnaireEvenementsSalleAttente {
         }
     }
 
+    @SubscribeEvent(priority = net.minecraftforge.eventbus.api.EventPriority.HIGHEST)
+    public static void onLivingDeath(net.minecraftforge.event.entity.living.LivingDeathEvent event) {
+        if (GestionnaireSousModes.getInstance().obtenirModeActuel() != SousMode.SALLE_ATTENTE) {
+            return;
+        }
+        if (!(event.getEntity() instanceof ServerPlayer joueur)
+            || !GestionnaireSalleAttente.getInstance().estJoueurDansSalleAttente(joueur)) {
+            return;
+        }
+        // Aucune mort n'est prévue en salle d'attente (famine en difficulté Hard, /kill...) :
+        // la réapparition vanilla enverrait le joueur au spawn du monde, HORS de la salle,
+        // sans aucun mécanisme de rappel. Annuler la mort, resoigner et ramener au centre —
+        // l'inventaire stocké reste intact.
+        event.setCanceled(true);
+        joueur.setHealth(joueur.getMaxHealth());
+        joueur.getFoodData().setFoodLevel(20);
+        joueur.getFoodData().setSaturation(5.0f);
+        BlockPos centre = GestionnaireSalleAttente.getInstance().obtenirCentrePlateforme();
+        joueur.teleportTo(centre.getX() + 0.5, centre.getY() + 1, centre.getZ() + 0.5);
+    }
+
     @SubscribeEvent
     public static void onPlayerJoin(PlayerEvent.PlayerLoggedInEvent event) {
         if (GestionnaireSousModes.getInstance().obtenirModeActuel() == SousMode.SALLE_ATTENTE) {
