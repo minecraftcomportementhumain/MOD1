@@ -141,19 +141,44 @@ public class HUDZonesSousMode3 {
         // qu'aucun bonbon typé n'est consommé)
         com.example.mysubmod.sousmodes.sousmode3.TypeRessource specialisation =
             SpecialisationClientSousMode3.obtenirSpecialisation();
+        String texteSpec = specialisation == null ? null : "Spécialisation: "
+            + (specialisation == com.example.mysubmod.sousmodes.sousmode3.TypeRessource.BONBON_BLEU ? "Bleu" : "Rouge");
+
+        // Largeur du panneau adaptée au contenu (le panneau est ancré au bord DROIT :
+        // à largeur fixe, une ligne longue — nom + « N bleu(s), N rouge(s), N invis. »
+        // avec la spécialisation — sortait de l'écran). Un nom de parcelle trop long est
+        // abrégé (…) pour que les compteurs restent toujours entièrement lisibles.
+        String pied = "§8[N] cibler une parcelle";
+        int largeurLigneMax = largeurEcran / 2;
+        List<String> lignes = new ArrayList<>(zones.size());
+        int largeurContenu = Math.max(police.width(pied),
+            texteSpec != null ? police.width(texteSpec) : 0);
+        for (ZoneClient zone : zones) {
+            String prefixe = zone.nom.equals(zoneCiblee) ? "§b➤ " : "§f";
+            String suffixe = " §7— " + formaterCompteurs(zone);
+            String nom = zone.nom;
+            if (police.width(prefixe + nom + suffixe) > largeurLigneMax) {
+                while (nom.length() > 1
+                    && police.width(prefixe + nom + "…" + suffixe) > largeurLigneMax) {
+                    nom = nom.substring(0, nom.length() - 1);
+                }
+                nom = nom + "…";
+            }
+            String texte = prefixe + nom + suffixe;
+            lignes.add(texte);
+            largeurContenu = Math.max(largeurContenu, police.width(texte));
+        }
 
         // Panneau des zones : coin supérieur droit, sous la minuterie
-        int largeurPanneau = 170;
+        int largeurPanneau = Math.max(170, largeurContenu + 4);
         int x = largeurEcran - largeurPanneau - 5;
         int y = 30;
         int hauteurLigne = 11;
-        int hauteurPanneau = 16 + zones.size() * hauteurLigne + 12 + (specialisation != null ? 12 : 0);
+        int hauteurPanneau = 16 + zones.size() * hauteurLigne + 12 + (texteSpec != null ? 12 : 0);
 
         guiGraphics.fill(x - 4, y - 4, x + largeurPanneau, y + hauteurPanneau - 4, 0x80000000);
 
-        if (specialisation != null) {
-            String texteSpec = "Spécialisation: "
-                + (specialisation == com.example.mysubmod.sousmodes.sousmode3.TypeRessource.BONBON_BLEU ? "Bleu" : "Rouge");
+        if (texteSpec != null) {
             guiGraphics.drawString(police, texteSpec, x, y, specialisation.obtenirCouleur());
             y += 12;
         }
@@ -161,15 +186,12 @@ public class HUDZonesSousMode3 {
         guiGraphics.drawString(police, "§6Parcelles :", x, y, 0xFFFFFF);
         y += 13;
 
-        for (ZoneClient zone : zones) {
-            boolean estCiblee = zone.nom.equals(zoneCiblee);
-            String prefixe = estCiblee ? "§b➤ " : "§f";
-            String texte = prefixe + zone.nom + " §7— " + formaterCompteurs(zone);
-            guiGraphics.drawString(police, texte, x, y, 0xFFFFFF);
+        for (String ligne : lignes) {
+            guiGraphics.drawString(police, ligne, x, y, 0xFFFFFF);
             y += hauteurLigne;
         }
 
-        guiGraphics.drawString(police, "§8[N] cibler une parcelle", x, y + 2, 0xFFFFFF);
+        guiGraphics.drawString(police, pied, x, y + 2, 0xFFFFFF);
 
         // Flèche de navigation
         afficherFleche(guiGraphics, largeurEcran, hauteurEcran);
