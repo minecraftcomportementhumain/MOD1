@@ -257,7 +257,9 @@ public class HUDZonesSousMode3 {
         float angleDegres = (float) Math.toDegrees(Math.atan2(droite, avant));
 
         int centreX = largeurEcran / 2;
-        int centreY = 46;
+        // Bas de l'écran, au-dessus des barres de vie/faim (la flèche s'étend de -14 à
+        // +12 autour du centre, et le libellé « zone (N m) » occupe +16 à +25)
+        int centreY = hauteurEcran - 75;
 
         guiGraphics.pose().pushPose();
         guiGraphics.pose().translate(centreX, centreY, 0);
