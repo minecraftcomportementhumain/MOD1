@@ -37,6 +37,9 @@ public class EffaceurCarteSousMode3 {
     private static final int MAX_CHUNKS_PAR_TICK_RAPIDE = 64;
     /** Fenêtre large : les threads de worldgen doivent toujours avoir du travail d'avance */
     private static final int FENETRE_PRECHARGEMENT = 128;
+    /** Distance des tickets (priorité de worldgen) — voir la constante homonyme du
+     *  générateur : add et remove doivent utiliser la même valeur. */
+    private static final int DISTANCE_TICKET = GenerateurCarteSousMode3.Tache.DISTANCE_TICKET_PRECHARGEMENT;
     private static final int MARGE_CHUNKS_CHARGES = 2000;
     private static final int TICKS_PAUSE_MAX = 100;
     /** Temps maximal consacré à l'effacement par tick */
@@ -89,7 +92,7 @@ public class EffaceurCarteSousMode3 {
             for (int i = Math.max(index, 0); i < prochainTicket && i < cibles.size(); i++) {
                 try {
                     ChunkPos pos = cibles.get(i);
-                    niveau.getChunkSource().removeRegionTicket(TicketType.FORCED, pos, 0, pos);
+                    niveau.getChunkSource().removeRegionTicket(TicketType.FORCED, pos, DISTANCE_TICKET, pos);
                 } catch (Exception ignore) {
                     // arrêt en cours : best effort
                 }
@@ -283,7 +286,7 @@ public class EffaceurCarteSousMode3 {
         int fin = Math.min(cibles.size(), index + FENETRE_PRECHARGEMENT);
         while (prochainTicket < fin) {
             ChunkPos pos = cibles.get(prochainTicket);
-            niveau.getChunkSource().addRegionTicket(TicketType.FORCED, pos, 0, pos);
+            niveau.getChunkSource().addRegionTicket(TicketType.FORCED, pos, DISTANCE_TICKET, pos);
             prochainTicket++;
         }
     }
@@ -291,7 +294,7 @@ public class EffaceurCarteSousMode3 {
     private static void libererTicket(int indexCible) {
         if (indexCible < prochainTicket) {
             ChunkPos pos = cibles.get(indexCible);
-            niveau.getChunkSource().removeRegionTicket(TicketType.FORCED, pos, 0, pos);
+            niveau.getChunkSource().removeRegionTicket(TicketType.FORCED, pos, DISTANCE_TICKET, pos);
         }
     }
 
@@ -324,7 +327,7 @@ public class EffaceurCarteSousMode3 {
         // un retrait redondant est sans effet
         for (int i = Math.max(index, 0); i < prochainTicket; i++) {
             ChunkPos pos = cibles.get(i);
-            niveau.getChunkSource().removeRegionTicket(TicketType.FORCED, pos, 0, pos);
+            niveau.getChunkSource().removeRegionTicket(TicketType.FORCED, pos, DISTANCE_TICKET, pos);
         }
         MonSubMod.JOURNALISEUR.info("Carte Sous-mode 3 effacée : {} blocs supprimés ({} chunks balayés)",
             blocsEffaces, nbTraites);

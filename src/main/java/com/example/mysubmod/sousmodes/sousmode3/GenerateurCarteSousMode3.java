@@ -161,6 +161,17 @@ public class GenerateurCarteSousMode3 {
         /** Ticks consécutifs sans AUCUN chunk prêt dans la fenêtre avant de sauter le
          *  premier non traité (worldgen calée) plutôt que de figer la génération. */
         private static final int TICKS_BLOCAGE_MAX = 200;
+        /**
+         * Distance des tickets de préchargement. La file de worldgen est triée par niveau
+         * de ticket (33 − distance) : à distance 0 (niveau 33, le minimum), nos chunks
+         * passaient DERRIÈRE tout ticket de joueur — la génération accélérait quand un
+         * joueur regardait la zone (ses tickets de vue la boostaient) et ralentissait
+         * sinon. Distance 2 (niveau 31) = priorité d'un chunk sous les pieds d'un joueur :
+         * le rythme ne dépend plus de où regardent les joueurs. Le retrait d'un ticket
+         * doit utiliser LA MÊME distance, sinon il ne correspond pas et le chunk resterait
+         * chargé de force à jamais.
+         */
+        static final int DISTANCE_TICKET_PRECHARGEMENT = 2;
 
         private final ServerLevel niveau;
         private final CarteDonnees carte;
@@ -335,7 +346,8 @@ public class GenerateurCarteSousMode3 {
             }
             for (int i = Math.max(indexChunk, 0); i < prochainTicket; i++) {
                 ChunkPos pos = chunksCibles.get(i);
-                niveau.getChunkSource().removeRegionTicket(TicketType.FORCED, pos, 0, pos);
+                niveau.getChunkSource().removeRegionTicket(TicketType.FORCED, pos,
+                    DISTANCE_TICKET_PRECHARGEMENT, pos);
             }
             prochainTicket = indexChunk;
         }
@@ -369,7 +381,8 @@ public class GenerateurCarteSousMode3 {
             int fin = Math.min(chunksCibles.size(), indexChunk + FENETRE_PRECHARGEMENT);
             while (prochainTicket < fin) {
                 ChunkPos pos = chunksCibles.get(prochainTicket);
-                niveau.getChunkSource().addRegionTicket(TicketType.FORCED, pos, 0, pos);
+                niveau.getChunkSource().addRegionTicket(TicketType.FORCED, pos,
+                    DISTANCE_TICKET_PRECHARGEMENT, pos);
                 prochainTicket++;
             }
         }
@@ -377,7 +390,8 @@ public class GenerateurCarteSousMode3 {
         private void libererTicket(int index) {
             if (index < prochainTicket) {
                 ChunkPos pos = chunksCibles.get(index);
-                niveau.getChunkSource().removeRegionTicket(TicketType.FORCED, pos, 0, pos);
+                niveau.getChunkSource().removeRegionTicket(TicketType.FORCED, pos,
+                    DISTANCE_TICKET_PRECHARGEMENT, pos);
             }
         }
 
