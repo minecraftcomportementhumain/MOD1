@@ -26,6 +26,20 @@ import net.minecraftforge.network.PacketDistributor;
 public class PiloteChargementCarte {
     /** Temps maximal consacré à la génération par tick (30 ms sur ~50 ms/tick). */
     private static final long BUDGET_NANOS = 30_000_000L;
+    /** Budget relevé quand le serveur est détendu (phase d'attente : il ne fait rien d'autre). */
+    private static final long BUDGET_NANOS_RAPIDE = 45_000_000L;
+    private static final int CHUNKS_PAR_TICK = 24;
+    private static final int CHUNKS_PAR_TICK_RAPIDE = 64;
+    /**
+     * Hystérésis du mode rapide. Le tick moyen mesuré INCLUT notre propre budget : sans
+     * hystérésis, passer en rapide (45 ms/tick) ferait aussitôt remonter la mesure
+     * au-dessus du seuil d'entrée et le mode oscillerait. Entrée sous 40 ms, sortie
+     * au-dessus de 48 ms — un serveur par ailleurs au repos reste donc en rapide
+     * (~46 ms), un serveur réellement chargé redescend.
+     */
+    private static final float MSPT_ENTREE_RAPIDE = 40.0f;
+    private static final float MSPT_SORTIE_RAPIDE = 48.0f;
+    private static boolean rapide;
 
     private static GenerateurCarteSousMode3.Tache tache;
     private static Runnable apresGeneration;
@@ -51,6 +65,7 @@ public class PiloteChargementCarte {
         nomCarte = nom != null ? nom : "";
         apresGeneration = apres;
         dernierPourcentEnvoye = -1;
+        rapide = false;
         envoyerProgression(0, true);
         MonSubMod.JOURNALISEUR.info("Démarrage de la génération étalée de la carte « {} »", nomCarte);
     }
@@ -97,9 +112,18 @@ public class PiloteChargementCarte {
             return;
         }
 
+        // Budget adaptatif : serveur détendu → budget et plafond de chunks relevés
+        float tickMoyen = serveur.getAverageTickTime();
+        if (!rapide && tickMoyen < MSPT_ENTREE_RAPIDE) {
+            rapide = true;
+        } else if (rapide && tickMoyen > MSPT_SORTIE_RAPIDE) {
+            rapide = false;
+        }
+
         boolean termine;
         try {
-            termine = tache.avancer(BUDGET_NANOS);
+            termine = tache.avancer(rapide ? BUDGET_NANOS_RAPIDE : BUDGET_NANOS,
+                rapide ? CHUNKS_PAR_TICK_RAPIDE : CHUNKS_PAR_TICK);
         } catch (Exception e) {
             MonSubMod.JOURNALISEUR.error("Erreur pendant la génération étalée de la carte", e);
             // Libérer les tickets de préchargement encore détenus : en fonctionnement

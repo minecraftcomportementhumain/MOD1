@@ -34,15 +34,28 @@ import java.util.Set;
 public class EffaceurCarteSousMode3 {
 
     private static final int MAX_CHUNKS_PAR_TICK = 24;
-    private static final int FENETRE_PRECHARGEMENT = 32;
+    private static final int MAX_CHUNKS_PAR_TICK_RAPIDE = 64;
+    /** Fenêtre large : les threads de worldgen doivent toujours avoir du travail d'avance */
+    private static final int FENETRE_PRECHARGEMENT = 128;
     private static final int MARGE_CHUNKS_CHARGES = 2000;
     private static final int TICKS_PAUSE_MAX = 100;
     /** Temps maximal consacré à l'effacement par tick */
     private static final long BUDGET_NANOS = 30_000_000L;
+    /** Budget relevé quand le serveur est détendu */
+    private static final long BUDGET_NANOS_RAPIDE = 45_000_000L;
+    /** Hystérésis du mode rapide (la mesure inclut notre propre budget — voir
+     *  PiloteChargementCarte pour le raisonnement) */
+    private static final float MSPT_ENTREE_RAPIDE = 40.0f;
+    private static final float MSPT_SORTIE_RAPIDE = 48.0f;
+    private static boolean rapide;
 
     private static ServerLevel niveau;
     private static List<ChunkPos> cibles;
+    /** Plus petit index NON traité (préfixe) : borne basse de la fenêtre de tickets ;
+     *  les chunks se traitent hors ordre à l'intérieur de la fenêtre */
     private static int index;
+    private static java.util.BitSet traites;
+    private static int nbTraites;
     private static int prochainTicket;
     // Masque du périmètre (null = essuyer toute la bande des chunks ciblés)
     private static Set<Long> cellulesInterieur;
@@ -84,6 +97,8 @@ public class EffaceurCarteSousMode3 {
         }
         niveau = null;
         cibles = null;
+        traites = null;
+        nbTraites = 0;
         cellulesInterieur = null;
         index = 0;
         prochainTicket = 0;
@@ -164,6 +179,8 @@ public class EffaceurCarteSousMode3 {
         niveau = monde;
         cibles = chunks;
         index = 0;
+        traites = new java.util.BitSet(chunks.size());
+        nbTraites = 0;
         prochainTicket = 0;
         cellulesInterieur = interieur;
         origineX = origX;
@@ -172,6 +189,7 @@ public class EffaceurCarteSousMode3 {
         chunksChargesReference = -1;
         ticksEnPause = 0;
         ticksBloque = 0;
+        rapide = false;
         nomCarte = nom != null ? nom : "";
         dernierPourcentEnvoye = -1;
         exclusionSalleAttente = com.example.mysubmod.sousmodes.salleattente.GestionnaireSalleAttente
@@ -191,53 +209,68 @@ public class EffaceurCarteSousMode3 {
         }
 
         try {
+            // Budget adaptatif : serveur détendu → budget et plafond de chunks relevés
+            float tickMoyen = niveau.getServer().getAverageTickTime();
+            if (!rapide && tickMoyen < MSPT_ENTREE_RAPIDE) {
+                rapide = true;
+            } else if (rapide && tickMoyen > MSPT_SORTIE_RAPIDE) {
+                rapide = false;
+            }
+            long budget = rapide ? BUDGET_NANOS_RAPIDE : BUDGET_NANOS;
+            int maxChunks = rapide ? MAX_CHUNKS_PAR_TICK_RAPIDE : MAX_CHUNKS_PAR_TICK;
+
             long debut = System.nanoTime();
             int chunksCeTick = 0;
-            while (index < cibles.size() && chunksCeTick < MAX_CHUNKS_PAR_TICK
-                && System.nanoTime() - debut < BUDGET_NANOS) {
-                // Même contre-pression que la génération : borne la croissance des chunks
-                // chargés par rapport au niveau observé au démarrage de l'effacement
+            while (nbTraites < cibles.size() && chunksCeTick < maxChunks
+                && System.nanoTime() - debut < budget) {
+                // Même contre-pression que la génération : sous pression, plus aucun
+                // NOUVEAU ticket — mais les chunks déjà chargés de la fenêtre restent
+                // essuyés (cela n'aggrave rien et libère leurs tickets)
                 int charges = niveau.getChunkSource().getLoadedChunksCount();
                 if (chunksChargesReference < 0) {
                     chunksChargesReference = charges;
                 }
-                if (charges > chunksChargesReference + MARGE_CHUNKS_CHARGES) {
-                    if (++ticksEnPause > TICKS_PAUSE_MAX) {
-                        chunksChargesReference = charges;
-                        ticksEnPause = 0;
-                    }
-                    return;
+                boolean pressionHaute = charges > chunksChargesReference + MARGE_CHUNKS_CHARGES;
+                if (!pressionHaute) {
+                    precharger();
                 }
-                ticksEnPause = 0;
-
-                precharger();
-                ChunkPos pos = cibles.get(index);
-                if (!niveau.getChunkSource().hasChunk(pos.x, pos.z)) {
-                    // Filet anti-blocage : si un chunk ne se charge jamais (worldgen calée),
-                    // le sauter après un délai plutôt que de figer l'effaceur pour toujours.
-                    if (++ticksBloque > TICKS_BLOCAGE_MAX) {
-                        MonSubMod.JOURNALISEUR.warn("Effacement : chunk {} jamais chargé, ignoré", pos);
+                // Premier chunk PRÊT de la fenêtre, pas forcément le prochain de l'ordre
+                // (les chunks sont indépendants) : ne pas gaspiller le tick sur un chunk lent
+                int i = chercherChunkPret();
+                if (i < 0) {
+                    if (pressionHaute) {
+                        if (++ticksEnPause > TICKS_PAUSE_MAX) {
+                            chunksChargesReference = charges;
+                            ticksEnPause = 0;
+                        }
+                    } else if (++ticksBloque > TICKS_BLOCAGE_MAX) {
+                        // Filet anti-blocage : si plus rien ne se charge (worldgen calée),
+                        // sauter le premier non traité plutôt que de figer l'effaceur
+                        MonSubMod.JOURNALISEUR.warn("Effacement : chunk {} jamais chargé, ignoré",
+                            cibles.get(index));
                         libererTicket(index);
-                        index++;
+                        marquerTraite(index);
                         ticksBloque = 0;
                         continue;
                     }
-                    return; // chargement/génération en cours sur les threads de worldgen
+                    break; // rien de prêt ce tick
                 }
+                ticksEnPause = 0;
                 ticksBloque = 0;
+                ChunkPos pos = cibles.get(i);
                 blocsEffaces += GenerateurCarteSousMode3.essuyerBandeChunk(
                     niveau, niveau.getChunk(pos.x, pos.z), cellulesInterieur, origineX, origineZ,
                     exclusionSalleAttente);
-                libererTicket(index);
-                index++;
+                libererTicket(i);
+                marquerTraite(i);
                 chunksCeTick++;
             }
-            int pourcent = Math.round(100.0f * index / cibles.size());
+            int pourcent = Math.round(100.0f * nbTraites / cibles.size());
             if (pourcent != dernierPourcentEnvoye) {
                 envoyerProgression(pourcent, true);
                 dernierPourcentEnvoye = pourcent;
             }
-            if (index >= cibles.size()) {
+            if (nbTraites >= cibles.size()) {
                 terminer();
             }
         } catch (Exception e) {
@@ -262,18 +295,46 @@ public class EffaceurCarteSousMode3 {
         }
     }
 
+    /** Premier chunk non traité et déjà chargé dans la fenêtre de tickets, ou -1. */
+    private static int chercherChunkPret() {
+        int fin = Math.min(cibles.size(), prochainTicket);
+        for (int i = index; i < fin; i++) {
+            if (traites.get(i)) {
+                continue;
+            }
+            ChunkPos pos = cibles.get(i);
+            if (niveau.getChunkSource().hasChunk(pos.x, pos.z)) {
+                return i;
+            }
+        }
+        return -1;
+    }
+
+    /** Marque un chunk traité et avance le préfixe (borne basse de la fenêtre). */
+    private static void marquerTraite(int i) {
+        traites.set(i);
+        nbTraites++;
+        while (index < cibles.size() && traites.get(index)) {
+            index++;
+        }
+    }
+
     private static void terminer() {
+        // Les chunks déjà traités de la plage ont libéré leur ticket au traitement :
+        // un retrait redondant est sans effet
         for (int i = Math.max(index, 0); i < prochainTicket; i++) {
             ChunkPos pos = cibles.get(i);
             niveau.getChunkSource().removeRegionTicket(TicketType.FORCED, pos, 0, pos);
         }
         MonSubMod.JOURNALISEUR.info("Carte Sous-mode 3 effacée : {} blocs supprimés ({} chunks balayés)",
-            blocsEffaces, index);
+            blocsEffaces, nbTraites);
         GenerateurCarteSousMode3.supprimerFichierRegion();
         envoyerProgression(100, false); // 100 % puis barre masquée
 
         niveau = null;
         cibles = null;
+        traites = null;
+        nbTraites = 0;
         cellulesInterieur = null;
         index = 0;
         prochainTicket = 0;

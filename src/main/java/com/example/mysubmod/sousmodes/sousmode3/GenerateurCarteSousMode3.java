@@ -136,8 +136,11 @@ public class GenerateurCarteSousMode3 {
 
         private static final int COUT_ARBRE = 4;   // poids indicatif par arbre (progression)
         private static final int POIDS_CHUNK = 64; // poids d'un chunk traité (progression)
-        /** Chunks demandés d'avance : leur terrain se génère sur les threads de worldgen */
-        private static final int FENETRE_PRECHARGEMENT = 32;
+        /** Chunks demandés d'avance : leur terrain se génère sur les threads de worldgen.
+         *  Fenêtre large pour que ces threads aient toujours du travail — au rythme de
+         *  consommation, une petite fenêtre ne gardait que quelques chunks d'avance et
+         *  la génération passait des ticks à attendre. */
+        private static final int FENETRE_PRECHARGEMENT = 128;
         /**
          * Contre-pression : sans plafond, l'écriture (rapide) distancerait le déchargement
          * des chunks et le moteur d'éclairage — sur une grande carte (des milliers de chunks),
@@ -155,6 +158,9 @@ public class GenerateurCarteSousMode3 {
         private static final int MARGE_CHUNKS_CHARGES = 2000;
         /** Après cette durée de pause, la référence est reprise (autre source de chargement) */
         private static final int TICKS_PAUSE_MAX = 100;
+        /** Ticks consécutifs sans AUCUN chunk prêt dans la fenêtre avant de sauter le
+         *  premier non traité (worldgen calée) plutôt que de figer la génération. */
+        private static final int TICKS_BLOCAGE_MAX = 200;
 
         private final ServerLevel niveau;
         private final CarteDonnees carte;
@@ -164,10 +170,16 @@ public class GenerateurCarteSousMode3 {
         private Phase phase = Phase.INIT;
         private java.util.BitSet cellulesRemplissageEau; // index = cz·largeur + cx
         private List<ChunkPos> chunksCibles;
+        /** Plus petit index NON traité (préfixe) : borne basse de la fenêtre de tickets.
+         *  Les chunks se traitent hors ordre à l'intérieur de la fenêtre (voir
+         *  {@link #chercherChunkPret()}), le préfixe n'avance que sur du traité. */
         private int indexChunk;
+        private java.util.BitSet chunksTraites;
+        private int nbChunksTraites;
         private int prochainTicket; // premier chunk sans ticket de préchargement
         private int chunksChargesReference = -1; // holders chargés avant la génération
         private int ticksEnPause;
+        private int ticksSansProgres;
         private final List<BlockPos> semencesLumiere = new ArrayList<>();
         private List<Long> clesArbres;
         private int indexArbre;
@@ -210,6 +222,14 @@ public class GenerateurCarteSousMode3 {
          * @return true si la génération est terminée.
          */
         public boolean avancer(long budgetNanos) {
+            return avancer(budgetNanos, MAX_CHUNKS_PAR_TICK);
+        }
+
+        /**
+         * Variante avec plafond de chunks par tick fourni par l'appelant — le pilote le
+         * relève quand le serveur est détendu (budget adaptatif).
+         */
+        public boolean avancer(long budgetNanos, int maxChunksParTick) {
             long debut = System.nanoTime();
             // Chemin synchrone (budget « infini ») : chargements de chunks bloquants
             boolean synchrone = budgetNanos >= Long.MAX_VALUE / 2;
@@ -221,44 +241,66 @@ public class GenerateurCarteSousMode3 {
 
             int chunksCeTick = 0;
             while (phase == Phase.CHUNKS) {
-                if (indexChunk >= chunksCibles.size()) {
+                if (nbChunksTraites >= chunksCibles.size()) {
                     abandonner(); // plus aucun ticket de préchargement à conserver
                     phase = Phase.ARBRES;
                     break;
                 }
-                if (!synchrone) {
-                    if (chunksCeTick >= MAX_CHUNKS_PAR_TICK) {
+                int index;
+                if (synchrone) {
+                    index = indexChunk; // ordre strict, chargement bloquant via getChunk
+                } else {
+                    if (chunksCeTick >= maxChunksParTick) {
                         return false;
                     }
                     // Contre-pression : borne la CROISSANCE des chunks chargés par rapport
-                    // au niveau d'avant-génération, le temps que le déchargement et le
-                    // moteur d'éclairage suivent le rythme
+                    // au niveau d'avant-génération. Sous pression, plus aucun NOUVEAU
+                    // ticket (rien ne se charge en plus) — mais les chunks déjà chargés de
+                    // la fenêtre restent traités : cela n'aggrave rien et libère leurs
+                    // tickets, ce qui aide justement le déchargement à rattraper.
                     int charges = niveau.getChunkSource().getLoadedChunksCount();
                     if (chunksChargesReference < 0) {
                         chunksChargesReference = charges;
                     }
-                    if (charges > chunksChargesReference + MARGE_CHUNKS_CHARGES) {
-                        if (++ticksEnPause > TICKS_PAUSE_MAX) {
-                            // Pause trop longue : la charge vient d'ailleurs (joueurs qui
-                            // explorent...), reprendre la référence pour ne pas geler à 0 %
-                            chunksChargesReference = charges;
-                            ticksEnPause = 0;
+                    boolean pressionHaute = charges > chunksChargesReference + MARGE_CHUNKS_CHARGES;
+                    if (!pressionHaute) {
+                        precharger();
+                    }
+                    // Premier chunk PRÊT de la fenêtre, pas forcément le prochain de
+                    // l'ordre de balayage : attendre un chunk lent gaspillait le tick
+                    // entier alors que d'autres étaient déjà générés par les threads de
+                    // worldgen (les chunks sont indépendants, l'ordre est sans effet).
+                    index = chercherChunkPret();
+                    if (index < 0) {
+                        if (pressionHaute) {
+                            if (++ticksEnPause > TICKS_PAUSE_MAX) {
+                                // Pause trop longue : la charge vient d'ailleurs (joueurs qui
+                                // explorent...), reprendre la référence pour ne pas geler à 0 %
+                                chunksChargesReference = charges;
+                                ticksEnPause = 0;
+                            }
+                        } else if (++ticksSansProgres > TICKS_BLOCAGE_MAX) {
+                            // Worldgen calée sur toute la fenêtre : sauter le premier chunk
+                            // non traité plutôt que de figer la génération à jamais
+                            MonSubMod.JOURNALISEUR.warn("Génération : chunk {} jamais chargé, ignoré",
+                                chunksCibles.get(indexChunk));
+                            libererTicket(indexChunk);
+                            marquerTraite(indexChunk);
+                            poidsFait += POIDS_CHUNK;
+                            ticksSansProgres = 0;
+                            continue;
                         }
                         return false;
                     }
                     ticksEnPause = 0;
-                    precharger();
-                    ChunkPos pos = chunksCibles.get(indexChunk);
-                    if (!niveau.getChunkSource().hasChunk(pos.x, pos.z)) {
-                        return false; // le terrain se génère hors du thread serveur : revenir au tick suivant
-                    }
+                    ticksSansProgres = 0;
                 }
-                ChunkPos pos = chunksCibles.get(indexChunk);
+                ChunkPos pos = chunksCibles.get(index);
                 genererChunk(niveau.getChunk(pos.x, pos.z));
-                libererTicket(indexChunk);
+                libererTicket(index);
+                marquerTraite(index);
                 chunksCeTick++;
                 poidsFait += POIDS_CHUNK;
-                indexChunk++;
                 if (System.nanoTime() - debut >= budgetNanos) {
                     return false;
                 }
@@ -284,7 +326,9 @@ public class GenerateurCarteSousMode3 {
             return phase == Phase.TERMINE;
         }
 
-        /** Libère les tickets de préchargement restants (fin de phase ou annulation). */
+        /** Libère les tickets de préchargement restants (fin de phase ou annulation).
+         *  Les chunks déjà traités de la plage ont libéré leur ticket au traitement :
+         *  un retrait redondant est sans effet. */
         public void abandonner() {
             if (chunksCibles == null) {
                 return;
@@ -294,6 +338,30 @@ public class GenerateurCarteSousMode3 {
                 niveau.getChunkSource().removeRegionTicket(TicketType.FORCED, pos, 0, pos);
             }
             prochainTicket = indexChunk;
+        }
+
+        /** Premier chunk non traité et déjà chargé dans la fenêtre de tickets, ou -1. */
+        private int chercherChunkPret() {
+            int fin = Math.min(chunksCibles.size(), prochainTicket);
+            for (int i = indexChunk; i < fin; i++) {
+                if (chunksTraites.get(i)) {
+                    continue;
+                }
+                ChunkPos pos = chunksCibles.get(i);
+                if (niveau.getChunkSource().hasChunk(pos.x, pos.z)) {
+                    return i;
+                }
+            }
+            return -1;
+        }
+
+        /** Marque un chunk traité et avance le préfixe (borne basse de la fenêtre). */
+        private void marquerTraite(int index) {
+            chunksTraites.set(index);
+            nbChunksTraites++;
+            while (indexChunk < chunksCibles.size() && chunksTraites.get(indexChunk)) {
+                indexChunk++;
+            }
         }
 
         /** Pose des tickets sur les prochains chunks : leur génération démarre en tâche de fond */
@@ -332,6 +400,7 @@ public class GenerateurCarteSousMode3 {
                     chunksCibles.add(new ChunkPos(chunkX, chunkZ));
                 }
             }
+            chunksTraites = new java.util.BitSet(chunksCibles.size());
 
             // Cellules d'île éligibles aux arbres, triées par chunk : la phase ARBRES
             // recharge chaque chunk au plus une fois au lieu de sauter au hasard
