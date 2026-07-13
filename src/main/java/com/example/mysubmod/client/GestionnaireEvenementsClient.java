@@ -47,16 +47,6 @@ public class GestionnaireEvenementsClient {
             }
         }
 
-        // Afficher/masquer le panneau du HUD des parcelles (rebindable, affiché par défaut)
-        while (HUDClavier.TOUCHE_BASCULE_HUD_PARCELLES.consumeClick()) {
-            if (mc.player != null) {
-                boolean affiche = com.example.mysubmod.sousmodes.sousmode3.client.HUDZonesSousMode3.basculerPanneau();
-                String touche = HUDClavier.TOUCHE_BASCULE_HUD_PARCELLES.getTranslatedKeyMessage().getString();
-                mc.player.sendSystemMessage(net.minecraft.network.chat.Component.literal(affiche
-                    ? "§7HUD des parcelles affiché"
-                    : "§7HUD des parcelles masqué — §e[" + touche + "]§7 pour le réafficher"));
-            }
-        }
 
         // Astuce de découvrabilité, une fois par connexion à un monde
         if (mc.level == null) {
@@ -72,6 +62,21 @@ public class GestionnaireEvenementsClient {
     @SubscribeEvent
     public static void onKeyInput(InputEvent.Key event) {
         Minecraft mc = Minecraft.getInstance();
+
+        // Afficher/masquer le panneau du HUD des parcelles (F par défaut, rebindable).
+        // Gérée en entrée BRUTE et non par consumeClick : F est partagée avec « échanger
+        // de main » vanilla, et le routage Forge d'une touche partagée ne livre le clic
+        // qu'à UN seul des deux mappings selon l'état du jeu — la bascule ne répondait
+        // pas pour les joueurs en partie (seulement pour l'admin spectateur).
+        if (event.getAction() == GLFW.GLFW_PRESS
+            && HUDClavier.TOUCHE_BASCULE_HUD_PARCELLES.matches(event.getKey(), event.getScanCode())
+            && mc.screen == null && mc.player != null) {
+            boolean affiche = com.example.mysubmod.sousmodes.sousmode3.client.HUDZonesSousMode3.basculerPanneau();
+            String touche = HUDClavier.TOUCHE_BASCULE_HUD_PARCELLES.getTranslatedKeyMessage().getString();
+            mc.player.sendSystemMessage(net.minecraft.network.chat.Component.literal(affiche
+                ? "§7HUD des parcelles affiché"
+                : "§7HUD des parcelles masqué — §e[" + touche + "]§7 pour le réafficher"));
+        }
 
         // Touche M - Ouvrir l'écran de contrôle des sous-modes
         if (event.getKey() == GLFW.GLFW_KEY_M && event.getAction() == GLFW.GLFW_PRESS) {
