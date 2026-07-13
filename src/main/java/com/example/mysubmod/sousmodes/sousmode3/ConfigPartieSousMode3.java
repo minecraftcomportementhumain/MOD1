@@ -95,6 +95,10 @@ public class ConfigPartieSousMode3 {
     public boolean dropInventaireMort = false;
     /** Manger un bonbon même à vie pleine (lève le blocage « dépasse le max ») ; soin plafonné au max. Défaut : non. */
     public boolean mangerDepasseMax = false;
+    /** Temps (secondes) pour miner un bloc de la carte, quel que soit le bloc ou l'outil.
+     *  0 = vitesses vanilla (défaut historique). L'Eau n'est pas minable et la Limite est
+     *  incassable : l'option ne les concerne pas. */
+    public float tempsMinageSecondes = 0;
 
     // ==================== Bornage / validation ====================
 
@@ -111,6 +115,7 @@ public class ConfigPartieSousMode3 {
         soinBonbonStandard = clampFloat(soinBonbonStandard, 0.0f, 40.0f);
         soinBonbonBleu = clampFloat(soinBonbonBleu, 0.0f, 40.0f);
         soinBonbonRouge = clampFloat(soinBonbonRouge, 0.0f, 40.0f);
+        tempsMinageSecondes = clampFloat(tempsMinageSecondes, 0.0f, 60.0f);
         dureePenaliteSpecialisationSecondes = clampInt(dureePenaliteSpecialisationSecondes, 0, 900);
         multiplicateurSantePenalite = clampFloat(multiplicateurSantePenalite, 0.1f, 1.0f);
     }
@@ -187,6 +192,7 @@ public class ConfigPartieSousMode3 {
         tampon.writeBoolean(dropObjet);
         tampon.writeBoolean(dropInventaireMort);
         tampon.writeBoolean(mangerDepasseMax);
+        tampon.writeFloat(tempsMinageSecondes);
     }
 
     /** Lit une config depuis un tampon (ordre miroir de {@link #ecrire}). */
@@ -230,6 +236,7 @@ public class ConfigPartieSousMode3 {
         c.dropObjet = tampon.readBoolean();
         c.dropInventaireMort = tampon.readBoolean();
         c.mangerDepasseMax = tampon.readBoolean();
+        c.tempsMinageSecondes = tampon.readFloat();
         return c;
     }
 }

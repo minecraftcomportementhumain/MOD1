@@ -108,6 +108,21 @@ public class GestionnaireEvenementsClient {
     }
 
     /**
+     * Côté client : impose le temps de minage synchronisé par le serveur (menu N › Bonbons & minage).
+     * La progression de casse est PRÉDITE par le client — sans ce handler, l'animation
+     * suivrait les vitesses vanilla et le serveur rejetterait la casse (ou l'accepterait
+     * trop tôt). Valeur 0 hors partie = vitesses vanilla, aucun effet.
+     */
+    @SubscribeEvent
+    public static void onVitesseMinage(net.minecraftforge.event.entity.player.PlayerEvent.BreakSpeed event) {
+        if (!event.getEntity().level().isClientSide()) {
+            return; // Côté serveur : géré par GestionnaireEvenementsSousMode3 (config)
+        }
+        com.example.mysubmod.sousmodes.sousmode3.GestionnaireEvenementsSousMode3.appliquerTempsMinage(event,
+            com.example.mysubmod.sousmodes.sousmode3.client.VitesseMinageClientSousMode3.obtenirTempsSecondes());
+    }
+
+    /**
      * Touche N au Sous-mode 3 : admins avant le lancement -> écran de configuration des
      * conditions de partie ; joueurs pendant la partie -> ciblage d'une zone du HUD (flèche).
      */

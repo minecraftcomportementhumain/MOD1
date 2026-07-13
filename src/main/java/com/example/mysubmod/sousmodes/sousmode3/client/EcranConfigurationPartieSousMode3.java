@@ -39,6 +39,10 @@ public class EcranConfigurationPartieSousMode3 extends Screen {
     private static final int[] PERTES_POINTS = {1, 2, 3, 4, 6, 8};       // 1 point = ½ cœur
     private static final int[] INTERVALLES_S = {3, 5, 10, 15, 20, 30};
     private static final int[] SANTES_MAX_POINTS = {10, 14, 20, 30, 40}; // en points (20 = 10 cœurs)
+    /** Soin par bonbon, en points de vie (2 = 1 cœur, comportement historique ; 0 = aucun soin). */
+    private static final float[] SOINS_POINTS = {0, 1, 2, 3, 4, 6, 8, 12, 16, 20};
+    /** Temps de minage par bloc, en secondes (0 = vitesses vanilla). */
+    private static final float[] TEMPS_MINAGE_S = {0, 0.5f, 1, 2, 3, 5, 8, 10, 15, 20, 30};
 
     private final ConfigPartieSousMode3 config = new ConfigPartieSousMode3();
     private final List<Entete> entetes = new ArrayList<>();
@@ -67,31 +71,20 @@ public class EcranConfigurationPartieSousMode3 extends Screen {
             config.destructionBloc = true;
         }
 
-        // Mode compact sous 310 px : la fenêtre Minecraft par défaut donne une GUI de 427×240.
-        compact = this.height < 310;
-        pasLigne = compact ? 17 : 20;
-        pasTitre = compact ? 12 : 15;
-        hauteurWidget = compact ? 16 : 20;
+        // Mode compact sous 340 px : toutes les options tiennent sur UN seul écran (pas de
+        // sous-fenêtre), au prix de rangées resserrées. La fenêtre Minecraft par défaut
+        // donne une GUI de 427×240.
+        compact = this.height < 340;
+        pasLigne = compact ? 15 : 20;
+        pasTitre = compact ? 11 : 15;
+        hauteurWidget = compact ? 14 : 20;
         largeurColonne = Math.max(126, Math.min(150, (this.width - 2 * ECART_COLONNE - 12) / 3));
-        int yDepart = compact ? 38 : 60;
-        int yPresets = compact ? 15 : 32;
-        int hPresets = compact ? 16 : 18;
+        int yDepart = compact ? 17 : 32;
 
         int largeurTotale = 3 * largeurColonne + 2 * ECART_COLONNE;
         int xA = (this.width - largeurTotale) / 2;
         int xB = xA + largeurColonne + ECART_COLONNE;
         int xC = xB + largeurColonne + ECART_COLONNE;
-
-        // ---- Barre du haut : réinitialisation + réglages du soin des bonbons ----
-        // (sous-écran : les trois colonnes sont déjà à pleine capacité à la hauteur minimale)
-        addRenderableWidget(Button.builder(Component.literal("Par défaut"), b -> reinitialiserConfig())
-            .bounds(this.width / 2 - largeurColonne - 4, yPresets, largeurColonne, hPresets).build());
-        addRenderableWidget(Button.builder(Component.literal("Soin bonbons…"),
-                b -> this.minecraft.setScreen(new EcranSoinBonbonsSousMode3(this, config)))
-            .bounds(this.width / 2 + 4, yPresets, largeurColonne, hPresets)
-            .tooltip(net.minecraft.client.gui.components.Tooltip.create(Component.literal(
-                "Santé rendue par chaque type de bonbon (standard, Bleu, Rouge)")))
-            .build());
 
         // ---- Colonne A : Durée & Santé ----
         int[] ya = {yDepart};
@@ -113,8 +106,18 @@ public class EcranConfigurationPartieSousMode3 extends Screen {
         caseAcocher(xA, ya, "Régén. naturelle", config.regenerationNaturelle, v -> config.regenerationNaturelle = v);
         caseAcocher(xA, ya, "Réapparition", config.reapparitionAutorisee, v -> config.reapparitionAutorisee = v);
 
-        // ---- Colonne B : Environnement, mode de jeu, zone de départ ----
+        // ---- Colonne B : Bonbons & minage, Environnement ----
         int[] yb = {yDepart};
+        titre(xB, yb, "§e§lBonbons & minage");
+        selecteurFloat(xB, yb, "Soin std: ", SOINS_POINTS, config.soinBonbonStandard,
+            v -> config.soinBonbonStandard = v, EcranConfigurationPartieSousMode3::coeursFloat);
+        selecteurFloat(xB, yb, "Soin bleu: ", SOINS_POINTS, config.soinBonbonBleu,
+            v -> config.soinBonbonBleu = v, EcranConfigurationPartieSousMode3::coeursFloat);
+        selecteurFloat(xB, yb, "Soin rouge: ", SOINS_POINTS, config.soinBonbonRouge,
+            v -> config.soinBonbonRouge = v, EcranConfigurationPartieSousMode3::coeursFloat);
+        selecteurFloat(xB, yb, "Minage: ", TEMPS_MINAGE_S, config.tempsMinageSecondes,
+            v -> config.tempsMinageSecondes = v, EcranConfigurationPartieSousMode3::secondesMinage);
+
         titre(xB, yb, "§e§lEnvironnement");
         caseAcocher(xB, yb, "Jour permanent", config.jourPermanent, v -> config.jourPermanent = v);
         caseAcocher(xB, yb, "Dégâts de chute", config.degatsChute, v -> config.degatsChute = v);
@@ -123,24 +126,23 @@ public class EcranConfigurationPartieSousMode3 extends Screen {
         caseAcocher(xB, yb, "PvP entre joueurs", config.pvp, v -> config.pvp = v);
         caseAcocher(xB, yb, "Pluie", config.pluie, v -> config.pluie = v);
 
-        titre(xB, yb, "§e§lMode");
+        // ---- Colonne C : Mode, Interactions & fin de partie ----
+        int[] yc = {yDepart};
+        titre(xC, yc, "§e§lMode");
         if (!FaitsCarteClientSousMode3.aBonbonsTypes()) {
             config.specialisation = false; // tous les bonbons de la carte ne sont pas typés Bleu/Rouge
         }
-        Checkbox caseSpecialisation = caseAcocher(xB, yb, "Spécialisation B/R", config.specialisation,
+        Checkbox caseSpecialisation = caseAcocher(xC, yc, "Spécialisation B/R", config.specialisation,
             v -> config.specialisation = v);
         caseSpecialisation.active = FaitsCarteClientSousMode3.aBonbonsTypes();
-
-        titre(xB, yb, "§e§lParcelle de départ");
         if (!FaitsCarteClientSousMode3.aParcelles()) {
             config.selectionZoneDepart = false; // la carte n'a aucune parcelle
         }
-        Checkbox caseZone = caseAcocher(xB, yb, "Choix par joueur", config.selectionZoneDepart,
+        Checkbox caseZone = caseAcocher(xC, yc, "Parcelle au choix", config.selectionZoneDepart,
             v -> config.selectionZoneDepart = v);
         caseZone.active = FaitsCarteClientSousMode3.aParcelles();
+        caseAcocher(xC, yc, "Bonus sprint", config.bonusSprint, v -> config.bonusSprint = v);
 
-        // ---- Colonne C : Interactions & fin de partie ----
-        int[] yc = {yDepart};
         titre(xC, yc, "§e§lInteractions");
         caseAcocher(xC, yc, "Crafting", config.crafting, v -> config.crafting = v);
         Checkbox caseDestruction = caseAcocher(xC, yc, "Destruction blocs", config.destructionBloc,
@@ -152,21 +154,24 @@ public class EcranConfigurationPartieSousMode3 extends Screen {
         caseAcocher(xC, yc, "Jeter des objets", config.dropObjet, v -> config.dropObjet = v);
         caseAcocher(xC, yc, "Drop à la mort", config.dropInventaireMort, v -> config.dropInventaireMort = v);
         caseAcocher(xC, yc, "Manger à vie max", config.mangerDepasseMax, v -> config.mangerDepasseMax = v);
-        caseAcocher(xC, yc, "Bonus sprint", config.bonusSprint, v -> config.bonusSprint = v);
 
         titre(xC, yc, "§e§lFin de partie");
         ajouterBasculeClassement(xC, yc);
         caseAcocher(xC, yc, "Dernier survivant", config.finAuDernierSurvivant, v -> config.finAuDernierSurvivant = v);
 
-        // ---- Boutons de bas de page ----
+        // ---- Boutons de bas de page (« Par défaut » y a rejoint Lancer/Fermer : la barre
+        // du haut est supprimée pour donner leur hauteur aux colonnes) ----
         int hBouton = compact ? 18 : 20;
         int yBas = this.height - hBouton - (compact ? 4 : 8);
+        int xBas = (this.width - 380) / 2;
+        addRenderableWidget(Button.builder(Component.literal("Par défaut"), b -> reinitialiserConfig())
+            .bounds(xBas, yBas, 100, hBouton).build());
         addRenderableWidget(Button.builder(Component.literal("§aLancer la partie"), b -> {
             GestionnaireReseau.INSTANCE.sendToServer(new PaquetLancerPartieConfigureeSousMode3(config));
             this.onClose();
-        }).bounds(this.width / 2 - 154, yBas, 150, hBouton).build());
+        }).bounds(xBas + 104, yBas, 150, hBouton).build());
         addRenderableWidget(Button.builder(Component.literal("Fermer"), b -> this.onClose())
-            .bounds(this.width / 2 + 4, yBas, 150, hBouton).build());
+            .bounds(xBas + 258, yBas, 122, hBouton).build());
     }
 
     private void titre(int x, int[] y, String texte) {
@@ -193,6 +198,47 @@ public class EcranConfigurationPartieSousMode3 extends Screen {
         }).bounds(x, y[0], largeurColonne, hauteurWidget).build();
         addRenderableWidget(bouton);
         y[0] += pasLigne;
+    }
+
+    /** Variante float de {@link #selecteurInt} (soins des bonbons, temps de minage). */
+    private void selecteurFloat(int x, int[] y, String prefixe, float[] valeurs, float valeurCourante,
+                                Consumer<Float> setter, java.util.function.Function<Float, String> formateur) {
+        int[] idx = {indexDe(valeurs, valeurCourante)};
+        Button bouton = Button.builder(Component.literal(prefixe + formateur.apply(valeurs[idx[0]])), b -> {
+            boolean arriere = Screen.hasShiftDown();
+            idx[0] = (idx[0] + (arriere ? valeurs.length - 1 : 1)) % valeurs.length;
+            setter.accept(valeurs[idx[0]]);
+            b.setMessage(Component.literal(prefixe + formateur.apply(valeurs[idx[0]])));
+        }).bounds(x, y[0], largeurColonne, hauteurWidget).build();
+        addRenderableWidget(bouton);
+        y[0] += pasLigne;
+    }
+
+    private static int indexDe(float[] valeurs, float valeur) {
+        for (int i = 0; i < valeurs.length; i++) {
+            if (valeurs[i] == valeur) {
+                return i;
+            }
+        }
+        return 0;
+    }
+
+    /** Formate un soin en cœurs (2 points = 1 cœur), « aucun » pour 0. */
+    private static String coeursFloat(float points) {
+        if (points == 0) {
+            return "aucun";
+        }
+        double h = points / 2.0;
+        return (h == Math.floor(h) ? String.valueOf((int) h) : String.valueOf(h)) + " cœur(s)";
+    }
+
+    /** Formate un temps de minage (0 = vitesses vanilla). */
+    private static String secondesMinage(float secondes) {
+        if (secondes == 0) {
+            return "vanilla";
+        }
+        return (secondes == Math.floor(secondes)
+            ? String.valueOf((int) secondes) : String.valueOf(secondes)) + " s / bloc";
     }
 
     private void ajouterBasculeClassement(int x, int[] y) {
@@ -243,6 +289,7 @@ public class EcranConfigurationPartieSousMode3 extends Screen {
         cible.soinBonbonStandard = source.soinBonbonStandard;
         cible.soinBonbonBleu = source.soinBonbonBleu;
         cible.soinBonbonRouge = source.soinBonbonRouge;
+        cible.tempsMinageSecondes = source.tempsMinageSecondes;
         cible.specialisation = source.specialisation;
         cible.dureePenaliteSpecialisationSecondes = source.dureePenaliteSpecialisationSecondes;
         cible.multiplicateurSantePenalite = source.multiplicateurSantePenalite;

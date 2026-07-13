@@ -509,6 +509,12 @@ public class GestionnaireEvenementsSousMode3 {
             // les joueurs déjà connectés n'ont pas ce HUD (le lancement l'envoie à tous).
             if (gestionnaire.estPartieActive()) {
                 GestionnaireBonbonsSousMode3.obtenirInstance().envoyerZonesCompletesAJoueur(joueur, true);
+                // Temps de minage de la partie en cours (la valeur client survit à une
+                // déconnexion mais pas à un redémarrage du client : toujours resynchroniser)
+                com.example.mysubmod.reseau.GestionnaireReseau.INSTANCE.send(
+                    net.minecraftforge.network.PacketDistributor.PLAYER.with(() -> joueur),
+                    new com.example.mysubmod.sousmodes.sousmode3.reseau.PaquetVitesseMinageSousMode3(
+                        gestionnaire.obtenirConfig().tempsMinageSecondes));
             } else {
                 // Avant le lancement : effacer les HUD résiduels d'une partie précédente
                 // (l'état du HUD côté client survit à une déconnexion/reconnexion)
@@ -518,6 +524,9 @@ public class GestionnaireEvenementsSousMode3 {
                 com.example.mysubmod.reseau.GestionnaireReseau.INSTANCE.send(
                     net.minecraftforge.network.PacketDistributor.PLAYER.with(() -> joueur),
                     new com.example.mysubmod.sousmodes.sousmode3.reseau.PaquetMinuterieJeuSousMode3(-1));
+                com.example.mysubmod.reseau.GestionnaireReseau.INSTANCE.send(
+                    net.minecraftforge.network.PacketDistributor.PLAYER.with(() -> joueur),
+                    new com.example.mysubmod.sousmodes.sousmode3.reseau.PaquetVitesseMinageSousMode3(0));
             }
 
             if (gestionnaire.etaitJoueurDeconnecte(joueur.getName().getString())) {
@@ -555,6 +564,9 @@ public class GestionnaireEvenementsSousMode3 {
             com.example.mysubmod.reseau.GestionnaireReseau.INSTANCE.send(
                 net.minecraftforge.network.PacketDistributor.PLAYER.with(() -> joueur),
                 com.example.mysubmod.sousmodes.sousmode3.reseau.PaquetZonesSousMode3.vide());
+            com.example.mysubmod.reseau.GestionnaireReseau.INSTANCE.send(
+                net.minecraftforge.network.PacketDistributor.PLAYER.with(() -> joueur),
+                new com.example.mysubmod.sousmodes.sousmode3.reseau.PaquetVitesseMinageSousMode3(0));
         }
     }
 
@@ -748,6 +760,49 @@ public class GestionnaireEvenementsSousMode3 {
      * pour éviter l'écran de mort et la réapparition au lit. La dégradation de santé, qui gère
      * elle-même sa mort, n'appelle jamais {@code die()} et n'est donc pas concernée.
      */
+    // ==================== Vitesse de minage imposée ====================
+
+    /**
+     * Impose le temps de minage configuré (menu N › Bonbons & minage) à tout bloc miné pendant une
+     * partie active, quel que soit le bloc ou l'outil. L'Eau n'est pas minable et la
+     * Limite (barrière) est incassable — l'option ne les concerne pas. Le même calcul
+     * tourne côté client (prédiction de casse) via GestionnaireEvenementsClient, avec la
+     * valeur synchronisée par PaquetVitesseMinageSousMode3.
+     */
+    @SubscribeEvent
+    public static void onVitesseMinage(net.minecraftforge.event.entity.player.PlayerEvent.BreakSpeed event) {
+        if (event.getEntity().level().isClientSide()) {
+            return; // Côté client : handler dédié avec la valeur synchronisée
+        }
+        if (!estModeActif() || !GestionnaireSousMode3.getInstance().estPartieActive()) {
+            return;
+        }
+        appliquerTempsMinage(event, GestionnaireSousMode3.getInstance().obtenirConfig().tempsMinageSecondes);
+    }
+
+    /**
+     * Force la vitesse de casse pour que le bloc visé prenne exactement
+     * {@code tempsSecondes} : la progression vanilla par tick vaut
+     * vitesse / dureté / 30 (ou / 100 sans l'outil requis pour la récolte) —
+     * on inverse la formule. 0 = vitesses vanilla (aucun effet).
+     */
+    public static void appliquerTempsMinage(net.minecraftforge.event.entity.player.PlayerEvent.BreakSpeed event,
+                                            float tempsSecondes) {
+        if (tempsSecondes <= 0) {
+            return;
+        }
+        BlockPos pos = event.getPosition().orElse(null);
+        if (pos == null) {
+            return;
+        }
+        float durete = event.getState().getDestroySpeed(event.getEntity().level(), pos);
+        if (durete <= 0) {
+            return; // Incassable (Limite/barrière) : hors du champ de l'option
+        }
+        float facteur = event.getEntity().hasCorrectToolForDrops(event.getState()) ? 30f : 100f;
+        event.setNewSpeed(durete * facteur / (20f * tempsSecondes));
+    }
+
     @SubscribeEvent(priority = net.minecraftforge.eventbus.api.EventPriority.HIGHEST)
     public static void onEntityDeath(net.minecraftforge.event.entity.living.LivingDeathEvent event) {
         if (!estModeActif()) {

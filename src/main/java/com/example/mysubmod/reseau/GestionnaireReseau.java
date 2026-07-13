@@ -393,6 +393,16 @@ public class GestionnaireReseau {
             com.example.mysubmod.sousmodes.sousmode3.reseau.PaquetSynchronisationPenalite::traiter,
             java.util.Optional.of(NetworkDirection.PLAY_TO_CLIENT)
         );
+
+        // Temps de minage imposé par la config de partie (menu N › Bonbons & minage) — serveur -> client
+        INSTANCE.registerMessage(
+            idPaquet++,
+            com.example.mysubmod.sousmodes.sousmode3.reseau.PaquetVitesseMinageSousMode3.class,
+            com.example.mysubmod.sousmodes.sousmode3.reseau.PaquetVitesseMinageSousMode3::encode,
+            com.example.mysubmod.sousmodes.sousmode3.reseau.PaquetVitesseMinageSousMode3::decode,
+            com.example.mysubmod.sousmodes.sousmode3.reseau.PaquetVitesseMinageSousMode3::traiter,
+            java.util.Optional.of(NetworkDirection.PLAY_TO_CLIENT)
+        );
     }
 
     /**

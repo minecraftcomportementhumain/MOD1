@@ -518,6 +518,12 @@ public class GestionnaireSousMode3 {
         // HUD des zones pour tous les joueurs
         GestionnaireBonbonsSousMode3.obtenirInstance().envoyerZonesCompletesATous(true);
 
+        // Temps de minage imposé : synchroniser les clients — la casse est prédite côté
+        // client, un client resté aux vitesses vanilla verrait sa casse désynchronisée
+        GestionnaireReseau.INSTANCE.send(PacketDistributor.ALL.noArg(),
+            new com.example.mysubmod.sousmodes.sousmode3.reseau.PaquetVitesseMinageSousMode3(
+                config.tempsMinageSecondes));
+
         // Apparitions initiales différées (délai configuré par bloc, depuis le début de partie)
         GestionnaireBonbonsSousMode3.obtenirInstance().planifierApparitionsInitiales();
 
@@ -563,6 +569,8 @@ public class GestionnaireSousMode3 {
                 }
                 GestionnaireReseau.INSTANCE.send(PacketDistributor.ALL.noArg(), new PaquetMinuterieJeuSousMode3(-1));
                 GestionnaireReseau.INSTANCE.send(PacketDistributor.ALL.noArg(), PaquetZonesSousMode3.vide());
+                GestionnaireReseau.INSTANCE.send(PacketDistributor.ALL.noArg(),
+                    new com.example.mysubmod.sousmodes.sousmode3.reseau.PaquetVitesseMinageSousMode3(0));
             } catch (Exception e) {
                 MonSubMod.JOURNALISEUR.error("Erreur lors de l'arrêt de la minuterie de partie", e);
             }

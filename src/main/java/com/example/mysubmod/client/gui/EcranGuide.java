@@ -183,6 +183,7 @@ public class EcranGuide extends Screen {
         titre(l, "Les touches essentielles");
         puce(l, "§e[M]§r — menu de contrôle : mode, cartes, journaux (surtout pour les admins).");
         puce(l, "§e[N]§r — avant la partie (admin) : régler et lancer ; pendant la partie (joueur) : viser une parcelle.");
+        puce(l, "§e[F]§r — afficher/masquer le panneau des parcelles (la flèche de navigation reste visible).");
         puce(l, "§e[Guide]§r — ouvre ce guide à tout moment (H par défaut, voir Options › Commandes).");
 
         titre(l, "Deux rôles");
@@ -220,6 +221,8 @@ public class EcranGuide extends Screen {
             + "Appuyez sur §e[N]§r et choisissez une parcelle : la flèche pointe vers ses bonbons "
             + "restants (le point visé suit les ramassages et réapparitions) et disparaît à une "
             + "quinzaine de blocs du but.");
+        para(l, "§7La touche §e[F]§7 masque ou réaffiche le panneau (rebindable dans Options › Commandes) ; "
+            + "la flèche, elle, reste visible.");
 
         titre(l, "6. Mort, fin et classement");
         para(l, "À 0 cœur, vous passez spectateur (mort définitive, sauf si la réapparition est activée). "
@@ -299,6 +302,7 @@ public class EcranGuide extends Screen {
         titre(l, "Touches");
         puce(l, "§e[M]§r — menu de contrôle (admins).");
         puce(l, "§e[N]§r — joueur : viser une parcelle · admin : lancer une partie.");
+        puce(l, "§e[F]§r — afficher/masquer le panneau des parcelles.");
         puce(l, "§e[Guide]§r — ce guide (H par défaut).");
         puce(l, "§eClic sur le panneau§r — passer spectateur (sur la plateforme).");
 
@@ -309,6 +313,7 @@ public class EcranGuide extends Screen {
         puce(l, "§bMode§r : Spécialisation Bleu/Rouge non §7(carte à bonbons typés requise)§r.");
         puce(l, "§bParcelle de départ§r : Choix par joueur non §7(au moins une parcelle requise)§r.");
         puce(l, "§bInteractions§r : Crafting non · Destruction oui · Placement oui · Jeter non · Drop à la mort non · Manger à vie max non · Bonus sprint non.");
+        puce(l, "§bBonbons & minage§r : Soin par bonbon 1 cœur (standard, Bleu, Rouge) · Minage vitesses vanilla.");
         puce(l, "§bFin de partie§r : Éliminés classés par Survie · Dernier survivant non.");
 
         titre(l, "Repères techniques");

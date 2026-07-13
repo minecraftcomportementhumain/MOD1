@@ -38,7 +38,7 @@ final class UtilisationBonbonTypeSousMode3 {
         float multiplicateur = specialisation
             ? GestionnaireSpecialisationSousMode3.getInstance().obtenirMultiplicateurSanteActuel(joueur.getUUID())
             : 1.0f;
-        // Santé rendue configurable par partie (menu N › Soin bonbons). Sans spécialisation
+        // Santé rendue configurable par partie (menu N › Bonbons & minage). Sans spécialisation
         // (cas résiduel documenté ci-dessus), le bonbon typé soigne comme un bonbon
         // STANDARD — les valeurs Bleu/Rouge n'ont de sens que quand les types sont actifs.
         float soinBase;

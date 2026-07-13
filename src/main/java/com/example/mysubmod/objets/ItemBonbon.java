@@ -51,7 +51,7 @@ public class ItemBonbon extends Item {
                         ? com.example.mysubmod.sousmodes.sousmode3.GestionnaireSpecialisationSousMode3
                             .getInstance().obtenirMultiplicateurSanteActuel(joueurServeur.getUUID())
                         : 1.0f;
-                    // Santé rendue configurable par partie (menu N › Soin bonbons)
+                    // Santé rendue configurable par partie (menu N › Bonbons & minage)
                     float soinReel = gestionnaireSM3.obtenirConfig().soinBonbonStandard * multiplicateur;
 
                     // Par défaut, on refuse de gaspiller un bonbon qui dépasserait le maximum.
