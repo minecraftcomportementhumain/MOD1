@@ -65,9 +65,11 @@ public class GestionnaireCartes {
     }
 
     public List<String> obtenirCartesDisponibles() {
-        try {
-            assurerRepertoireExiste();
-            return Files.list(Paths.get(REPERTOIRE_CARTES))
+        assurerRepertoireExiste();
+        // try-with-resources : Files.list garde un handle du répertoire ouvert tant que
+        // le flux n'est pas fermé (fuite à chaque ouverture du menu sinon)
+        try (var fichiers = Files.list(Paths.get(REPERTOIRE_CARTES))) {
+            return fichiers
                 .filter(chemin -> chemin.toString().endsWith(".json"))
                 .map(chemin -> {
                     String nomFichier = chemin.getFileName().toString();

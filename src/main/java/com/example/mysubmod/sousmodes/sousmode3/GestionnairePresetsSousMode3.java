@@ -60,15 +60,18 @@ public class GestionnairePresetsSousMode3 {
             && UtilitaireCheminSecurise.nomFichierSur(nom);
     }
 
-    /** Noms des presets disponibles, triés (liste vide en cas d'erreur). */
+    /** Noms des presets disponibles, triés (liste vide en cas d'erreur). Seuls les noms
+     *  valides sont listés : un fichier déposé à la main avec un nom trop long ferait
+     *  déborder le writeUtf borné du paquet Charger/Supprimer côté client. */
     public List<String> listerPresets() {
-        try {
-            return Files.list(repertoire())
+        try (var fichiers = Files.list(repertoire())) {
+            return fichiers
                 .filter(c -> c.toString().endsWith(".json"))
                 .map(c -> {
                     String f = c.getFileName().toString();
                     return f.substring(0, f.length() - ".json".length());
                 })
+                .filter(GestionnairePresetsSousMode3::nomValide)
                 .sorted(String.CASE_INSENSITIVE_ORDER)
                 .collect(Collectors.toList());
         } catch (IOException e) {

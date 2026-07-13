@@ -83,10 +83,12 @@ public class EcranConfigurationPartieSousMode3 extends Screen {
             config.destructionBloc = true;
         }
 
-        // Mode compact sous 340 px : toutes les options tiennent sur UN seul écran (pas de
+        // Mode compact sous 352 px : toutes les options tiennent sur UN seul écran (pas de
         // sous-fenêtre), au prix de rangées resserrées. La fenêtre Minecraft par défaut
-        // donne une GUI de 427×240.
-        compact = this.height < 340;
+        // donne une GUI de 427×240. Seuil : en non-compact la colonne la plus chargée
+        // descend à y=297 et la rangée des presets commence à h−51 → il faut h ≥ 352
+        // pour garder un écart (sous 348 elles se chevaucheraient).
+        compact = this.height < 352;
         pasLigne = compact ? 14 : 20;
         pasTitre = compact ? 10 : 15;
         hauteurWidget = compact ? 13 : 20;
