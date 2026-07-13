@@ -47,6 +47,17 @@ public class GestionnaireEvenementsClient {
             }
         }
 
+        // Afficher/masquer le panneau du HUD des parcelles (rebindable, affiché par défaut)
+        while (HUDClavier.TOUCHE_BASCULE_HUD_PARCELLES.consumeClick()) {
+            if (mc.player != null) {
+                boolean affiche = com.example.mysubmod.sousmodes.sousmode3.client.HUDZonesSousMode3.basculerPanneau();
+                String touche = HUDClavier.TOUCHE_BASCULE_HUD_PARCELLES.getTranslatedKeyMessage().getString();
+                mc.player.sendSystemMessage(net.minecraft.network.chat.Component.literal(affiche
+                    ? "§7HUD des parcelles affiché"
+                    : "§7HUD des parcelles masqué — §e[" + touche + "]§7 pour le réafficher"));
+            }
+        }
+
         // Astuce de découvrabilité, une fois par connexion à un monde
         if (mc.level == null) {
             astuceGuideAffichee = false;

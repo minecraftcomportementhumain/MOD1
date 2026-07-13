@@ -49,6 +49,9 @@ public class HUDZonesSousMode3 {
     private static final List<ZoneClient> ZONES = new ArrayList<>();
     private static boolean actif = false;
     private static String zoneCiblee = null; // Cible de la flèche (propre à chaque joueur, côté client)
+    /** Panneau affiché/masqué par le joueur (touche J, rebindable) — affiché par défaut,
+     *  choix conservé pour la session client. La flèche de navigation n'est pas concernée. */
+    private static boolean panneauAffiche = true;
 
     public static synchronized void mettreAJourZones(List<PaquetZonesSousMode3.ZoneReseau> zonesRecues,
                                                      boolean complet, boolean reinitialiser) {
@@ -116,6 +119,12 @@ public class HUDZonesSousMode3 {
         zoneCiblee = null;
     }
 
+    /** Bascule l'affichage du panneau des parcelles ; retourne le nouvel état (vrai = affiché). */
+    public static boolean basculerPanneau() {
+        panneauAffiche = !panneauAffiche;
+        return panneauAffiche;
+    }
+
     /** Cibler une zone : active la flèche de navigation (une seule flèche à la fois) */
     public static void ciblerZone(String nom) {
         zoneCiblee = nom;
@@ -129,6 +138,12 @@ public class HUDZonesSousMode3 {
 
     public static void afficher(GuiGraphics guiGraphics, int largeurEcran, int hauteurEcran) {
         if (!actif) {
+            return;
+        }
+        // Panneau masqué par le joueur : ne garder que la flèche de navigation,
+        // demandée volontairement via [N]
+        if (!panneauAffiche) {
+            afficherFleche(guiGraphics, largeurEcran, hauteurEcran);
             return;
         }
 

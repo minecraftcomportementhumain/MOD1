@@ -5,5 +5,6 @@
   "block.mysubmod.bonbon_cache_terre": "Bonbon non-visible (terre)",
   "block.mysubmod.bonbon_cache_pierre": "Bonbon non-visible (pierre)",
   "key.categories.mysubmod": "Survie aux bonbons",
-  "key.mysubmod.guide": "Ouvrir le guide du jeu"
+  "key.mysubmod.guide": "Ouvrir le guide du jeu",
+  "key.mysubmod.bascule_hud_parcelles": "Afficher/masquer le HUD des parcelles"
 }
