@@ -403,6 +403,26 @@ public class GestionnaireReseau {
             com.example.mysubmod.sousmodes.sousmode3.reseau.PaquetVitesseMinageSousMode3::traiter,
             java.util.Optional.of(NetworkDirection.PLAY_TO_CLIENT)
         );
+
+        // Presets de config du menu N : action admin — client -> serveur
+        INSTANCE.registerMessage(
+            idPaquet++,
+            com.example.mysubmod.sousmodes.sousmode3.reseau.PaquetActionPresetSousMode3.class,
+            com.example.mysubmod.sousmodes.sousmode3.reseau.PaquetActionPresetSousMode3::encode,
+            com.example.mysubmod.sousmodes.sousmode3.reseau.PaquetActionPresetSousMode3::decode,
+            com.example.mysubmod.sousmodes.sousmode3.reseau.PaquetActionPresetSousMode3::traiter,
+            java.util.Optional.of(NetworkDirection.PLAY_TO_SERVER)
+        );
+
+        // Presets de config du menu N : réponse (liste + config chargée) — serveur -> client
+        INSTANCE.registerMessage(
+            idPaquet++,
+            com.example.mysubmod.sousmodes.sousmode3.reseau.PaquetReponsePresetSousMode3.class,
+            com.example.mysubmod.sousmodes.sousmode3.reseau.PaquetReponsePresetSousMode3::encode,
+            com.example.mysubmod.sousmodes.sousmode3.reseau.PaquetReponsePresetSousMode3::decode,
+            com.example.mysubmod.sousmodes.sousmode3.reseau.PaquetReponsePresetSousMode3::traiter,
+            java.util.Optional.of(NetworkDirection.PLAY_TO_CLIENT)
+        );
     }
 
     /**

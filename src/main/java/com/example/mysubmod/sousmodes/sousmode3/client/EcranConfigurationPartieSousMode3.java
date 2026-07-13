@@ -2,10 +2,13 @@ package com.example.mysubmod.sousmodes.sousmode3.client;
 
 import com.example.mysubmod.reseau.GestionnaireReseau;
 import com.example.mysubmod.sousmodes.sousmode3.ConfigPartieSousMode3;
+import com.example.mysubmod.sousmodes.sousmode3.GestionnairePresetsSousMode3;
+import com.example.mysubmod.sousmodes.sousmode3.reseau.PaquetActionPresetSousMode3;
 import com.example.mysubmod.sousmodes.sousmode3.reseau.PaquetLancerPartieConfigureeSousMode3;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.components.Button;
 import net.minecraft.client.gui.components.Checkbox;
+import net.minecraft.client.gui.components.EditBox;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.network.chat.Component;
 import net.minecraftforge.api.distmarker.Dist;
@@ -47,6 +50,15 @@ public class EcranConfigurationPartieSousMode3 extends Screen {
     private final ConfigPartieSousMode3 config = new ConfigPartieSousMode3();
     private final List<Entete> entetes = new ArrayList<>();
 
+    // Presets : nom saisi (conservé à travers les reconstructions de widgets) et preset
+    // sélectionné dans la liste reçue du serveur
+    private String texteNomPreset = "";
+    private int indexPreset = 0;
+    private EditBox champNomPreset;
+    /** La liste des presets n'est demandée qu'une fois : rebuildWidgets() relance init(),
+     *  et une réponse serveur reconstruit l'écran — redemander à chaque fois bouclerait. */
+    private boolean presetsDemandes = false;
+
     // Métriques calculées dans init() selon la taille de la fenêtre
     private int largeurColonne;
     private int pasLigne;
@@ -75,11 +87,11 @@ public class EcranConfigurationPartieSousMode3 extends Screen {
         // sous-fenêtre), au prix de rangées resserrées. La fenêtre Minecraft par défaut
         // donne une GUI de 427×240.
         compact = this.height < 340;
-        pasLigne = compact ? 15 : 20;
-        pasTitre = compact ? 11 : 15;
-        hauteurWidget = compact ? 14 : 20;
+        pasLigne = compact ? 14 : 20;
+        pasTitre = compact ? 10 : 15;
+        hauteurWidget = compact ? 13 : 20;
         largeurColonne = Math.max(126, Math.min(150, (this.width - 2 * ECART_COLONNE - 12) / 3));
-        int yDepart = compact ? 17 : 32;
+        int yDepart = compact ? 15 : 32;
 
         int largeurTotale = 3 * largeurColonne + 2 * ECART_COLONNE;
         int xA = (this.width - largeurTotale) / 2;
@@ -159,11 +171,14 @@ public class EcranConfigurationPartieSousMode3 extends Screen {
         ajouterBasculeClassement(xC, yc);
         caseAcocher(xC, yc, "Dernier survivant", config.finAuDernierSurvivant, v -> config.finAuDernierSurvivant = v);
 
-        // ---- Boutons de bas de page (« Par défaut » y a rejoint Lancer/Fermer : la barre
-        // du haut est supprimée pour donner leur hauteur aux colonnes) ----
-        int hBouton = compact ? 18 : 20;
+        // ---- Rangée des presets + rangée des boutons d'action, en bas de page ----
+        int hBouton = compact ? 16 : 20;
         int yBas = this.height - hBouton - (compact ? 4 : 8);
+        int yPresets = yBas - hBouton - 3;
         int xBas = (this.width - 380) / 2;
+
+        construireBarrePresets(xBas, yPresets, hBouton);
+
         addRenderableWidget(Button.builder(Component.literal("Par défaut"), b -> reinitialiserConfig())
             .bounds(xBas, yBas, 100, hBouton).build());
         addRenderableWidget(Button.builder(Component.literal("§aLancer la partie"), b -> {
@@ -172,6 +187,97 @@ public class EcranConfigurationPartieSousMode3 extends Screen {
         }).bounds(xBas + 104, yBas, 150, hBouton).build());
         addRenderableWidget(Button.builder(Component.literal("Fermer"), b -> this.onClose())
             .bounds(xBas + 258, yBas, 122, hBouton).build());
+
+        // Demander la liste des presets au serveur, UNE seule fois (la réponse reconstruit
+        // l'écran ; redemander à chaque reconstruction bouclerait)
+        if (!presetsDemandes) {
+            presetsDemandes = true;
+            GestionnaireReseau.INSTANCE.sendToServer(new PaquetActionPresetSousMode3(
+                PaquetActionPresetSousMode3.Action.LISTER, "", null));
+        }
+    }
+
+    /** Barre des presets (bas de page) : sélecteur du preset enregistré, Charger, Supprimer,
+     *  champ de nom et Sauver. Réservée à l'admin (le menu N ne s'ouvre que pour lui). */
+    private void construireBarrePresets(int x, int y, int h) {
+        List<String> noms = com.example.mysubmod.sousmodes.sousmode3.client.PresetsClientSousMode3.obtenirNoms();
+        if (!noms.isEmpty()) {
+            indexPreset = Math.floorMod(indexPreset, noms.size());
+        } else {
+            indexPreset = 0;
+        }
+        boolean aPresets = !noms.isEmpty();
+        String nomSel = aPresets ? noms.get(indexPreset) : "(aucun)";
+
+        Button selecteur = Button.builder(Component.literal("Preset: " + nomSel), b -> {
+            if (noms.isEmpty()) {
+                return;
+            }
+            indexPreset = Math.floorMod(indexPreset + (Screen.hasShiftDown() ? -1 : 1), noms.size());
+            // Pré-remplir le champ de nom avec le preset choisi (sauvegarde « écraser » facile)
+            texteNomPreset = noms.get(indexPreset);
+            rebuildWidgets();
+        }).bounds(x, y, 128, h)
+            .tooltip(net.minecraft.client.gui.components.Tooltip.create(Component.literal(
+                "Preset enregistré (clic = suivant, Maj+clic = précédent)")))
+            .build();
+        selecteur.active = aPresets;
+        addRenderableWidget(selecteur);
+
+        Button charger = Button.builder(Component.literal("Charger"), b -> {
+            if (aPresets) {
+                GestionnaireReseau.INSTANCE.sendToServer(new PaquetActionPresetSousMode3(
+                    PaquetActionPresetSousMode3.Action.CHARGER, noms.get(indexPreset), null));
+            }
+        }).bounds(x + 130, y, 64, h).build();
+        charger.active = aPresets;
+        addRenderableWidget(charger);
+
+        Button supprimer = Button.builder(Component.literal("Suppr"), b -> {
+            if (aPresets) {
+                GestionnaireReseau.INSTANCE.sendToServer(new PaquetActionPresetSousMode3(
+                    PaquetActionPresetSousMode3.Action.SUPPRIMER, noms.get(indexPreset), null));
+            }
+        }).bounds(x + 196, y, 52, h)
+            .tooltip(net.minecraft.client.gui.components.Tooltip.create(Component.literal(
+                "Supprimer le preset sélectionné")))
+            .build();
+        supprimer.active = aPresets;
+        addRenderableWidget(supprimer);
+
+        champNomPreset = new EditBox(this.font, x + 250, y, 74, h, Component.literal("Nom du preset"));
+        champNomPreset.setMaxLength(GestionnairePresetsSousMode3.LONGUEUR_MAX_NOM);
+        champNomPreset.setValue(texteNomPreset);
+        champNomPreset.setHint(Component.literal("nom…"));
+        champNomPreset.setResponder(t -> texteNomPreset = t);
+        addRenderableWidget(champNomPreset);
+
+        addRenderableWidget(Button.builder(Component.literal("Sauver"), b -> {
+            String nom = texteNomPreset == null ? "" : texteNomPreset.trim();
+            if (!GestionnairePresetsSousMode3.nomValide(nom)) {
+                if (this.minecraft.player != null) {
+                    this.minecraft.player.sendSystemMessage(Component.literal(
+                        "§cNom de preset invalide (lettres, chiffres, - et _)"));
+                }
+                return;
+            }
+            GestionnaireReseau.INSTANCE.sendToServer(new PaquetActionPresetSousMode3(
+                PaquetActionPresetSousMode3.Action.SAUVEGARDER, nom, config));
+        }).bounds(x + 326, y, 54, h)
+            .tooltip(net.minecraft.client.gui.components.Tooltip.create(Component.literal(
+                "Sauvegarder les réglages actuels sous ce nom")))
+            .build());
+    }
+
+    /** Applique un preset chargé (reçu du serveur) au formulaire et reconstruit l'écran. */
+    public void appliquerConfigChargee(ConfigPartieSousMode3 chargee) {
+        copier(chargee, config);
+        rebuildWidgets();
+    }
+
+    /** Rafraîchit la barre des presets après un changement de liste (serveur). */
+    public void rafraichirPresets() {
+        rebuildWidgets();
     }
 
     private void titre(int x, int[] y, String texte) {
