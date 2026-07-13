@@ -49,7 +49,7 @@ public class HUDZonesSousMode3 {
     private static final List<ZoneClient> ZONES = new ArrayList<>();
     private static boolean actif = false;
     private static String zoneCiblee = null; // Cible de la flèche (propre à chaque joueur, côté client)
-    /** Panneau affiché/masqué par le joueur (touche J, rebindable) — affiché par défaut,
+    /** Panneau affiché/masqué par le joueur (touche F, rebindable) — affiché par défaut,
      *  choix conservé pour la session client. La flèche de navigation n'est pas concernée. */
     private static boolean panneauAffiche = true;
 
@@ -215,10 +215,12 @@ public class HUDZonesSousMode3 {
     /** Format des compteurs d'une zone */
     public static String formaterCompteurs(ZoneClient zone) {
         // Avec la spécialisation (option de la config) : détail Bleu/Rouge en plus des
-        // bonbons non-visibles ; sans spécialisation, les compteurs typés restent à zéro
+        // bonbons non-visibles ; sans spécialisation, les compteurs typés restent à zéro.
+        // La COULEUR du nombre porte le type (bleu/rouge) — pas de libellé, pour garder
+        // les lignes courtes.
         if (zone.bonbonsBleus > 0 || zone.bonbonsRouges > 0) {
-            return "§9" + zone.bonbonsBleus + " bleu(s)§7, §c" + zone.bonbonsRouges
-                + " rouge(s)§7, §d" + zone.bonbonsNonVisibles + " invis.";
+            return "§9" + zone.bonbonsBleus + "§7, §c" + zone.bonbonsRouges
+                + "§7, §d" + zone.bonbonsNonVisibles + " invis.";
         }
         return "§e" + zone.bonbonsVisibles + " vis.§7, §d" + zone.bonbonsNonVisibles + " invis.";
     }

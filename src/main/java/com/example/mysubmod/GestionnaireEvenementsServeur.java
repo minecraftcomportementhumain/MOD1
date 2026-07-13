@@ -52,6 +52,19 @@ public class GestionnaireEvenementsServeur {
     }
 
     /**
+     * Bloquer l'échange main principale / main secondaire (touche F vanilla) : F est
+     * la bascule d'affichage du HUD des parcelles — sans ce blocage, chaque bascule
+     * ferait aussi passer l'objet tenu d'une main à l'autre. La main secondaire n'a
+     * aucun rôle dans les sous-modes du mod.
+     */
+    @SubscribeEvent
+    public static void onEchangeMains(net.minecraftforge.event.entity.living.LivingSwapItemsEvent.Hands event) {
+        if (event.getEntity() instanceof ServerPlayer) {
+            event.setCanceled(true);
+        }
+    }
+
+    /**
      * Désactiver les dégâts d'étouffement pour les joueurs : un bloc bonbon
      * non-visible qui réapparaît peut emmurer un joueur (il se libère en minant),
      * cela ne doit pas entraîner une mort vanilla hors du système de santé du mod.

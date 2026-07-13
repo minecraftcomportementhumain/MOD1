@@ -12,7 +12,7 @@ import org.lwjgl.glfw.GLFW;
 /**
  * Touche configurable qui affiche/masque le panneau du HUD des parcelles
  * ({@link com.example.mysubmod.sousmodes.sousmode3.client.HUDZonesSousMode3}).
- * Enregistrée dans Options › Commandes (catégorie du mod) ; touche J par défaut, rebindable.
+ * Enregistrée dans Options › Commandes (catégorie du mod) ; touche F par défaut, rebindable.
  * Le panneau est affiché par défaut ; la flèche de navigation (ciblée volontairement
  * via [N]) reste visible même panneau masqué.
  */
@@ -22,7 +22,7 @@ public class HUDClavier {
     public static final KeyMapping TOUCHE_BASCULE_HUD_PARCELLES = new KeyMapping(
         "key.mysubmod.bascule_hud_parcelles",
         InputConstants.Type.KEYSYM,
-        GLFW.GLFW_KEY_J,
+        GLFW.GLFW_KEY_F,
         "key.categories.mysubmod");
 
     private HUDClavier() {
