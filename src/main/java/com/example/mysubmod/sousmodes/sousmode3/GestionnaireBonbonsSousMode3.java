@@ -516,6 +516,20 @@ public class GestionnaireBonbonsSousMode3 {
     private void ajusterCompteursZoneVisible(DonneesZone zone,
                                              com.example.mysubmod.cartes.TypeBonbonCarte type, int delta) {
         zone.bonbonsVisibles = Math.max(0, zone.bonbonsVisibles + delta);
+        ajusterDetailTypes(zone, type, delta);
+    }
+
+    /** Ajuste les compteurs non-visibles d'une zone (total + détail Bleu/Rouge si les
+     *  types sont actifs) : les blocs bonbons typés comptent dans les totaux Bleu/Rouge
+     *  du HUD au même titre que les bonbons visibles. */
+    private void ajusterCompteursZoneNonVisible(DonneesZone zone,
+                                                com.example.mysubmod.cartes.TypeBonbonCarte type, int delta) {
+        zone.bonbonsNonVisibles = Math.max(0, zone.bonbonsNonVisibles + delta);
+        ajusterDetailTypes(zone, type, delta);
+    }
+
+    private void ajusterDetailTypes(DonneesZone zone,
+                                    com.example.mysubmod.cartes.TypeBonbonCarte type, int delta) {
         if (!bonbonsTypesActifs) {
             return;
         }
@@ -556,7 +570,9 @@ public class GestionnaireBonbonsSousMode3 {
             }
         }
 
-        // Recomposer le détail Bleu/Rouge des zones depuis les entités présentes
+        // Recomposer le détail Bleu/Rouge des zones : entités visibles présentes ET blocs
+        // bonbons non-visibles typés (les blocs comptent dans les totaux Bleu/Rouge du
+        // HUD au même titre que les bonbons visibles — ils sont déjà dans « invis. »)
         for (DonneesZone zone : zones) {
             zone.bonbonsBleus = 0;
             zone.bonbonsRouges = 0;
@@ -575,6 +591,20 @@ public class GestionnaireBonbonsSousMode3 {
                 zone.bonbonsBleus += quantite;
             } else if (info.type == com.example.mysubmod.cartes.TypeBonbonCarte.ROUGE) {
                 zone.bonbonsRouges += quantite;
+            }
+        }
+        for (InfoBonbonCache info : blocsBonbonsCaches.values()) {
+            if (info.zoneNom == null) {
+                continue;
+            }
+            DonneesZone zone = zonesParNom.get(info.zoneNom);
+            if (zone == null) {
+                continue;
+            }
+            if (info.type == com.example.mysubmod.cartes.TypeBonbonCarte.BLEU) {
+                zone.bonbonsBleus += info.quantite;
+            } else if (info.type == com.example.mysubmod.cartes.TypeBonbonCarte.ROUGE) {
+                zone.bonbonsRouges += info.quantite;
             }
         }
 
@@ -855,8 +885,7 @@ public class GestionnaireBonbonsSousMode3 {
 
         // Mise à jour du compteur de zone en temps réel
         if (info.zoneNom != null && zonesParNom.containsKey(info.zoneNom)) {
-            DonneesZone zone = zonesParNom.get(info.zoneNom);
-            zone.bonbonsNonVisibles = Math.max(0, zone.bonbonsNonVisibles - info.quantite);
+            ajusterCompteursZoneNonVisible(zonesParNom.get(info.zoneNom), info.type, -info.quantite);
             envoyerCompteursZones();
         }
 
@@ -893,7 +922,7 @@ public class GestionnaireBonbonsSousMode3 {
                 planifierExpirationBonbonCache(pos, place, place.expiration * 1000L);
             }
             if (info.zoneNom != null && zonesParNom.containsKey(info.zoneNom)) {
-                zonesParNom.get(info.zoneNom).bonbonsNonVisibles += info.quantite;
+                ajusterCompteursZoneNonVisible(zonesParNom.get(info.zoneNom), info.type, info.quantite);
                 envoyerCompteursZones();
             }
         });
@@ -919,8 +948,7 @@ public class GestionnaireBonbonsSousMode3 {
             blocsBonbonsCaches.remove(pos);
             niveau.setBlock(pos, net.minecraft.world.level.block.Blocks.AIR.defaultBlockState(), 3);
             if (info.zoneNom != null && zonesParNom.containsKey(info.zoneNom)) {
-                DonneesZone zone = zonesParNom.get(info.zoneNom);
-                zone.bonbonsNonVisibles = Math.max(0, zone.bonbonsNonVisibles - info.quantite);
+                ajusterCompteursZoneNonVisible(zonesParNom.get(info.zoneNom), info.type, -info.quantite);
                 envoyerCompteursZones();
             }
             // Relancer le cycle comme après un minage (la ressource « repousse ») ;

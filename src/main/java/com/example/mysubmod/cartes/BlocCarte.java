@@ -17,7 +17,7 @@ public class BlocCarte {
     public TypeBonbonCarte typeBonbonNonVisible = TypeBonbonCarte.STANDARD; // Standard / Bleu / Rouge (spécialisation Sous-mode 3)
     public int delaiApparitionInitiale = 0; // secondes après le début de partie, 0 = dès le début (bonbon visible)
     public int delaiApparitionInitialeNonVisible = 0; // idem pour le bloc bonbon non-visible
-    public int finApparitionVisible = 0; // secondes après le début de partie où le bonbon visible cesse d'apparaître/réapparaître, 0 = jamais
+    public int finApparitionVisible = 0; // secondes après le début de partie où le bonbon visible cesse d'apparaître/réapparaître, 0 = jamaisw
     public int finApparitionNonVisible = 0; // idem pour le bloc bonbon non-visible
     public int expirationVisible = 0; // secondes après son apparition où le bonbon visible non collecté disparaît, 0 = jamais
     public int expirationNonVisible = 0; // idem pour le bloc bonbon non-visible (non miné)
