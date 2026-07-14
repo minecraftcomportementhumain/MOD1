@@ -214,6 +214,7 @@ public class EnregistreurDonneesSousMode3 {
             enregistreur.write("noyade_mortelle," + config.noyadeMortelle + "\n");
             enregistreur.write("faim," + config.faim + "\n");
             enregistreur.write("pvp," + config.pvp + "\n");
+            enregistreur.write("chat_joueurs," + config.chatJoueurs + "\n");
             enregistreur.write("pluie," + config.pluie + "\n");
             enregistreur.write("classement_par_survie," + config.classementParSurvie + "\n");
             enregistreur.write("fin_au_dernier_survivant," + config.finAuDernierSurvivant + "\n");

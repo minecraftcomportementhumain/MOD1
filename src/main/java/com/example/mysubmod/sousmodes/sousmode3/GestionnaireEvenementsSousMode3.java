@@ -20,6 +20,7 @@ import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.entity.SignBlockEntity;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.phys.Vec3;
+import net.minecraftforge.event.ServerChatEvent;
 import net.minecraftforge.event.TickEvent;
 import net.minecraftforge.event.entity.EntityJoinLevelEvent;
 import net.minecraftforge.event.entity.living.LivingAttackEvent;
@@ -71,6 +72,32 @@ public class GestionnaireEvenementsSousMode3 {
             event.setCanceled(true);
             attaquant.sendSystemMessage(Component.literal("§cVous ne pouvez pas attaquer en sous-mode 3"));
         }
+    }
+
+    // ==================== Chat ====================
+
+    /**
+     * Applique l'option « Chat entre joueurs » du menu N : quand elle est décochée, les messages
+     * de chat des non-admins ne sont pas diffusés pendant la partie active (participants,
+     * spectateurs et joueurs en attente — les spectateurs pourraient sinon renseigner les
+     * vivants). L'admin garde toujours le chat pour s'adresser aux participants ; hors partie
+     * (phase d'attente, fin de partie), le chat reste libre.
+     */
+    @SubscribeEvent
+    public static void onChat(ServerChatEvent event) {
+        if (!estModeActif()) {
+            return;
+        }
+        GestionnaireSousMode3 gestionnaire = GestionnaireSousMode3.getInstance();
+        if (!gestionnaire.estPartieActive() || gestionnaire.obtenirConfig().chatJoueurs) {
+            return;
+        }
+        ServerPlayer joueur = event.getPlayer();
+        if (GestionnaireSousModes.getInstance().estAdmin(joueur)) {
+            return;
+        }
+        event.setCanceled(true);
+        joueur.sendSystemMessage(Component.literal("§cLe chat est désactivé dans cette partie"));
     }
 
     // ==================== Minage ====================

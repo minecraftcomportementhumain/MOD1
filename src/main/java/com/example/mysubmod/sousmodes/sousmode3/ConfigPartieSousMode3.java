@@ -67,6 +67,8 @@ public class ConfigPartieSousMode3 {
     public boolean faim = false;
     /** PvP entre joueurs. Défaut : non. */
     public boolean pvp = false;
+    /** Chat du serveur entre joueurs pendant la partie. Défaut historique : oui. */
+    public boolean chatJoueurs = true;
     /** Apparition de monstres hostiles. Défaut : non. */
     public boolean monstresHostiles = false;
     /** Pluie (sinon temps clair). Défaut : non. */
@@ -180,6 +182,7 @@ public class ConfigPartieSousMode3 {
         tampon.writeBoolean(noyadeMortelle);
         tampon.writeBoolean(faim);
         tampon.writeBoolean(pvp);
+        tampon.writeBoolean(chatJoueurs);
         tampon.writeBoolean(monstresHostiles);
         tampon.writeBoolean(pluie);
         // Groupe 5
@@ -224,6 +227,7 @@ public class ConfigPartieSousMode3 {
         c.noyadeMortelle = tampon.readBoolean();
         c.faim = tampon.readBoolean();
         c.pvp = tampon.readBoolean();
+        c.chatJoueurs = tampon.readBoolean();
         c.monstresHostiles = tampon.readBoolean();
         c.pluie = tampon.readBoolean();
         // Groupe 5

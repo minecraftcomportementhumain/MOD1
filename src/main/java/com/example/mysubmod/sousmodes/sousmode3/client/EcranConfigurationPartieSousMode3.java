@@ -138,6 +138,7 @@ public class EcranConfigurationPartieSousMode3 extends Screen {
         caseAcocher(xB, yb, "Noyade mortelle", config.noyadeMortelle, v -> config.noyadeMortelle = v);
         caseAcocher(xB, yb, "Faim", config.faim, v -> config.faim = v);
         caseAcocher(xB, yb, "PvP entre joueurs", config.pvp, v -> config.pvp = v);
+        caseAcocher(xB, yb, "Chat entre joueurs", config.chatJoueurs, v -> config.chatJoueurs = v);
         caseAcocher(xB, yb, "Pluie", config.pluie, v -> config.pluie = v);
 
         // ---- Colonne C : Mode, Interactions & fin de partie ----
@@ -408,6 +409,7 @@ public class EcranConfigurationPartieSousMode3 extends Screen {
         cible.noyadeMortelle = source.noyadeMortelle;
         cible.faim = source.faim;
         cible.pvp = source.pvp;
+        cible.chatJoueurs = source.chatJoueurs;
         cible.monstresHostiles = source.monstresHostiles;
         cible.pluie = source.pluie;
         cible.classementParSurvie = source.classementParSurvie;
