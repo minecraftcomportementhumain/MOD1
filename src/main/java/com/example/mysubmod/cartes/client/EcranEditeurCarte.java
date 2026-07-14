@@ -187,6 +187,9 @@ public class EcranEditeurCarte extends Screen {
     private boolean zonesRegistreModifie = false;
     /** Rangées cliquables du panneau Parcelles, reconstruites à chaque image : {y0, y1, id} */
     private final List<int[]> lignesZonesInspecteur = new ArrayList<>();
+    /** Index de la première parcelle affichée dans le panneau (défilement à la molette
+     *  quand la liste ne tient pas ; borné à chaque dessin selon la place disponible) */
+    private int defilementZones = 0;
     /** Comptes de cellules par parcelle (index 0 inutilisé), rafraîchis avec les stats */
     private int[] comptesZones = new int[1];
     /** Morceaux (composantes connexes) par parcelle — > 1 = parcelle coupée en deux,
@@ -718,6 +721,9 @@ public class EcranEditeurCarte extends Screen {
         zone.type = TypeElementCarte.ILE; // provisoire : redérivé des cellules à la sauvegarde
         carte.zones.add(zone);
         zoneActive = carte.zones.size();
+        // Montrer la nouvelle parcelle (en fin de liste) : défiler au maximum vers le bas,
+        // le dessin ramène l'index dans les bornes selon la place disponible
+        defilementZones = carte.zones.size();
         zonesRegistreModifie = true;
         surCarteModifiee();
         mettreAJourPanneauZones();
@@ -818,12 +824,16 @@ public class EcranEditeurCarte extends Screen {
             y += 11;
             guiGraphics.drawString(this.font, "§7peignez ses cellules.", x + 2, y, 0xFFFFFF);
         } else {
-            for (int i = 0; i < carte.zones.size(); i++) {
-                if (y + 11 > yLimite) {
-                    guiGraphics.drawString(this.font, "§8… " + (carte.zones.size() - i)
-                        + " autre(s)", x + 2, y, 0xFFFFFF);
-                    break;
-                }
+            // Défilement quand la liste ne tient pas : seule la tranche
+            // [defilementZones, defilementZones + visibles) est affichée, une rangée
+            // étant réservée à l'indicateur « x–y / n (molette) »
+            int total = carte.zones.size();
+            int lignesMax = Math.max(1, (yLimite - y) / 11);
+            boolean deborde = total > lignesMax;
+            int visibles = deborde ? Math.max(1, lignesMax - 1) : total;
+            defilementZones = deborde ? Math.max(0, Math.min(defilementZones, total - visibles)) : 0;
+
+            for (int i = defilementZones; i < defilementZones + visibles && i < total; i++) {
                 int id = i + 1;
                 guiGraphics.fill(x + 2, y, x + 9, y + 7, couleurZone(id));
                 int compte = id < comptesZones.length ? comptesZones[id] : 0;
@@ -844,6 +854,12 @@ public class EcranEditeurCarte extends Screen {
                 guiGraphics.drawString(this.font, texte, x + 12, y, 0xFFFFFF);
                 lignesZonesInspecteur.add(new int[]{y - 1, y + 10, id});
                 y += 11;
+            }
+
+            if (deborde) {
+                guiGraphics.drawString(this.font, "§8" + (defilementZones + 1) + "–"
+                    + Math.min(defilementZones + visibles, total) + " / " + total
+                    + " §7(molette)", x + 2, y, 0xFFFFFF);
             }
         }
 
@@ -2681,6 +2697,14 @@ public class EcranEditeurCarte extends Screen {
         // Maj+molette : taille du pinceau (outils terrain et bonbons)
         if (hasShiftDown() && estOutilBrosse()) {
             ajusterTailleBrosse(delta > 0 ? 2 : -2);
+            return true;
+        }
+
+        // Molette sur le panneau Parcelles : défilement de la liste (borne haute
+        // appliquée au dessin, selon la place disponible)
+        if (outilActif == OutilPalette.ZONE && sourisX >= this.width - largeurPanneauDroit
+            && sourisY >= hautGrille && sourisY < basGrille()) {
+            defilementZones = Math.max(0, defilementZones - 3 * (int) Math.signum(delta));
             return true;
         }
 
