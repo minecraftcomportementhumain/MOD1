@@ -215,6 +215,7 @@ public class EnregistreurDonneesSousMode3 {
             enregistreur.write("faim," + config.faim + "\n");
             enregistreur.write("pvp," + config.pvp + "\n");
             enregistreur.write("chat_joueurs," + config.chatJoueurs + "\n");
+            enregistreur.write("monstres_hostiles," + config.monstresHostiles + "\n");
             enregistreur.write("pluie," + config.pluie + "\n");
             enregistreur.write("classement_par_survie," + config.classementParSurvie + "\n");
             enregistreur.write("fin_au_dernier_survivant," + config.finAuDernierSurvivant + "\n");
@@ -224,6 +225,7 @@ public class EnregistreurDonneesSousMode3 {
             enregistreur.write("drop_objet," + config.dropObjet + "\n");
             enregistreur.write("drop_inventaire_mort," + config.dropInventaireMort + "\n");
             enregistreur.write("manger_depasse_max," + config.mangerDepasseMax + "\n");
+            enregistreur.write(String.format(Locale.US, "temps_minage_secondes,%.1f%n", config.tempsMinageSecondes));
         } catch (IOException e) {
             MonSubMod.JOURNALISEUR.error("Erreur lors de l'écriture de la config de partie", e);
         }
