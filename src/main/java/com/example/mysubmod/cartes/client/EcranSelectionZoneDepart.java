@@ -27,6 +27,13 @@ public class EcranSelectionZoneDepart extends Screen {
     private int tempsRestant;
     private int compteurTicks = 0;
 
+    // Pagination quand la liste ne tient pas à l'écran : seule la tranche
+    // [decalage, decalage + lignesVisibles) est affichée (boutons ▲/▼ et molette)
+    private int decalage = 0;
+    private int lignesVisibles;
+    private boolean pagine;
+    private int yPagination;
+
     public EcranSelectionZoneDepart(List<String> zones, List<Integer> tailles, int tempsInitial) {
         super(Component.literal("Sélection de la parcelle de départ"));
         this.zones = zones;
@@ -39,9 +46,20 @@ public class EcranSelectionZoneDepart extends Screen {
         super.init();
 
         int centreX = this.width / 2;
-        int debutY = Math.max(55, this.height / 2 - (zones.size() * ESPACEMENT_BOUTON) / 2);
+        int hautListe = 55;
+        int basListe = this.height - 8;
 
-        for (int i = 0; i < zones.size(); i++) {
+        // Si toutes les parcelles ne tiennent pas entre le titre et le bas de l'écran,
+        // une rangée est réservée aux boutons ▲/▼ et la liste est paginée.
+        int capacite = Math.max(1, (basListe - hautListe) / ESPACEMENT_BOUTON);
+        pagine = zones.size() > capacite;
+        lignesVisibles = pagine ? Math.max(1, capacite - 1) : zones.size();
+        decalage = pagine ? Math.min(Math.max(0, decalage), zones.size() - lignesVisibles) : 0;
+
+        int debutY = pagine ? hautListe
+            : Math.max(hautListe, this.height / 2 - (zones.size() * ESPACEMENT_BOUTON) / 2);
+
+        for (int i = decalage; i < decalage + lignesVisibles && i < zones.size(); i++) {
             final String nomZone = zones.get(i);
             int taille = (tailles != null && i < tailles.size()) ? tailles.get(i) : -1;
             // Le libellé peut inclure la taille de l'île ; le serveur ne reçoit que le nom brut
@@ -52,6 +70,37 @@ public class EcranSelectionZoneDepart extends Screen {
             ).bounds(centreX - LARGEUR_BOUTON / 2, debutY, LARGEUR_BOUTON, HAUTEUR_BOUTON).build());
             debutY += ESPACEMENT_BOUTON;
         }
+
+        if (pagine) {
+            yPagination = debutY;
+            Button haut = Button.builder(Component.literal("▲"), b -> {
+                decalage = Math.max(0, decalage - lignesVisibles);
+                rebuildWidgets();
+            }).bounds(centreX - LARGEUR_BOUTON / 2, debutY, 40, HAUTEUR_BOUTON).build();
+            haut.active = decalage > 0;
+            addRenderableWidget(haut);
+
+            Button bas = Button.builder(Component.literal("▼"), b -> {
+                decalage = Math.min(zones.size() - lignesVisibles, decalage + lignesVisibles);
+                rebuildWidgets();
+            }).bounds(centreX + LARGEUR_BOUTON / 2 - 40, debutY, 40, HAUTEUR_BOUTON).build();
+            bas.active = decalage + lignesVisibles < zones.size();
+            addRenderableWidget(bas);
+        }
+    }
+
+    @Override
+    public boolean mouseScrolled(double sourisX, double sourisY, double delta) {
+        if (pagine) {
+            int max = zones.size() - lignesVisibles;
+            int nouveau = Math.max(0, Math.min(max, decalage - (int) Math.signum(delta)));
+            if (nouveau != decalage) {
+                decalage = nouveau;
+                rebuildWidgets();
+            }
+            return true;
+        }
+        return super.mouseScrolled(sourisX, sourisY, delta);
     }
 
     private void selectionnerZone(String nomZone) {
@@ -88,6 +137,13 @@ public class EcranSelectionZoneDepart extends Screen {
 
         guiGraphics.drawCenteredString(this.font,
             Component.literal("Choisissez votre parcelle de départ"), centreX, 40, 0xAAAAAA);
+
+        if (pagine) {
+            guiGraphics.drawCenteredString(this.font, Component.literal(
+                (decalage + 1) + "–" + Math.min(decalage + lignesVisibles, zones.size())
+                    + " / " + zones.size()),
+                centreX, yPagination + 6, 0xAAAAAA);
+        }
 
         super.render(guiGraphics, sourisX, sourisY, tickPartiel);
     }
