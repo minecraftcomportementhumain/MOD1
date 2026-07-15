@@ -398,6 +398,7 @@ public class GestionnaireBonbonsSousMode3 {
         // au rechargement, sans confondre un bonbon lâché par un joueur ni une entité
         // qui a dérivé sur une cellule voisine.
         entite.getPersistentData().putLong(TAG_CELLULE_ORIGINE, cle);
+        GestionnaireSousMode3.getInstance().estampillerObjetSession(entite);
         niveau.addFreshEntity(entite);
 
         entitesBonbonsVisibles.put(entite, cle);
@@ -880,6 +881,7 @@ public class GestionnaireBonbonsSousMode3 {
                 pile);
             entite.setPickUpDelay(10);
             entite.setUnlimitedLifetime();
+            GestionnaireSousMode3.getInstance().estampillerObjetSession(entite);
             niveau.addFreshEntity(entite);
         }
 
