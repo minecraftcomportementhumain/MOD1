@@ -14,9 +14,9 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * HUD des zones du Sous-mode 3 : liste toutes les zones de la carte contenant
- * au moins un bonbon, avec les compteurs de bonbons visibles / non-visibles
- * restants, et affiche la flèche de navigation vers la zone sélectionnée.
+ * HUD des zones du Sous-mode 3 : liste toutes les parcelles de la carte avec les
+ * compteurs de bonbons visibles / non-visibles restants (une parcelle vidée reste
+ * listée et ciblable), et affiche la flèche de navigation vers la zone sélectionnée.
  */
 @OnlyIn(Dist.CLIENT)
 public class HUDZonesSousMode3 {
@@ -231,10 +231,13 @@ public class HUDZonesSousMode3 {
 
     /**
      * Flèche dynamique pointant vers le barycentre des bonbons restants de la zone
-     * sélectionnée (le point suit les ramassages et réapparitions). Visible en
-     * permanence, tourne selon la position et l'orientation du joueur. Se désactive
-     * automatiquement à l'approche du point visé — et non plus à l'entrée de la zone,
-     * qui laissait le joueur sans repère sur une grande île.
+     * sélectionnée (le point suit les ramassages et réapparitions) — ou, si la parcelle
+     * est vide, vers son centre géométrique (repli envoyé par le serveur : la cibler
+     * reste utile, par exemple pour s'y rendre en attendant les réapparitions). Visible
+     * en permanence, tourne selon la position et l'orientation du joueur. Se désactive
+     * automatiquement à l'« arrivée » : à l'approche du point visé quand la parcelle est
+     * garnie — et non à l'entrée de la zone, qui laissait le joueur sans repère sur une
+     * grande île — ou à l'entrée dans la parcelle quand elle est vide.
      */
     private static void afficherFleche(GuiGraphics guiGraphics, int largeurEcran, int hauteurEcran) {
         String cible = zoneCiblee;
@@ -247,21 +250,23 @@ public class HUDZonesSousMode3 {
             return;
         }
 
-        // Parcelle vidée de ses bonbons : plus rien à viser, la flèche disparaît
-        if (zone.bonbonsVisibles <= 0 && zone.bonbonsNonVisibles <= 0
-            && zone.bonbonsBleus <= 0 && zone.bonbonsRouges <= 0) {
-            zoneCiblee = null;
-            return;
-        }
+        // Parcelle vide : la flèche reste active et vise le centre géométrique (repli
+        // du serveur) — seul le critère d'arrivée change ci-dessous
+        boolean parcelleVide = zone.bonbonsVisibles <= 0 && zone.bonbonsNonVisibles <= 0
+            && zone.bonbonsBleus <= 0 && zone.bonbonsRouges <= 0;
 
         double dx = zone.centreX - mc.player.getX();
         double dz = zone.centreZ - mc.player.getZ();
 
-        // Désactivation automatique à l'approche du point visé — seulement quand la
-        // parcelle contient encore des bonbons (le point est alors leur barycentre, donc
-        // pertinent). Vide, le point retombe sur le centre géométrique : ne pas s'éteindre
-        // dessus, on l'a déjà écarté ci-dessus.
-        if (Math.sqrt(dx * dx + dz * dz) <= RAYON_ARRIVEE) {
+        // Extinction automatique à l'« arrivée ». Parcelle garnie : à l'approche du
+        // barycentre des bonbons restants (le point est pertinent). Parcelle vide : à
+        // l'entrée dans la parcelle — son centre géométrique peut être loin de la
+        // frontière, s'éteindre à 15 blocs de lui lâcherait le joueur en plein milieu ;
+        // et vider soi-même la parcelle depuis l'intérieur éteint la flèche aussitôt,
+        // comme avant ce correctif.
+        if (parcelleVide
+            ? zone.contientPosition(mc.player.getX(), mc.player.getZ())
+            : Math.sqrt(dx * dx + dz * dz) <= RAYON_ARRIVEE) {
             zoneCiblee = null;
             return;
         }

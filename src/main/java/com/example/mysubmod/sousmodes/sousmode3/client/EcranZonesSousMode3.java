@@ -10,9 +10,10 @@ import net.minecraftforge.api.distmarker.OnlyIn;
 import java.util.List;
 
 /**
- * Écran de sélection de zone du HUD (Sous-mode 3) : cliquer sur une zone active
- * la flèche de navigation pointant vers son centre géométrique. Cliquer sur une
- * autre zone redirige immédiatement la flèche.
+ * Écran de sélection de zone du HUD (Sous-mode 3) : cliquer sur une parcelle active
+ * la flèche de navigation — vers le barycentre de ses bonbons restants, ou vers son
+ * centre géométrique si elle est vide. Cliquer sur une autre zone redirige
+ * immédiatement la flèche.
  */
 @OnlyIn(Dist.CLIENT)
 public class EcranZonesSousMode3 extends Screen {

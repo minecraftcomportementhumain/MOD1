@@ -234,8 +234,8 @@ public class EcranGuide extends Screen {
             + "le panneau des parcelles et leurs bonbons restants — visibles et non-visibles, ou "
             + "comptes §9bleu§r/§crouge§r si la carte est typée. Appuyez sur §e[N]§r et choisissez "
             + "une parcelle : la flèche pointe vers le centre de ses bonbons restants (recalculé à "
-            + "chaque ramassage et réapparition) et disparaît à 15 blocs du but ou quand la parcelle "
-            + "est vide.");
+            + "chaque ramassage et réapparition) et disparaît à 15 blocs du but. Une parcelle vide "
+            + "reste ciblable : la flèche vise alors son centre et s'éteint quand vous y entrez.");
         para(l, "§7La touche §e[F]§7 masque ou réaffiche le panneau ; la flèche, elle, reste visible.");
 
         titre(l, "6. Mort, fin et classement");
