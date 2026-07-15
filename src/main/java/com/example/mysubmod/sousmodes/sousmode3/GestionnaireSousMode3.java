@@ -123,6 +123,19 @@ public class GestionnaireSousMode3 {
     private final Set<net.minecraft.world.entity.item.ItemEntity> objetsAuSolAutorises =
         ConcurrentHashMap.newKeySet();
 
+    /**
+     * Marqueur NBT persistant : identifiant de la session de carte qui a créé un objet au
+     * sol (bonbon visible, drop de bloc miné, objet jeté/déposé). Les balayages de la
+     * désactivation ne voient que les chunks chargés : un objet dont le chunk s'est
+     * déchargé (joueurs regroupés sur la plateforme à la fin de partie) est sauvé sur
+     * disque et leur échappe. Grâce à ce marqueur, le filtre d'apparition supprime tout
+     * objet d'une session révolue à l'instant où son chunk recharge.
+     */
+    public static final String TAG_SESSION_CARTE = MonSubMod.MOD_ID + "_session_carte";
+
+    /** Identifiant de la session de carte en cours (0 = aucune) — voir {@link #TAG_SESSION_CARTE}. */
+    private volatile long idSessionCarte = 0;
+
     private final BlockPos plateformeSpectateur = new BlockPos(0, 150, 0);
 
     private GestionnaireSousMode3() {
@@ -259,6 +272,11 @@ public class GestionnaireSousMode3 {
         if (monde == null) {
             return;
         }
+
+        // Nouvelle session de carte : tous les objets au sol créés porteront cet
+        // identifiant, et tout objet d'une session antérieure qui recharge après coup
+        // est supprimé par le filtre d'apparition (voir TAG_SESSION_CARTE)
+        idSessionCarte = System.currentTimeMillis();
 
         // Nettoyer les bonbons résiduels
         try {
@@ -659,6 +677,7 @@ public class GestionnaireSousMode3 {
             generationEnCours = false;
             carte = null;
             generation = null;
+            idSessionCarte = 0;
             heureDebutPartie = 0;
             enregistreurDonnees = null;
             joueursVivants.clear();
@@ -1829,8 +1848,25 @@ public class GestionnaireSousMode3 {
 
     // ==================== Objets au sol autorisés (jet + inventaire à la mort) ====================
 
+    /** Identifiant de la session de carte en cours (0 = aucune). */
+    public long obtenirIdSessionCarte() {
+        return idSessionCarte;
+    }
+
+    /**
+     * Estampille un objet au sol avec l'identifiant de la session en cours (NBT persistant,
+     * survit au déchargement du chunk). À appeler AVANT l'ajout au monde : le filtre
+     * d'apparition lit le marqueur au moment du join. Sans effet hors session.
+     */
+    public void estampillerObjetSession(net.minecraft.world.entity.item.ItemEntity entite) {
+        if (idSessionCarte != 0) {
+            entite.getPersistentData().putLong(TAG_SESSION_CARTE, idSessionCarte);
+        }
+    }
+
     /** Autorise cet objet au sol dans l'aire de la carte (jeté ou déposé à la mort) */
     public void suivreObjetAuSol(net.minecraft.world.entity.item.ItemEntity entite) {
+        estampillerObjetSession(entite);
         objetsAuSolAutorises.add(entite);
     }
 

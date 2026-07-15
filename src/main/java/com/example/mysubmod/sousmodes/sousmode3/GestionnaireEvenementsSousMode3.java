@@ -736,6 +736,24 @@ public class GestionnaireEvenementsSousMode3 {
         if (event.getLevel().isClientSide()) {
             return;
         }
+
+        // Tueur de résidus — AVANT la garde de mode, pour agir aussi en salle d'attente :
+        // un objet créé par une session de carte antérieure (bonbon, objet jeté/déposé)
+        // dont le chunk était déchargé au moment des balayages de la désactivation revient
+        // du disque au prochain chargement ; il est supprimé ici, quel que soit le moment.
+        // Un bonbon sans estampille hors session (posé avant ce correctif, ou /give perdu)
+        // est traité de la même façon.
+        if (event.getEntity() instanceof ItemEntity objetCharge) {
+            long sessionObjet = objetCharge.getPersistentData().getLong(GestionnaireSousMode3.TAG_SESSION_CARTE);
+            long sessionCourante = GestionnaireSousMode3.getInstance().obtenirIdSessionCarte();
+            boolean estBonbon = GestionnaireBonbonsSousMode3.estObjetBonbon(objetCharge.getItem());
+            if ((sessionObjet != 0 && sessionObjet != sessionCourante)
+                || (estBonbon && sessionObjet == 0 && sessionCourante == 0)) {
+                event.setCanceled(true);
+                return;
+            }
+        }
+
         if (!estModeActif()) {
             return;
         }

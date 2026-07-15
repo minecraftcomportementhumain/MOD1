@@ -69,6 +69,8 @@ public class EffaceurCarteSousMode3 {
     // du balayage, et l'effacer ferait tomber les joueurs dans le vide
     private static int[] exclusionSalleAttente;
     private static long blocsEffaces;
+    /** Objets résiduels (bonbons, objets estampillés d'une session) retirés au passage */
+    private static long objetsResiduelsRetires;
     private static int chunksChargesReference = -1;
     private static int ticksEnPause;
     /** Ticks consécutifs passés à attendre le chargement du même chunk (anti-blocage) */
@@ -189,6 +191,7 @@ public class EffaceurCarteSousMode3 {
         origineX = origX;
         origineZ = origZ;
         blocsEffaces = 0;
+        objetsResiduelsRetires = 0;
         chunksChargesReference = -1;
         ticksEnPause = 0;
         ticksBloque = 0;
@@ -264,6 +267,7 @@ public class EffaceurCarteSousMode3 {
                 blocsEffaces += GenerateurCarteSousMode3.essuyerBandeChunk(
                     niveau, niveau.getChunk(pos.x, pos.z), cellulesInterieur, origineX, origineZ,
                     exclusionSalleAttente);
+                purgerObjetsResiduels(pos);
                 libererTicket(i);
                 marquerTraite(i);
                 chunksCeTick++;
@@ -313,6 +317,28 @@ public class EffaceurCarteSousMode3 {
         return -1;
     }
 
+    /**
+     * Retire du chunk balayé les objets résiduels de la session terminée : bonbons et
+     * objets estampillés (jetés/déposés). Les balayages synchrones de la désactivation ne
+     * voient que les chunks alors chargés — un objet d'un chunk déchargé (joueurs regroupés
+     * sur la plateforme en fin de partie) a été sauvé sur disque et ne réapparaîtrait qu'au
+     * prochain chargement. L'effaceur repasse justement sur chaque chunk écrit : purge au
+     * passage. Les entités ne sont interrogeables que si leur section est déjà chargée ;
+     * pour les autres, le tueur de résidus du filtre d'apparition reste le filet.
+     */
+    private static void purgerObjetsResiduels(ChunkPos pos) {
+        net.minecraft.world.phys.AABB boite = new net.minecraft.world.phys.AABB(
+            pos.getMinBlockX(), GenerateurCarteSousMode3.Y_PLANCHER_BARRIER - 2, pos.getMinBlockZ(),
+            pos.getMaxBlockX() + 1, GenerateurCarteSousMode3.Y_PLAFOND_BARRIER + 3, pos.getMaxBlockZ() + 1);
+        for (net.minecraft.world.entity.item.ItemEntity objet : niveau.getEntitiesOfClass(
+                net.minecraft.world.entity.item.ItemEntity.class, boite,
+                o -> GestionnaireBonbonsSousMode3.estObjetBonbon(o.getItem())
+                    || o.getPersistentData().contains(GestionnaireSousMode3.TAG_SESSION_CARTE))) {
+            objet.discard();
+            objetsResiduelsRetires++;
+        }
+    }
+
     /** Marque un chunk traité et avance le préfixe (borne basse de la fenêtre). */
     private static void marquerTraite(int i) {
         traites.set(i);
@@ -329,8 +355,8 @@ public class EffaceurCarteSousMode3 {
             ChunkPos pos = cibles.get(i);
             niveau.getChunkSource().removeRegionTicket(TicketType.FORCED, pos, DISTANCE_TICKET, pos);
         }
-        MonSubMod.JOURNALISEUR.info("Carte Sous-mode 3 effacée : {} blocs supprimés ({} chunks balayés)",
-            blocsEffaces, nbTraites);
+        MonSubMod.JOURNALISEUR.info("Carte Sous-mode 3 effacée : {} blocs supprimés ({} chunks balayés, "
+            + "{} objets résiduels retirés)", blocsEffaces, nbTraites, objetsResiduelsRetires);
         GenerateurCarteSousMode3.supprimerFichierRegion();
         envoyerProgression(100, false); // 100 % puis barre masquée
 
