@@ -14,8 +14,9 @@ import java.util.function.Consumer;
 
 /**
  * Guide du jeu en jeu : écran à onglets (Aperçu / Joueur / Administrateur / Référence)
- * avec contenu défilable. Accessible à tous via la touche Guide (Options › Commandes)
- * ou le bouton « Guide » du menu de contrôle. Purement client, informatif.
+ * avec contenu défilable. Accessible à tous via la touche Guide (H par défaut,
+ * Options › Commandes) ; les admins l'ouvrent aussi par le bouton « 📖 Guide du jeu »
+ * du menu de contrôle. Purement client, informatif.
  */
 @OnlyIn(Dist.CLIENT)
 public class EcranGuide extends Screen {
@@ -102,7 +103,7 @@ public class EcranGuide extends Screen {
         // Titre + sous-titre
         guiGraphics.drawCenteredString(this.font, "§lGuide du jeu", this.width / 2, 14, 0xFFFFFF);
         guiGraphics.drawCenteredString(this.font,
-            "§7Touche « Guide » (Options › Commandes) ou bouton Guide du menu M",
+            "§7Touche « Guide » (H, Options › Commandes) — admins : aussi via le menu M",
             this.width / 2, 26, 0xAAAAAA);
 
         // Cadre de la zone de contenu
@@ -181,10 +182,12 @@ public class EcranGuide extends Screen {
             + "Pour tenir, mangez des bonbons — certains au sol, d'autres cachés dans les blocs.");
 
         titre(l, "Les touches essentielles");
-        puce(l, "§e[M]§r — menu de contrôle : mode, cartes, journaux (surtout pour les admins).");
-        puce(l, "§e[N]§r — avant la partie (admin) : régler et lancer ; pendant la partie (joueur) : viser une parcelle.");
+        puce(l, "§e[M]§r — menu de contrôle (admins uniquement) : mode, cartes, journaux, guide.");
+        puce(l, "§e[N]§r — en Sous-mode 3 : avant la partie (admin), régler et lancer ; pendant la partie (joueur), viser une parcelle.");
         puce(l, "§e[F]§r — afficher/masquer le panneau des parcelles (la flèche de navigation reste visible).");
-        puce(l, "§e[Guide]§r — ouvre ce guide à tout moment (H par défaut, voir Options › Commandes).");
+        puce(l, "§e[Guide]§r — ouvre ce guide à tout moment (H par défaut).");
+        para(l, "§7[M] et [N] sont fixes ; [F] et [Guide] se règlent dans Options › Commandes, "
+            + "catégorie « Survie aux bonbons ».");
 
         titre(l, "Deux rôles");
         puce(l, "§aJoueur§r — vous participez à la partie que l'admin lance. Onglet §eJoueur§r.");
@@ -197,42 +200,57 @@ public class EcranGuide extends Screen {
 
         titre(l, "1. Se connecter");
         para(l, "Un compte libre entre directement. Un compte protégé ou admin voit d'abord un écran "
-            + "de mot de passe. Si le serveur est plein, un joueur libre peut être déconnecté pour laisser "
-            + "la place à un compte protégé ; les comptes très demandés passent par une file d'attente.");
+            + "de mot de passe : 3 essais et 60 secondes, sinon expulsion (les échecs répétés bloquent "
+            + "temporairement l'adresse). Si le serveur est plein, un joueur libre (au hasard) est "
+            + "déconnecté pour laisser la place à un compte protégé. Si quelqu'un se connecte déjà "
+            + "avec votre compte, le bon mot de passe vous met en file d'attente : vous êtes "
+            + "déconnecté et avez 45 secondes pour revenir prendre la place.");
 
-        titre(l, "2. Patienter sur la plateforme");
-        para(l, "Avant le lancement, tout le monde attend sur une plateforme de verre en hauteur ; la carte "
-            + "se construit en dessous (barre de progression). Votre inventaire est mis de côté et rendu à la fin. "
-            + "Un panneau permet de passer en simple spectateur.");
+        titre(l, "2. Patienter : salle d'attente, puis plateforme");
+        para(l, "Entre les parties, tout le monde attend sur une plateforme de pierre — impossible "
+            + "d'y construire, combattre ou mourir. Votre inventaire est mis de côté et rendu à la "
+            + "sortie du mode. Au lancement du Sous-mode 3, vous êtes déplacé sur une plateforme de "
+            + "verre en hauteur ; la carte se construit en dessous (barre de progression). Un joueur "
+            + "qui se connecte pendant une partie devient spectateur.");
 
         titre(l, "3. Le début de la partie");
-        para(l, "Un décompte de 10 secondes précède la téléportation dans la cage — ou, si l'option est active, "
-            + "une phase de §echoix de l'île de départ§r (30 s, la taille de chaque île est indiquée).");
+        para(l, "Un décompte (10 s par défaut) précède la téléportation dans la cage — ou, si l'option "
+            + "est active, une phase de §echoix de la parcelle de départ§r : 30 s pour cliquer une "
+            + "parcelle (sa taille en blocs est indiquée ; plusieurs joueurs peuvent choisir la "
+            + "même ; sans choix, elle est attribuée au hasard).");
 
         titre(l, "4. Survivre : santé et bonbons");
         para(l, "Votre santé baisse seule (par défaut un demi-cœur toutes les 10 secondes). "
-            + "Mangez un bonbon (§eclic droit§r) pour récupérer un cœur.");
+            + "Mangez un bonbon (§eclic droit§r) pour récupérer de la vie — 1 cœur par défaut ; à vie "
+            + "pleine, manger est bloqué sauf option contraire. À 1 cœur ou moins, un avertissement "
+            + "§c« Santé critique »§r s'affiche.");
         puce(l, "§eBonbons visibles§r — au sol : passez dessus pour les ramasser, puis mangez-les.");
         puce(l, "§eBonbons non-visibles§r — cachés dans des blocs : minez le bloc pour les faire tomber.");
-        para(l, "§7Vous pouvez replacer les blocs minés. Selon la carte, les bonbons peuvent réapparaître.");
+        para(l, "§7Vous pouvez replacer les blocs minés (dans la cage uniquement). Selon la carte, les "
+            + "bonbons peuvent réapparaître après ramassage, apparaître en cours de partie ou expirer.");
 
-        titre(l, "5. Se repérer : parcelles et flèche");
-        para(l, "Le panneau en haut à droite liste les parcelles de la carte et leurs bonbons restants. "
-            + "Appuyez sur §e[N]§r et choisissez une parcelle : la flèche pointe vers ses bonbons "
-            + "restants (le point visé suit les ramassages et réapparitions) et disparaît à une "
-            + "quinzaine de blocs du but.");
-        para(l, "§7La touche §e[F]§7 masque ou réaffiche le panneau (rebindable dans Options › Commandes) ; "
-            + "la flèche, elle, reste visible.");
+        titre(l, "5. Se repérer : minuterie, parcelles et flèche");
+        para(l, "En haut à droite : le temps restant (fond orange sous 60 s, rouge sous 30 s), puis "
+            + "le panneau des parcelles et leurs bonbons restants — visibles et non-visibles, ou "
+            + "comptes §9bleu§r/§crouge§r si la carte est typée. Appuyez sur §e[N]§r et choisissez "
+            + "une parcelle : la flèche pointe vers le centre de ses bonbons restants (recalculé à "
+            + "chaque ramassage et réapparition) et disparaît à 15 blocs du but ou quand la parcelle "
+            + "est vide.");
+        para(l, "§7La touche §e[F]§7 masque ou réaffiche le panneau ; la flèche, elle, reste visible.");
 
         titre(l, "6. Mort, fin et classement");
-        para(l, "À 0 cœur, vous passez spectateur (mort définitive, sauf si la réapparition est activée). "
-            + "La noyade est mortelle par défaut. La partie finit au temps écoulé, quand tout le monde est "
-            + "éliminé, ou au dernier survivant. Un classement s'affiche, puis retour en salle d'attente.");
+        para(l, "À 0 cœur, vous êtes éliminé — définitivement, sauf si la réapparition est activée — "
+            + "et rejoignez la plateforme au-dessus de la cage ; cliquez sur la pancarte pour passer "
+            + "en spectateur volant. La noyade tue instantanément par défaut. La partie finit au "
+            + "temps écoulé, quand tout le monde est éliminé ou, si l'option est active, au dernier "
+            + "survivant. Le classement s'affiche dans le chat (survivants d'abord), puis retour en "
+            + "salle d'attente 5 secondes plus tard — votre inventaire d'avant-partie est restauré.");
 
         titre(l, "Les règles changent selon la config");
-        para(l, "L'admin règle chaque partie : §ePvP§r, §espécialisation Bleu/Rouge§r (le 1er bonbon coloré fixe "
-            + "votre camp ; en changer inflige une pénalité de soin), §eréapparition§r, §edrop à la mort§r, "
-            + "§emonstres§r, §efaim§r, §edégâts de chute§r… Les messages en jeu vous préviennent.");
+        para(l, "L'admin règle chaque partie : §ePvP§r, §espécialisation Bleu/Rouge§r (le 1er bonbon "
+            + "coloré fixe votre camp ; en changer réduit vos soins à 75 % pendant 2 min 45 — "
+            + "minuterie en haut à gauche), §eréapparition§r, §edrop à la mort§r, §echat§r, "
+            + "§efaim§r, §edégâts de chute§r, §etemps de minage§r… Les messages en jeu vous préviennent.");
     }
 
     private void construireAdmin(List<Segment> l) {
@@ -241,83 +259,105 @@ public class EcranGuide extends Screen {
 
         titre(l, "S'authentifier");
         para(l, "Connectez-vous avec votre compte admin : l'écran de mot de passe apparaît à la connexion. "
-            + "Gestion des comptes via §e/submode admin …§r et §e/submode player …§r.");
+            + "Gestion des comptes via §e/submode admin …§r et §e/submode player …§r (onglet "
+            + "§eRéférence§r ; « admin add/remove » demande d'être opérateur).");
 
         titre(l, "Menu de contrôle — [M]");
-        para(l, "Affiche le mode actuel, le nombre de joueurs et la carte active. Boutons :");
+        para(l, "Réservé aux admins. Affiche le mode actuel, les joueurs connectés et la carte active. Boutons :");
         puce(l, "§eSalle d'attente§r — y ramène tout le monde.");
-        puce(l, "§eSous-mode 3§r §7(+📊)§r — lance le mode (carte requise) ; 📊 = journaux.");
-        puce(l, "§eCartes et parcelles§r — sélectionner la carte active, ou ouvrir l'éditeur.");
+        puce(l, "§eSous-mode 3§r — lance le mode (carte requise) · §e📊§r — journaux · §e📖§r — ce guide.");
+        puce(l, "§eCartes et parcelles§r — liste des cartes (sélectionner, supprimer, désélectionner) ou éditeur.");
         para(l, "§7Pendant la génération d'une carte ou le nettoyage de la précédente (barre de "
             + "progression à l'écran), tout changement de mode est refusé — réessayez quand la "
             + "barre a disparu.");
 
         titre(l, "Créer une carte (éditeur)");
-        para(l, "Vous dessinez sur une grille. Palette : §eEau, Île, Pierre, Limite§r (mur, en boucle fermée), "
+        para(l, "Un seul admin à la fois dans l'éditeur. Vous dessinez sur une grille (redimensionnable, "
+            + "jusqu'à 1800×1800). Palette : §eEau, Île, Pierre, Limite§r (mur, en boucle fermée), "
             + "§eParcelle§r, §eBonbon visible, Bonbon non-visible, Apparition§r.");
         puce(l, "§eClic gauche§r peint / ajoute · §eClic droit§r retire / décrémente.");
         puce(l, "§ePinceau§r (rangée §e− / + §rde la palette, ou §eMaj+molette§r) : agrandit l'aire "
-            + "d'application des outils Eau, Île, Pierre et Bonbons, de 1×1 à 15×15 — Limite et "
-            + "Apparition restent au bloc près.");
-        puce(l, "§eCtrl + molette§r sur Île/Pierre : élévation d'un cran (−15 à +15).");
+            + "d'application des outils Eau, Île, Pierre, Parcelle et Bonbons, de 1×1 à 15×15 — "
+            + "Limite et Apparition restent au bloc près.");
+        puce(l, "§eCtrl + molette§r sur Île/Pierre : élévation d'un cran (−15 à +15 ; Eau : 0 à −15).");
         puce(l, "§eMolette§r ou §e− / + / Ajuster§r (barre du bas) : zoom · §eclic milieu / flèches§r : déplacer "
             + "la vue · §eCtrl+Z / Ctrl+Y§r : annuler / rétablir.");
         puce(l, "§eSélection§r : tracer un rectangle sur le terrain (Île/Pierre) et les bonbons. "
             + "§eCtrl+molette§r élève/abaisse tout le terrain sélectionné d'un coup ; pour les bonbons, "
-            + "régler les délais et le §etype§r (Standard/Bleu/Rouge), puis §eAppliquer§r.");
+            + "régler les délais (réapparition, apparition, fin, expiration) et le §etype§r "
+            + "(Standard/Bleu/Rouge), puis §eAppliquer à la sélection§r.");
         puce(l, "§eParcelle§r : découpez la carte en parcelles nommées — la navigation en jeu "
-            + "([N] + flèche) pointe les bonbons parcelle par parcelle, et le choix de la parcelle "
-            + "de départ se fait parmi elles, telles que vous les avez définies. Créez une parcelle "
-            + "dans le panneau de droite, peignez ses cellules (Eau comprise), renommez-la. "
-            + "§cChaque bonbon doit appartenir à une parcelle§7, chaque parcelle est §cd'un seul "
-            + "tenant§7 (ses blocs se touchent, côté ou diagonale — ⚠ dans le panneau sinon) et "
-            + "porte un §cnom unique§7 — la sauvegarde est refusée sinon.");
+            + "([N] + flèche) et le choix de la parcelle de départ s'appuient dessus. Créez une "
+            + "parcelle dans le panneau de droite (molette pour faire défiler la liste), peignez "
+            + "ses cellules (Eau comprise), renommez-la. §cChaque bonbon doit appartenir à une "
+            + "parcelle§7, chaque parcelle est §cd'un seul tenant§7 (ses blocs se touchent, côté "
+            + "ou diagonale — ⚠ dans le panneau sinon) et porte un §cnom unique§7 — la sauvegarde "
+            + "est refusée sinon.");
+        puce(l, "§eLimite§r : bouton « Par défaut » = mur sur tout le contour de l'aire ; "
+            + "« Supprimer » retire toute la Limite.");
         para(l, "§7Le panneau de droite montre le bloc survolé, l'état de la carte (limite fermée, apparition, "
             + "totaux de bonbons) et la légende ; la barre du bas rappelle les contrôles de l'outil actif. "
             + "Un point §6●§7 sur le bouton Sauvegarder signale des modifications non sauvegardées.");
         para(l, "§7Sur la grille : bonbon visible = coin haut-gauche coloré ; non-visible = coin bas-droite "
             + "coloré mais assombri et bordé de noir (couleur = type, assombrissement = caché).");
-        para(l, "À la §esauvegarde§r, donnez un nom ; l'éditeur refuse une carte invalide et indique quoi "
+        para(l, "§eCharger§r ouvre une carte existante ; §eImporter CSV§r remplit les bonbons depuis "
+            + "un fichier (§cremplace toute la carte en cours§r). À la §esauvegarde§r, donnez un nom "
+            + "(lettres, chiffres, - et _) ; l'éditeur refuse une carte invalide et indique quoi "
             + "corriger (boucle Limite fermée, apparition à l'intérieur, un sol sous chaque case, etc.).");
 
         titre(l, "Sélectionner la carte");
-        para(l, "Choisissez la carte active dans la liste. Le mode §eexige§r une carte sélectionnée.");
+        para(l, "Choisissez la carte active dans la liste. Le Sous-mode 3 §eexige§r une carte sélectionnée.");
 
         titre(l, "Régler et lancer — [N]");
-        para(l, "En Sous-mode 3, après la génération, appuyez sur §e[N]§r : le menu de lancement s'ouvre "
-            + "(cases à cocher et sélecteurs, par groupes — voir l'onglet §eRéférence§r). Les défauts "
-            + "reproduisent le jeu classique ; le bouton §ePar défaut§r réinitialise. Certaines options sont "
-            + "grisées selon la carte. Au clic §eLancer§r : décompte, ou phase de choix de parcelle si activée.");
+        para(l, "En Sous-mode 3, après la génération, appuyez sur §e[N]§r : toutes les conditions "
+            + "tiennent sur un seul écran (cases à cocher et sélecteurs — clic = valeur suivante, "
+            + "Maj+clic = précédente), groupées comme dans l'onglet §eRéférence§r. Les défauts "
+            + "reproduisent le jeu classique ; §ePar défaut§r réinitialise. Selon la carte, certaines "
+            + "options sont grisées : Spécialisation (exige des bonbons tous typés), Parcelle au "
+            + "choix (exige des parcelles), Destruction blocs (imposée si bonbons non-visibles). "
+            + "Le serveur refuse aussi une partie qui ne pourrait jamais se terminer (« Sans "
+            + "limite » exige la dégradation, sans réapparition ni régénération). Au clic "
+            + "§eLancer la partie§r : décompte, ou phase de choix de parcelle si activée.");
+        para(l, "§7Presets (barre du bas du menu N) : §eSauver§r enregistre les réglages sous un nom "
+            + "(écrase un homonyme), §eCharger§r les rappelle, §eSuppr§r les supprime. Stockés sur "
+            + "le serveur, partagés entre admins, conservés au redémarrage.");
 
         titre(l, "Journaux de données");
-        para(l, "Chaque partie écrit un dossier §edonnees_monsubmod/sousmode3_partie_<date>/§r :");
+        para(l, "Chaque partie écrit un dossier §edonnees_monsubmod/sousmode3_partie_<date-heure>/§r :");
         puce(l, "§econfig_partie.csv§r — la carte et la valeur de chaque condition choisie.");
-        puce(l, "§e<joueur>_journal.csv§r — un fichier par joueur, une ligne par événement.");
-        para(l, "§7Le bouton 📊 (menu M) permet de télécharger (.zip) ou supprimer les sessions.");
+        puce(l, "§e<joueur>_journal.csv§r — un fichier par joueur, une ligne par événement "
+            + "(déplacement, bonbon, minage, santé, mort…).");
+        para(l, "§7Le bouton 📊 (menu M) télécharge une session ou tout (.zip, déposé dans votre "
+            + "dossier Téléchargements) ou supprime les sessions.");
     }
 
     private void construireReference(List<Segment> l) {
         l.add(new Segment(0, Component.literal("§e§lRéférence rapide")));
 
         titre(l, "Touches");
-        puce(l, "§e[M]§r — menu de contrôle (admins).");
-        puce(l, "§e[N]§r — joueur : viser une parcelle · admin : lancer une partie.");
-        puce(l, "§e[F]§r — afficher/masquer le panneau des parcelles.");
-        puce(l, "§e[Guide]§r — ce guide (H par défaut).");
-        puce(l, "§eClic sur le panneau§r — passer spectateur (sur la plateforme).");
+        puce(l, "§e[M]§r — menu de contrôle (admins uniquement ; touche fixe).");
+        puce(l, "§e[N]§r — joueur : viser une parcelle · admin : lancer une partie (touche fixe, Sous-mode 3).");
+        puce(l, "§e[F]§r — afficher/masquer le panneau des parcelles (Options › Commandes).");
+        puce(l, "§e[Guide]§r — ce guide (H par défaut, Options › Commandes).");
+        puce(l, "§eClic sur la pancarte§r (plateforme) — éliminés, retardataires et admins : spectateur volant.");
 
         titre(l, "Conditions du menu N (défaut)");
-        puce(l, "§bDurée & rythme§r : Durée 15 min · Sans limite non · Décompte 10 s.");
-        puce(l, "§bSanté§r : Dégradation oui · ½ cœur / 10 s · Vie max 10 cœurs · Régén. non · Réapparition non.");
-        puce(l, "§bEnvironnement§r : Jour permanent oui · Chute non · Noyade mortelle oui · Faim non · PvP non · Pluie non.");
-        puce(l, "§bMode§r : Spécialisation Bleu/Rouge non §7(carte à bonbons typés requise)§r.");
-        puce(l, "§bParcelle de départ§r : Choix par joueur non §7(au moins une parcelle requise)§r.");
-        puce(l, "§bInteractions§r : Crafting non · Destruction oui · Placement oui · Jeter non · Drop à la mort non · Manger à vie max non · Bonus sprint non.");
-        puce(l, "§bBonbons & minage§r : Soin par bonbon 1 cœur (standard, Bleu, Rouge) · Minage vitesses vanilla.");
-        puce(l, "§bFin de partie§r : Éliminés classés par Survie · Dernier survivant non.");
+        puce(l, "§bDurée & rythme§r : Durée 15 min · Décompte 10 s · Sans limite non.");
+        puce(l, "§bSanté & survie§r : Dégradation oui · Perte ½ cœur · Intervalle 10 s · Vie max 10 cœurs · Régén. non · Réapparition non.");
+        puce(l, "§bBonbons & minage§r : Soin 1 cœur (std, bleu, rouge) · Minage vanilla §7(sinon 0,5 à 30 s/bloc)§r.");
+        puce(l, "§bEnvironnement§r : Jour permanent oui · Chute non · Noyade mortelle oui · Faim non · PvP non · Chat oui · Pluie non.");
+        puce(l, "§bMode§r : Spécialisation B/R non §7(soins ×75 % pendant 2 min 45 après changement de camp)§r · Parcelle au choix non · Bonus sprint non.");
+        puce(l, "§bInteractions§r : Crafting non · Destruction oui · Placement oui · Jeter non · Drop à la mort non · Manger à vie max non.");
+        puce(l, "§bFin de partie§r : Éliminés classés par Survie §7(sinon Bonbons ; survivants toujours devant)§r · Dernier survivant non.");
 
         titre(l, "Repères techniques");
-        puce(l, "Niveau de la mer : Y 100 · Cage jouable : Y 84–116 · Élévation : −15 à +15.");
-        puce(l, "Commande : §e/submode set waiting|3§r, §e/submode admin|player …§r, §e/submode current§r.");
+        puce(l, "Niveau de la mer : Y 100 · Cage : barrières Y 84 et 116 (jouable 85–115) · Élévation : −15 à +15.");
+        puce(l, "Grille de carte : jusqu'à 1800×1800 · noms de carte et de preset : 32 caractères (lettres, chiffres, - et _).");
+
+        titre(l, "Commandes (/submode)");
+        puce(l, "§eset waiting|attente|3|sub3§r — changer de mode (admin).");
+        puce(l, "§eadmin add|remove <joueur>§r §7(opérateur)§r · §eadmin list§r · §eadmin setpassword/resetblacklist/resetfailures/resetip …§r (admin).");
+        puce(l, "§eplayer add <joueur> <mdp>§r · §eplayer remove|setpassword …§r · §eplayer list§r (admin).");
+        puce(l, "§ecurrent§r — affiche le mode actuel (tous).");
     }
 }
