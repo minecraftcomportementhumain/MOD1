@@ -484,6 +484,11 @@ public class GestionnaireEvenementsSousMode3 {
         }
 
         if (GestionnaireSousModes.getInstance().estAdmin(joueur)) {
+            // Estampiller l'objet sans le suivre ni l'autoriser : un bonbon /give jeté par
+            // un admin, sauvé dans un chunk déchargé, échapperait sinon au tueur de résidus
+            // s'il ne recharge que pendant une session ultérieure (objet non estampillé
+            // toléré quand une session est active) et fausserait les scores.
+            GestionnaireSousMode3.getInstance().estampillerObjetSession(event.getEntity());
             return;
         }
 

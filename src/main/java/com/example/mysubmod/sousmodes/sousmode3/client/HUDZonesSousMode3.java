@@ -257,16 +257,18 @@ public class HUDZonesSousMode3 {
 
         double dx = zone.centreX - mc.player.getX();
         double dz = zone.centreZ - mc.player.getZ();
+        double distance = Math.sqrt(dx * dx + dz * dz);
 
-        // Extinction automatique à l'« arrivée ». Parcelle garnie : à l'approche du
-        // barycentre des bonbons restants (le point est pertinent). Parcelle vide : à
-        // l'entrée dans la parcelle — son centre géométrique peut être loin de la
-        // frontière, s'éteindre à 15 blocs de lui lâcherait le joueur en plein milieu ;
-        // et vider soi-même la parcelle depuis l'intérieur éteint la flèche aussitôt,
-        // comme avant ce correctif.
-        if (parcelleVide
-            ? zone.contientPosition(mc.player.getX(), mc.player.getZ())
-            : Math.sqrt(dx * dx + dz * dz) <= RAYON_ARRIVEE) {
+        // Extinction automatique à l'« arrivée » : à l'approche du point visé (barycentre
+        // des bonbons restants, ou centre de repli si la parcelle est vide), et aussi, pour
+        // une parcelle vide, à l'entrée dans la parcelle — son centre peut être loin de la
+        // frontière et vider soi-même la parcelle depuis l'intérieur doit éteindre aussitôt.
+        // La clause de distance reste nécessaire même vide : le centre géométrique d'une
+        // parcelle concave (en L) peut être hors de ses cellules, et la pseudo-parcelle
+        // « Hors parcelle » n'a aucune cellule (plages vides) — sans elle, la flèche
+        // resterait allumée indéfiniment une fois le point atteint.
+        if (distance <= RAYON_ARRIVEE
+            || (parcelleVide && zone.contientPosition(mc.player.getX(), mc.player.getZ()))) {
             zoneCiblee = null;
             return;
         }
@@ -299,7 +301,6 @@ public class HUDZonesSousMode3 {
         guiGraphics.pose().popPose();
 
         // Nom de la zone ciblée + distance sous la flèche
-        double distance = Math.sqrt(dx * dx + dz * dz);
         String texte = "§b" + zone.nom + " §7(" + (int) distance + " m)";
         guiGraphics.drawCenteredString(mc.font, texte, centreX, centreY + 16, 0xFFFFFF);
     }

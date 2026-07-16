@@ -232,7 +232,7 @@ public class EcranGuide extends Screen {
         titre(l, "5. Se repérer : minuterie, parcelles et flèche");
         para(l, "En haut à droite : le temps restant (fond orange sous 60 s, rouge sous 30 s), puis "
             + "le panneau des parcelles et leurs bonbons restants — visibles et non-visibles, ou "
-            + "comptes §9bleu§r/§crouge§r si la carte est typée. Appuyez sur §e[N]§r et choisissez "
+            + "comptes §9bleu§r/§crouge§r si la spécialisation est activée. Appuyez sur §e[N]§r et choisissez "
             + "une parcelle : la flèche pointe vers le centre de ses bonbons restants (recalculé à "
             + "chaque ramassage et réapparition) et disparaît à 15 blocs du but. Une parcelle vide "
             + "reste ciblable : la flèche vise alors son centre et s'éteint quand vous y entrez.");

@@ -48,7 +48,7 @@ public class EcranConfigurationPartieSousMode3 extends Screen {
     private static final float[] TEMPS_MINAGE_S = {0, 0.5f, 1, 2, 3, 5, 8, 10, 15, 20, 30};
     /** Durées de la pénalité de changement de spécialisation, en secondes (165 = 2 min 45,
      *  défaut historique du Sous-mode 2). Jamais 0 : une pénalité nulle annulerait la
-     *  mécanique de spécialisation (borne serveur ≥ 1 s en cohérence). */
+     *  mécanique de spécialisation (borne serveur 30–900 s en cohérence). */
     private static final int[] PENALITES_SPE_S = {30, 60, 90, 120, 165, 240, 300, 600, 900};
     /** Multiplicateurs de soin sous pénalité de spécialisation (1 = soins pleins). */
     private static final float[] MULTIPLICATEURS_PENALITE = {0.1f, 0.25f, 0.5f, 0.75f, 0.9f, 1.0f};
@@ -316,7 +316,13 @@ public class EcranConfigurationPartieSousMode3 extends Screen {
 
     private Button selecteurInt(int x, int[] y, String prefixe, int[] valeurs, int valeurCourante,
                                 IntConsumer setter, IntFunction<String> formateur) {
-        int[] idx = {indexDe(valeurs, valeurCourante)};
+        int[] idx = {indexPlusProche(valeurs, valeurCourante)};
+        if (valeurs[idx[0]] != valeurCourante) {
+            // Valeur hors liste (preset édité à la main, ancien build) : rabattue sur la
+            // valeur proposée la plus proche — sinon le bouton afficherait la 1re valeur
+            // de la liste alors que la config enverrait l'autre au lancement
+            setter.accept(valeurs[idx[0]]);
+        }
         Button bouton = Button.builder(Component.literal(prefixe + formateur.apply(valeurs[idx[0]])), b -> {
             boolean arriere = Screen.hasShiftDown();
             idx[0] = (idx[0] + (arriere ? valeurs.length - 1 : 1)) % valeurs.length;
@@ -331,7 +337,10 @@ public class EcranConfigurationPartieSousMode3 extends Screen {
     /** Variante float de {@link #selecteurInt} (soins des bonbons, temps de minage). */
     private Button selecteurFloat(int x, int[] y, String prefixe, float[] valeurs, float valeurCourante,
                                   Consumer<Float> setter, java.util.function.Function<Float, String> formateur) {
-        int[] idx = {indexDe(valeurs, valeurCourante)};
+        int[] idx = {indexPlusProche(valeurs, valeurCourante)};
+        if (valeurs[idx[0]] != valeurCourante) {
+            setter.accept(valeurs[idx[0]]); // même rabattement que selecteurInt
+        }
         Button bouton = Button.builder(Component.literal(prefixe + formateur.apply(valeurs[idx[0]])), b -> {
             boolean arriere = Screen.hasShiftDown();
             idx[0] = (idx[0] + (arriere ? valeurs.length - 1 : 1)) % valeurs.length;
@@ -343,13 +352,15 @@ public class EcranConfigurationPartieSousMode3 extends Screen {
         return bouton;
     }
 
-    private static int indexDe(float[] valeurs, float valeur) {
-        for (int i = 0; i < valeurs.length; i++) {
-            if (valeurs[i] == valeur) {
-                return i;
+    /** Index de la valeur de la liste la plus proche de {@code valeur} (égalité : la première). */
+    private static int indexPlusProche(float[] valeurs, float valeur) {
+        int meilleur = 0;
+        for (int i = 1; i < valeurs.length; i++) {
+            if (Math.abs(valeurs[i] - valeur) < Math.abs(valeurs[meilleur] - valeur)) {
+                meilleur = i;
             }
         }
-        return 0;
+        return meilleur;
     }
 
     /** Formate un soin en cœurs (2 points = 1 cœur), « aucun » pour 0. */
@@ -393,13 +404,15 @@ public class EcranConfigurationPartieSousMode3 extends Screen {
         return "Éliminés: " + (config.classementParSurvie ? "Survie" : "Bonbons");
     }
 
-    private static int indexDe(int[] valeurs, int valeur) {
-        for (int i = 0; i < valeurs.length; i++) {
-            if (valeurs[i] == valeur) {
-                return i;
+    /** Index de la valeur de la liste la plus proche de {@code valeur} (égalité : la première). */
+    private static int indexPlusProche(int[] valeurs, int valeur) {
+        int meilleur = 0;
+        for (int i = 1; i < valeurs.length; i++) {
+            if (Math.abs(valeurs[i] - valeur) < Math.abs(valeurs[meilleur] - valeur)) {
+                meilleur = i;
             }
         }
-        return 0;
+        return meilleur;
     }
 
     /** Formate un nombre de points de vie en cœurs (1 point = ½ cœur), sans « .0 » superflu. */
