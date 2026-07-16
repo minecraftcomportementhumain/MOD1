@@ -46,6 +46,11 @@ public class EcranConfigurationPartieSousMode3 extends Screen {
     private static final float[] SOINS_POINTS = {0, 1, 2, 3, 4, 6, 8, 12, 16, 20};
     /** Temps de minage par bloc, en secondes (0 = vitesses vanilla). */
     private static final float[] TEMPS_MINAGE_S = {0, 0.5f, 1, 2, 3, 5, 8, 10, 15, 20, 30};
+    /** Durées de la pénalité de changement de spécialisation, en secondes (0 = aucune ;
+     *  165 = 2 min 45, défaut historique du Sous-mode 2). */
+    private static final int[] PENALITES_SPE_S = {0, 30, 60, 90, 120, 165, 240, 300, 600, 900};
+    /** Multiplicateurs de soin sous pénalité de spécialisation (1 = soins pleins). */
+    private static final float[] MULTIPLICATEURS_PENALITE = {0.1f, 0.25f, 0.5f, 0.75f, 0.9f, 1.0f};
 
     private final ConfigPartieSousMode3 config = new ConfigPartieSousMode3();
     private final List<Entete> entetes = new ArrayList<>();
@@ -119,6 +124,18 @@ public class EcranConfigurationPartieSousMode3 extends Screen {
             v -> config.santeMaxPoints = v, v -> coeurs(v) + " cœurs");
         caseAcocher(xA, ya, "Régén. naturelle", config.regenerationNaturelle, v -> config.regenerationNaturelle = v);
         caseAcocher(xA, ya, "Réapparition", config.reapparitionAutorisee, v -> config.reapparitionAutorisee = v);
+        // Réglages de la pénalité de changement de spécialisation : mêmes conditions de
+        // carte que la case « Spécialisation B/R » (colonne C)
+        Button penaliteSpe = selecteurInt(xA, ya, "Pénalité spé.: ", PENALITES_SPE_S,
+            config.dureePenaliteSpecialisationSecondes,
+            v -> config.dureePenaliteSpecialisationSecondes = v,
+            EcranConfigurationPartieSousMode3::dureePenalite);
+        Button soinPenalite = selecteurFloat(xA, ya, "Soin pénalité: ", MULTIPLICATEURS_PENALITE,
+            config.multiplicateurSantePenalite,
+            v -> config.multiplicateurSantePenalite = v,
+            EcranConfigurationPartieSousMode3::pourcentage);
+        penaliteSpe.active = FaitsCarteClientSousMode3.aBonbonsTypes();
+        soinPenalite.active = FaitsCarteClientSousMode3.aBonbonsTypes();
 
         // ---- Colonne B : Bonbons & minage, Environnement ----
         int[] yb = {yDepart};
@@ -296,8 +313,8 @@ public class EcranConfigurationPartieSousMode3 extends Screen {
         return c;
     }
 
-    private void selecteurInt(int x, int[] y, String prefixe, int[] valeurs, int valeurCourante,
-                              IntConsumer setter, IntFunction<String> formateur) {
+    private Button selecteurInt(int x, int[] y, String prefixe, int[] valeurs, int valeurCourante,
+                                IntConsumer setter, IntFunction<String> formateur) {
         int[] idx = {indexDe(valeurs, valeurCourante)};
         Button bouton = Button.builder(Component.literal(prefixe + formateur.apply(valeurs[idx[0]])), b -> {
             boolean arriere = Screen.hasShiftDown();
@@ -307,11 +324,12 @@ public class EcranConfigurationPartieSousMode3 extends Screen {
         }).bounds(x, y[0], largeurColonne, hauteurWidget).build();
         addRenderableWidget(bouton);
         y[0] += pasLigne;
+        return bouton;
     }
 
     /** Variante float de {@link #selecteurInt} (soins des bonbons, temps de minage). */
-    private void selecteurFloat(int x, int[] y, String prefixe, float[] valeurs, float valeurCourante,
-                                Consumer<Float> setter, java.util.function.Function<Float, String> formateur) {
+    private Button selecteurFloat(int x, int[] y, String prefixe, float[] valeurs, float valeurCourante,
+                                  Consumer<Float> setter, java.util.function.Function<Float, String> formateur) {
         int[] idx = {indexDe(valeurs, valeurCourante)};
         Button bouton = Button.builder(Component.literal(prefixe + formateur.apply(valeurs[idx[0]])), b -> {
             boolean arriere = Screen.hasShiftDown();
@@ -321,6 +339,7 @@ public class EcranConfigurationPartieSousMode3 extends Screen {
         }).bounds(x, y[0], largeurColonne, hauteurWidget).build();
         addRenderableWidget(bouton);
         y[0] += pasLigne;
+        return bouton;
     }
 
     private static int indexDe(float[] valeurs, float valeur) {
@@ -348,6 +367,19 @@ public class EcranConfigurationPartieSousMode3 extends Screen {
         }
         return (secondes == Math.floor(secondes)
             ? String.valueOf((int) secondes) : String.valueOf(secondes)) + " s / bloc";
+    }
+
+    /** Formate la durée de la pénalité de spécialisation en M:SS (« aucune » pour 0). */
+    private static String dureePenalite(int secondes) {
+        if (secondes == 0) {
+            return "aucune";
+        }
+        return (secondes / 60) + ":" + String.format("%02d", secondes % 60);
+    }
+
+    /** Formate un multiplicateur de soin en pourcentage (0.75 → « 75 % »). */
+    private static String pourcentage(float multiplicateur) {
+        return Math.round(multiplicateur * 100) + " %";
     }
 
     private void ajouterBasculeClassement(int x, int[] y) {

@@ -248,9 +248,10 @@ public class EcranGuide extends Screen {
 
         titre(l, "Les règles changent selon la config");
         para(l, "L'admin règle chaque partie : §ePvP§r, §espécialisation Bleu/Rouge§r (le 1er bonbon "
-            + "coloré fixe votre camp ; en changer réduit vos soins à 75 % pendant 2 min 45 — "
-            + "minuterie en haut à gauche), §eréapparition§r, §edrop à la mort§r, §echat§r, "
-            + "§efaim§r, §edégâts de chute§r, §etemps de minage§r… Les messages en jeu vous préviennent.");
+            + "coloré fixe votre camp ; en changer réduit vos soins pendant un temps — réglable, "
+            + "défaut 75 % pendant 2 min 45, minuterie en haut à gauche), §eréapparition§r, "
+            + "§edrop à la mort§r, §echat§r, §efaim§r, §edégâts de chute§r, §etemps de minage§r… "
+            + "Les messages en jeu vous préviennent.");
     }
 
     private void construireAdmin(List<Segment> l) {
@@ -343,10 +344,10 @@ public class EcranGuide extends Screen {
 
         titre(l, "Conditions du menu N (défaut)");
         puce(l, "§bDurée & rythme§r : Durée 15 min · Décompte 10 s · Sans limite non.");
-        puce(l, "§bSanté & survie§r : Dégradation oui · Perte ½ cœur · Intervalle 10 s · Vie max 10 cœurs · Régén. non · Réapparition non.");
+        puce(l, "§bSanté & survie§r : Dégradation oui · Perte ½ cœur · Intervalle 10 s · Vie max 10 cœurs · Régén. non · Réapparition non · Pénalité spé. 2:45 · Soin pénalité 75 %.");
         puce(l, "§bBonbons & minage§r : Soin 1 cœur (std, bleu, rouge) · Minage vanilla §7(sinon 0,5 à 30 s/bloc)§r.");
         puce(l, "§bEnvironnement§r : Jour permanent oui · Chute non · Noyade mortelle oui · Faim non · PvP non · Chat oui · Pluie non.");
-        puce(l, "§bMode§r : Spécialisation B/R non §7(soins ×75 % pendant 2 min 45 après changement de camp)§r · Parcelle au choix non · Bonus sprint non.");
+        puce(l, "§bMode§r : Spécialisation B/R non §7(pénalité de changement de camp : voir Santé & survie)§r · Parcelle au choix non · Bonus sprint non.");
         puce(l, "§bInteractions§r : Crafting non · Destruction oui · Placement oui · Jeter non · Drop à la mort non · Manger à vie max non.");
         puce(l, "§bFin de partie§r : Éliminés classés par Survie §7(sinon Bonbons ; survivants toujours devant)§r · Dernier survivant non.");
 
