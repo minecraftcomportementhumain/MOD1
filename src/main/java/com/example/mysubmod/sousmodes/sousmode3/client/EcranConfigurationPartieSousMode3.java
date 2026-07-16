@@ -46,9 +46,10 @@ public class EcranConfigurationPartieSousMode3 extends Screen {
     private static final float[] SOINS_POINTS = {0, 1, 2, 3, 4, 6, 8, 12, 16, 20};
     /** Temps de minage par bloc, en secondes (0 = vitesses vanilla). */
     private static final float[] TEMPS_MINAGE_S = {0, 0.5f, 1, 2, 3, 5, 8, 10, 15, 20, 30};
-    /** Durées de la pénalité de changement de spécialisation, en secondes (0 = aucune ;
-     *  165 = 2 min 45, défaut historique du Sous-mode 2). */
-    private static final int[] PENALITES_SPE_S = {0, 30, 60, 90, 120, 165, 240, 300, 600, 900};
+    /** Durées de la pénalité de changement de spécialisation, en secondes (165 = 2 min 45,
+     *  défaut historique du Sous-mode 2). Jamais 0 : une pénalité nulle annulerait la
+     *  mécanique de spécialisation (borne serveur ≥ 1 s en cohérence). */
+    private static final int[] PENALITES_SPE_S = {30, 60, 90, 120, 165, 240, 300, 600, 900};
     /** Multiplicateurs de soin sous pénalité de spécialisation (1 = soins pleins). */
     private static final float[] MULTIPLICATEURS_PENALITE = {0.1f, 0.25f, 0.5f, 0.75f, 0.9f, 1.0f};
 
@@ -369,11 +370,8 @@ public class EcranConfigurationPartieSousMode3 extends Screen {
             ? String.valueOf((int) secondes) : String.valueOf(secondes)) + " s / bloc";
     }
 
-    /** Formate la durée de la pénalité de spécialisation en M:SS (« aucune » pour 0). */
+    /** Formate la durée de la pénalité de spécialisation en M:SS. */
     private static String dureePenalite(int secondes) {
-        if (secondes == 0) {
-            return "aucune";
-        }
         return (secondes / 60) + ":" + String.format("%02d", secondes % 60);
     }
 

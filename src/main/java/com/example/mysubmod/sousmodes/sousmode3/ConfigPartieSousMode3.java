@@ -47,7 +47,8 @@ public class ConfigPartieSousMode3 {
     // ==================== Groupe 3 : Mécaniques importées (SM1/SM2) ====================
     /** Spécialisation Bleu/Rouge (Sous-mode 2). Nécessite une carte à bonbons typés. Défaut : non. */
     public boolean specialisation = false;
-    /** Durée de la pénalité de changement de spécialisation, en secondes. Défaut SM2 : 165 (2 min 45). */
+    /** Durée de la pénalité de changement de spécialisation, en secondes. Défaut SM2 : 165
+     *  (2 min 45). Jamais 0 (bornée ≥ 1 s) : une pénalité nulle annulerait la mécanique. */
     public int dureePenaliteSpecialisationSecondes = 165;
     /** Multiplicateur de soin sous pénalité de spécialisation. Défaut SM2 : 0.75. */
     public float multiplicateurSantePenalite = 0.75f;
@@ -118,7 +119,7 @@ public class ConfigPartieSousMode3 {
         soinBonbonBleu = clampFloat(soinBonbonBleu, 0.0f, 40.0f);
         soinBonbonRouge = clampFloat(soinBonbonRouge, 0.0f, 40.0f);
         tempsMinageSecondes = clampFloat(tempsMinageSecondes, 0.0f, 60.0f);
-        dureePenaliteSpecialisationSecondes = clampInt(dureePenaliteSpecialisationSecondes, 0, 900);
+        dureePenaliteSpecialisationSecondes = clampInt(dureePenaliteSpecialisationSecondes, 1, 900);
         multiplicateurSantePenalite = clampFloat(multiplicateurSantePenalite, 0.1f, 1.0f);
     }
 
