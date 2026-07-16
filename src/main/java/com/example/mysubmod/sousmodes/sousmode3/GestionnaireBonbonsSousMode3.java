@@ -69,6 +69,12 @@ public class GestionnaireBonbonsSousMode3 {
         // Détail par type de ressource (parties du Sous-mode 2 sur carte)
         public int bonbonsBleus;
         public int bonbonsRouges;
+        /** Totaux typés initiaux (bonbons visibles posés + blocs non-visibles, hors
+         *  apparitions différées), accumulés à l'initialisation depuis les données de
+         *  carte : base du re-typage du lancement — indépendante des chunks chargés,
+         *  contrairement aux entités. */
+        public int bleusInitiaux;
+        public int rougesInitiaux;
 
         public DonneesZone(String nom, double centreX, double centreZ, List<int[]> plagesMonde) {
             this.nom = nom;
@@ -291,7 +297,9 @@ public class GestionnaireBonbonsSousMode3 {
                     apparitionsDifferees.add(new ApparitionDifferee(cleMonde, bloc.qteBonbonVisible,
                         bloc.delaiApparitionInitiale));
                 } else if (zoneNom != null && zonesParNom.containsKey(zoneNom)) {
-                    zonesParNom.get(zoneNom).bonbonsVisibles += bloc.qteBonbonVisible;
+                    DonneesZone zone = zonesParNom.get(zoneNom);
+                    zone.bonbonsVisibles += bloc.qteBonbonVisible;
+                    accumulerTypeInitial(zone, bloc.typeBonbonVisible, bloc.qteBonbonVisible);
                 }
             }
 
@@ -311,7 +319,9 @@ public class GestionnaireBonbonsSousMode3 {
                     } else {
                         blocsBonbonsCaches.put(pos, info);
                         if (zoneNom != null && zonesParNom.containsKey(zoneNom)) {
-                            zonesParNom.get(zoneNom).bonbonsNonVisibles += bloc.qteBonbonNonVisible;
+                            DonneesZone zone = zonesParNom.get(zoneNom);
+                            zone.bonbonsNonVisibles += bloc.qteBonbonNonVisible;
+                            accumulerTypeInitial(zone, bloc.typeBonbonNonVisible, bloc.qteBonbonNonVisible);
                         }
                     }
                 }
@@ -541,6 +551,16 @@ public class GestionnaireBonbonsSousMode3 {
         }
     }
 
+    /** Accumule les totaux typés initiaux d'une zone (voir {@link DonneesZone#bleusInitiaux}). */
+    private static void accumulerTypeInitial(DonneesZone zone,
+                                             com.example.mysubmod.cartes.TypeBonbonCarte type, int quantite) {
+        if (type == com.example.mysubmod.cartes.TypeBonbonCarte.BLEU) {
+            zone.bleusInitiaux += quantite;
+        } else if (type == com.example.mysubmod.cartes.TypeBonbonCarte.ROUGE) {
+            zone.rougesInitiaux += quantite;
+        }
+    }
+
     /**
      * Active les bonbons typés Bleu/Rouge (option « Spécialisation » cochée au lancement) :
      * remplace les objets bonbons standards déjà apparus pendant la phase d'attente par leur
@@ -571,42 +591,17 @@ public class GestionnaireBonbonsSousMode3 {
             }
         }
 
-        // Recomposer le détail Bleu/Rouge des zones : entités visibles présentes ET blocs
-        // bonbons non-visibles typés (les blocs comptent dans les totaux Bleu/Rouge du
-        // HUD au même titre que les bonbons visibles — ils sont déjà dans « invis. »)
+        // Recomposer le détail Bleu/Rouge des zones depuis les DONNÉES DE CARTE (totaux
+        // initiaux typés), et non depuis les entités chargées : au lancement, rien n'a
+        // encore été ramassé, ces totaux sont donc exacts — y compris pour une parcelle
+        // dont les chunks se sont déchargés pendant la phase d'attente (entités sauvées
+        // sur disque : elles échappaient à l'ancien comptage et la parcelle s'affichait
+        // sans détail Bleu/Rouge, typiquement au premier lancement après un redémarrage
+        // du serveur). Les apparitions différées restent hors des totaux : elles sont
+        // créditées à leur apparition (ajusterCompteursZone*, types actifs).
         for (DonneesZone zone : zones) {
-            zone.bonbonsBleus = 0;
-            zone.bonbonsRouges = 0;
-        }
-        for (Map.Entry<ItemEntity, Long> entree : entitesBonbonsVisibles.entrySet()) {
-            InfoCelluleVisible info = cellulesVisibles.get(entree.getValue());
-            if (info == null || info.zoneNom == null) {
-                continue;
-            }
-            DonneesZone zone = zonesParNom.get(info.zoneNom);
-            if (zone == null) {
-                continue;
-            }
-            int quantite = Math.max(1, entree.getKey().getItem().getCount());
-            if (info.type == com.example.mysubmod.cartes.TypeBonbonCarte.BLEU) {
-                zone.bonbonsBleus += quantite;
-            } else if (info.type == com.example.mysubmod.cartes.TypeBonbonCarte.ROUGE) {
-                zone.bonbonsRouges += quantite;
-            }
-        }
-        for (InfoBonbonCache info : blocsBonbonsCaches.values()) {
-            if (info.zoneNom == null) {
-                continue;
-            }
-            DonneesZone zone = zonesParNom.get(info.zoneNom);
-            if (zone == null) {
-                continue;
-            }
-            if (info.type == com.example.mysubmod.cartes.TypeBonbonCarte.BLEU) {
-                zone.bonbonsBleus += info.quantite;
-            } else if (info.type == com.example.mysubmod.cartes.TypeBonbonCarte.ROUGE) {
-                zone.bonbonsRouges += info.quantite;
-            }
+            zone.bonbonsBleus = zone.bleusInitiaux;
+            zone.bonbonsRouges = zone.rougesInitiaux;
         }
 
         MonSubMod.JOURNALISEUR.info("Bonbons typés Bleu/Rouge activés (Sous-mode 3) : {} objets retypés", retypes);
@@ -691,15 +686,27 @@ public class GestionnaireBonbonsSousMode3 {
             return;
         }
         long cle = entite.getPersistentData().getLong(TAG_CELLULE_ORIGINE);
-        if (!cellulesVisibles.containsKey(cle)) {
+        InfoCelluleVisible info = cellulesVisibles.get(cle);
+        if (info == null) {
             return;
         }
         entitesBonbonsVisibles.put(entite, cle);
 
+        // Spécialisation active : l'entité a pu être sauvée sur disque AVANT le re-typage
+        // du lancement (chunk déchargé pendant la phase d'attente — typiquement au premier
+        // lancement après un redémarrage du serveur) et recharger en bonbon standard : la
+        // remettre au type de sa cellule, pour l'apparence comme pour le soin.
+        if (bonbonsTypesActifs) {
+            ItemStack pileAttendue = creerPileBonbonVisible(info);
+            if (!entite.getItem().is(pileAttendue.getItem())) {
+                pileAttendue.setCount(Math.max(1, entite.getItem().getCount()));
+                entite.setItem(pileAttendue);
+            }
+        }
+
         // Ré-armer l'expiration : la minuterie visait l'ANCIENNE instance (invalidée par
         // le déchargement). Hors partie active, rien à armer.
-        InfoCelluleVisible info = cellulesVisibles.get(cle);
-        if (info == null || info.expiration <= 0
+        if (info.expiration <= 0
             || !GestionnaireSousMode3.getInstance().estPartieActive()) {
             return;
         }
