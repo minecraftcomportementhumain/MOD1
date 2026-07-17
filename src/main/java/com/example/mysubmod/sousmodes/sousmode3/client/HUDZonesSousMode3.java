@@ -14,9 +14,15 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * HUD des zones du Sous-mode 3 : liste toutes les parcelles de la carte avec les
- * compteurs de bonbons visibles / non-visibles restants (une parcelle vidée reste
- * listée et ciblable), et affiche la flèche de navigation vers la zone sélectionnée.
+ * HUD des zones du Sous-mode 3 : liste les parcelles de la carte avec les compteurs
+ * de bonbons visibles / non-visibles restants (une parcelle vidée reste listée et
+ * ciblable), et affiche la flèche de navigation vers la zone sélectionnée.
+ *
+ * <p>Le panneau est borné en hauteur : au-delà du plafond de lignes (adapté à l'écran,
+ * {@value #LIGNES_MAX_PANNEAU} au maximum), la liste est tronquée — ordre de la carte
+ * conservé, parcelle ciblée toujours visible — et une ligne résumé « +X autres » renvoie
+ * à l'écran de ciblage [N] (paginé), qui liste tout. Sans plafond, une carte à nombreuses
+ * parcelles faisait sortir le panneau de l'écran.</p>
  */
 @OnlyIn(Dist.CLIENT)
 public class HUDZonesSousMode3 {
@@ -52,6 +58,14 @@ public class HUDZonesSousMode3 {
     /** Panneau affiché/masqué par le joueur (touche F, rebindable) — affiché par défaut,
      *  choix conservé pour la session client. La flèche de navigation n'est pas concernée. */
     private static boolean panneauAffiche = true;
+
+    /** Hauteur d'une ligne de parcelle du panneau (px). */
+    private static final int HAUTEUR_LIGNE_PANNEAU = 11;
+    /** Plafond dur de lignes de parcelles : même sur un grand écran, le panneau ne doit
+     *  pas dominer l'affichage — au-delà, la liste est tronquée avec un résumé « +X autres ». */
+    private static final int LIGNES_MAX_PANNEAU = 12;
+    /** Marge minimale conservée sous le panneau (px), pour ne jamais atteindre le bas de l'écran. */
+    private static final int MARGE_BASSE_PANNEAU = 45;
 
     public static synchronized void mettreAJourZones(List<PaquetZonesSousMode3.ZoneReseau> zonesRecues,
                                                      boolean complet, boolean reinitialiser) {
@@ -165,11 +179,43 @@ public class HUDZonesSousMode3 {
         // abrégé (…) pour que les compteurs restent toujours entièrement lisibles.
         // Pied « [N] cibler » masqué quand la navigation est interdite par la config.
         String pied = OptionsHudClientSousMode3.flecheAutorisee() ? "§8[N] cibler une parcelle" : null;
+
+        // Plafond de lignes : adapté à la hauteur de l'écran, borné par LIGNES_MAX_PANNEAU.
+        // Sans plafond, une carte à nombreuses parcelles faisait déborder le panneau de
+        // l'écran ; avec le plafond dur, il n'en occupe jamais une part démesurée.
+        int espaceVertical = hauteurEcran - MARGE_BASSE_PANNEAU - 30 - 16
+            - (pied != null ? 12 : 0) - (texteSpec != null ? 12 : 0);
+        int lignesMax = Math.max(4, Math.min(LIGNES_MAX_PANNEAU, espaceVertical / HAUTEUR_LIGNE_PANNEAU));
+
+        // Troncature au-delà du plafond : l'ordre de la carte est conservé (liste stable
+        // pendant toute la partie), la parcelle ciblée reste toujours visible, et une ligne
+        // résumé compte les masquées — la liste complète est dans l'écran de ciblage [N],
+        // qui est paginé.
+        List<ZoneClient> zonesAffichees = zones;
+        int masquees = 0;
+        if (zones.size() > lignesMax) {
+            zonesAffichees = new ArrayList<>(zones.subList(0, lignesMax - 1));
+            if (zoneCiblee != null) {
+                boolean cibleVisible = false;
+                for (ZoneClient zone : zonesAffichees) {
+                    if (zone.nom.equals(zoneCiblee)) {
+                        cibleVisible = true;
+                        break;
+                    }
+                }
+                ZoneClient cible = cibleVisible ? null : obtenirZone(zoneCiblee);
+                if (cible != null) {
+                    zonesAffichees.set(zonesAffichees.size() - 1, cible);
+                }
+            }
+            masquees = zones.size() - zonesAffichees.size();
+        }
+
         int largeurLigneMax = largeurEcran / 2;
-        List<String> lignes = new ArrayList<>(zones.size());
+        List<String> lignes = new ArrayList<>(zonesAffichees.size() + 1);
         int largeurContenu = Math.max(pied != null ? police.width(pied) : 0,
             texteSpec != null ? police.width(texteSpec) : 0);
-        for (ZoneClient zone : zones) {
+        for (ZoneClient zone : zonesAffichees) {
             String prefixe = zone.nom.equals(zoneCiblee) ? "§b➤ " : "§f";
             String suffixe = " §7— " + formaterCompteurs(zone);
             String nom = zone.nom;
@@ -184,13 +230,18 @@ public class HUDZonesSousMode3 {
             lignes.add(texte);
             largeurContenu = Math.max(largeurContenu, police.width(texte));
         }
+        if (masquees > 0) {
+            String resume = "§8… +" + masquees + (masquees > 1 ? " autres parcelles" : " autre parcelle");
+            lignes.add(resume);
+            largeurContenu = Math.max(largeurContenu, police.width(resume));
+        }
 
         // Panneau des zones : coin supérieur droit, sous la minuterie
         int largeurPanneau = Math.max(170, largeurContenu + 4);
         int x = largeurEcran - largeurPanneau - 5;
         int y = 30;
-        int hauteurLigne = 11;
-        int hauteurPanneau = 16 + zones.size() * hauteurLigne + (pied != null ? 12 : 0)
+        int hauteurLigne = HAUTEUR_LIGNE_PANNEAU;
+        int hauteurPanneau = 16 + lignes.size() * hauteurLigne + (pied != null ? 12 : 0)
             + (texteSpec != null ? 12 : 0);
 
         guiGraphics.fill(x - 4, y - 4, x + largeurPanneau, y + hauteurPanneau - 4, 0x80000000);
