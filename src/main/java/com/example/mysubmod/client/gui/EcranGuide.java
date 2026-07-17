@@ -184,7 +184,7 @@ public class EcranGuide extends Screen {
         titre(l, "Les touches essentielles");
         puce(l, "§e[M]§r — menu de contrôle (admins uniquement) : mode, cartes, journaux, guide.");
         puce(l, "§e[N]§r — en Sous-mode 3 : avant la partie (admin), régler et lancer ; pendant la partie (joueur), viser une parcelle.");
-        puce(l, "§e[F]§r — afficher/masquer le panneau des parcelles (la flèche de navigation reste visible).");
+        puce(l, "§e[F]§r — faire défiler le panneau des parcelles : pages, puis masqué (Maj+F : sens inverse ; la flèche de navigation reste visible).");
         puce(l, "§e[Guide]§r — ouvre ce guide à tout moment (H par défaut).");
         para(l, "§7[M] et [N] sont fixes ; [F] et [Guide] se règlent dans Options › Commandes, "
             + "catégorie « Survie aux bonbons ».");
@@ -236,7 +236,9 @@ public class EcranGuide extends Screen {
             + "une parcelle : la flèche pointe vers le centre de ses bonbons restants (recalculé à "
             + "chaque ramassage et réapparition) et disparaît à 15 blocs du but. Une parcelle vide "
             + "reste ciblable : la flèche vise alors son centre et s'éteint quand vous y entrez.");
-        para(l, "§7La touche §e[F]§7 masque ou réaffiche le panneau ; la flèche, elle, reste visible.");
+        para(l, "§7Si la carte a beaucoup de parcelles, le panneau les répartit en pages : la touche "
+            + "§e[F]§7 passe à la page suivante, puis masque le panneau après la dernière "
+            + "(§eMaj+F§7 : sens inverse) ; la flèche, elle, reste visible.");
 
         titre(l, "6. Mort, fin et classement");
         para(l, "À 0 cœur, vous êtes éliminé — définitivement, sauf si la réapparition est activée — "
@@ -338,7 +340,7 @@ public class EcranGuide extends Screen {
         titre(l, "Touches");
         puce(l, "§e[M]§r — menu de contrôle (admins uniquement ; touche fixe).");
         puce(l, "§e[N]§r — joueur : viser une parcelle · admin : lancer une partie (touche fixe, Sous-mode 3).");
-        puce(l, "§e[F]§r — afficher/masquer le panneau des parcelles (Options › Commandes).");
+        puce(l, "§e[F]§r — pages du panneau des parcelles, puis masqué (Options › Commandes).");
         puce(l, "§e[Guide]§r — ce guide (H par défaut, Options › Commandes).");
         puce(l, "§eClic sur la pancarte§r (plateforme) — éliminés, retardataires et admins : spectateur volant.");
 

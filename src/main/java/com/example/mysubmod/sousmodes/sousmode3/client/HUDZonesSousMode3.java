@@ -18,11 +18,12 @@ import java.util.Map;
  * de bonbons visibles / non-visibles restants (une parcelle vidée reste listée et
  * ciblable), et affiche la flèche de navigation vers la zone sélectionnée.
  *
- * <p>Le panneau est borné en hauteur : au-delà du plafond de lignes (adapté à l'écran,
- * {@value #LIGNES_MAX_PANNEAU} au maximum), la liste est tronquée — ordre de la carte
- * conservé, parcelle ciblée toujours visible — et une ligne résumé « +X autres » renvoie
- * à l'écran de ciblage [N] (paginé), qui liste tout. Sans plafond, une carte à nombreuses
- * parcelles faisait sortir le panneau de l'écran.</p>
+ * <p>Le panneau est borné en hauteur et paginé : au-delà du plafond de lignes (adapté à
+ * l'écran, {@value #LIGNES_MAX_PANNEAU} au maximum), les parcelles sont réparties en pages
+ * que la touche F fait défiler — page suivante, puis masqué après la dernière (Maj+F :
+ * sens inverse). Toutes les parcelles et leurs compteurs restent ainsi consultables sans
+ * que le panneau sorte de l'écran ni n'en occupe une part démesurée ; l'écran de ciblage
+ * [N] ne liste, lui, que les noms.</p>
  */
 @OnlyIn(Dist.CLIENT)
 public class HUDZonesSousMode3 {
@@ -61,16 +62,23 @@ public class HUDZonesSousMode3 {
 
     /** Hauteur d'une ligne de parcelle du panneau (px). */
     private static final int HAUTEUR_LIGNE_PANNEAU = 11;
-    /** Plafond dur de lignes de parcelles : même sur un grand écran, le panneau ne doit
-     *  pas dominer l'affichage — au-delà, la liste est tronquée avec un résumé « +X autres ». */
+    /** Plafond dur de lignes de parcelles par page : même sur un grand écran, le panneau ne
+     *  doit pas dominer l'affichage — au-delà, les parcelles se répartissent en pages (touche F). */
     private static final int LIGNES_MAX_PANNEAU = 12;
     /** Marge minimale conservée sous le panneau (px), pour ne jamais atteindre le bas de l'écran. */
     private static final int MARGE_BASSE_PANNEAU = 45;
+
+    /** Page affichée du panneau (base 0) — la touche F fait défiler les pages. */
+    private static int pageCourante = 0;
+    /** Dernier nombre total de pages calculé au rendu ; repris par la touche F quand le
+     *  panneau est masqué (pour « reculer » directement sur la dernière page). */
+    private static int dernierTotalPages = 1;
 
     public static synchronized void mettreAJourZones(List<PaquetZonesSousMode3.ZoneReseau> zonesRecues,
                                                      boolean complet, boolean reinitialiser) {
         if (reinitialiser) {
             zoneCiblee = null; // Flèche réinitialisée (ex. reconnexion en cours de partie)
+            pageCourante = 0;  // Repartir de la première page du panneau
         }
 
         if (complet) {
@@ -131,12 +139,38 @@ public class HUDZonesSousMode3 {
         actif = false;
         ZONES.clear();
         zoneCiblee = null;
+        pageCourante = 0;
     }
 
-    /** Bascule l'affichage du panneau des parcelles ; retourne le nouvel état (vrai = affiché). */
-    public static boolean basculerPanneau() {
-        panneauAffiche = !panneauAffiche;
-        return panneauAffiche;
+    /**
+     * Touche F : fait défiler le panneau des parcelles — page suivante, puis masqué après la
+     * dernière page, puis retour à la page 1 ({@code recule} = sens inverse, convention Maj du
+     * mod). Avec une seule page, simple bascule affiché/masqué (comportement historique).
+     * Retourne le message d'état à montrer au joueur ({@code nomTouche} = libellé de la touche).
+     */
+    public static String basculerPanneauOuPage(boolean recule, String nomTouche) {
+        int total = Math.max(1, dernierTotalPages);
+        if (!panneauAffiche) {
+            panneauAffiche = true;
+            pageCourante = recule ? total - 1 : 0;
+        } else if (recule) {
+            if (pageCourante <= 0) {
+                panneauAffiche = false;
+            } else {
+                pageCourante--;
+            }
+        } else if (pageCourante >= total - 1) {
+            panneauAffiche = false;
+        } else {
+            pageCourante++;
+        }
+        if (!panneauAffiche) {
+            return "§7HUD des parcelles masqué — §e[" + nomTouche + "]§7 pour le réafficher";
+        }
+        if (total > 1) {
+            return "§7Parcelles — page §e" + (pageCourante + 1) + "§7/§e" + total;
+        }
+        return "§7HUD des parcelles affiché";
     }
 
     /** Cibler une zone : active la flèche de navigation (une seule flèche à la fois) */
@@ -177,42 +211,37 @@ public class HUDZonesSousMode3 {
         // à largeur fixe, une ligne longue — nom + « N bleu(s), N rouge(s), N invis. »
         // avec la spécialisation — sortait de l'écran). Un nom de parcelle trop long est
         // abrégé (…) pour que les compteurs restent toujours entièrement lisibles.
-        // Pied « [N] cibler » masqué quand la navigation est interdite par la config.
-        String pied = OptionsHudClientSousMode3.flecheAutorisee() ? "§8[N] cibler une parcelle" : null;
+        // Lignes par page : adaptées à la hauteur de l'écran, bornées par LIGNES_MAX_PANNEAU
+        // pour que le panneau ne sorte jamais de l'écran ni n'en occupe une part démesurée.
+        // La place du pied est toujours réservée dans le calcul (12 px).
+        int espaceVertical = hauteurEcran - MARGE_BASSE_PANNEAU - 30 - 16 - 12
+            - (texteSpec != null ? 12 : 0);
+        int lignesParPage = Math.max(4, Math.min(LIGNES_MAX_PANNEAU, espaceVertical / HAUTEUR_LIGNE_PANNEAU));
 
-        // Plafond de lignes : adapté à la hauteur de l'écran, borné par LIGNES_MAX_PANNEAU.
-        // Sans plafond, une carte à nombreuses parcelles faisait déborder le panneau de
-        // l'écran ; avec le plafond dur, il n'en occupe jamais une part démesurée.
-        int espaceVertical = hauteurEcran - MARGE_BASSE_PANNEAU - 30 - 16
-            - (pied != null ? 12 : 0) - (texteSpec != null ? 12 : 0);
-        int lignesMax = Math.max(4, Math.min(LIGNES_MAX_PANNEAU, espaceVertical / HAUTEUR_LIGNE_PANNEAU));
+        // Pagination par la touche F (suivante ; Maj = précédente ; masqué en fin de cycle) :
+        // toutes les parcelles restent consultables avec leurs compteurs, sans agrandir le
+        // panneau — l'écran [N] ne liste plus que les noms, pour le ciblage.
+        int totalPages = Math.max(1, (zones.size() + lignesParPage - 1) / lignesParPage);
+        dernierTotalPages = totalPages;
+        pageCourante = Math.max(0, Math.min(pageCourante, totalPages - 1));
+        int debut = pageCourante * lignesParPage;
+        List<ZoneClient> zonesAffichees = zones.subList(debut,
+            Math.min(zones.size(), debut + lignesParPage));
 
-        // Troncature au-delà du plafond : l'ordre de la carte est conservé (liste stable
-        // pendant toute la partie), la parcelle ciblée reste toujours visible, et une ligne
-        // résumé compte les masquées — la liste complète est dans l'écran de ciblage [N],
-        // qui est paginé.
-        List<ZoneClient> zonesAffichees = zones;
-        int masquees = 0;
-        if (zones.size() > lignesMax) {
-            zonesAffichees = new ArrayList<>(zones.subList(0, lignesMax - 1));
-            if (zoneCiblee != null) {
-                boolean cibleVisible = false;
-                for (ZoneClient zone : zonesAffichees) {
-                    if (zone.nom.equals(zoneCiblee)) {
-                        cibleVisible = true;
-                        break;
-                    }
-                }
-                ZoneClient cible = cibleVisible ? null : obtenirZone(zoneCiblee);
-                if (cible != null) {
-                    zonesAffichees.set(zonesAffichees.size() - 1, cible);
-                }
-            }
-            masquees = zones.size() - zonesAffichees.size();
+        boolean flecheOk = OptionsHudClientSousMode3.flecheAutorisee();
+        String pied;
+        if (flecheOk && totalPages > 1) {
+            pied = "§8[N] cibler · [F] page suiv.";
+        } else if (flecheOk) {
+            pied = "§8[N] cibler une parcelle";
+        } else if (totalPages > 1) {
+            pied = "§8[F] page suivante";
+        } else {
+            pied = null;
         }
 
         int largeurLigneMax = largeurEcran / 2;
-        List<String> lignes = new ArrayList<>(zonesAffichees.size() + 1);
+        List<String> lignes = new ArrayList<>(zonesAffichees.size());
         int largeurContenu = Math.max(pied != null ? police.width(pied) : 0,
             texteSpec != null ? police.width(texteSpec) : 0);
         for (ZoneClient zone : zonesAffichees) {
@@ -230,11 +259,6 @@ public class HUDZonesSousMode3 {
             lignes.add(texte);
             largeurContenu = Math.max(largeurContenu, police.width(texte));
         }
-        if (masquees > 0) {
-            String resume = "§8… +" + masquees + (masquees > 1 ? " autres parcelles" : " autre parcelle");
-            lignes.add(resume);
-            largeurContenu = Math.max(largeurContenu, police.width(resume));
-        }
 
         // Panneau des zones : coin supérieur droit, sous la minuterie
         int largeurPanneau = Math.max(170, largeurContenu + 4);
@@ -251,7 +275,10 @@ public class HUDZonesSousMode3 {
             y += 12;
         }
 
-        guiGraphics.drawString(police, "§6Parcelles :", x, y, 0xFFFFFF);
+        String titrePanneau = totalPages > 1
+            ? "§6Parcelles §7(" + (pageCourante + 1) + "/" + totalPages + ") :"
+            : "§6Parcelles :";
+        guiGraphics.drawString(police, titrePanneau, x, y, 0xFFFFFF);
         y += 13;
 
         for (String ligne : lignes) {
@@ -267,8 +294,9 @@ public class HUDZonesSousMode3 {
         afficherFleche(guiGraphics, largeurEcran, hauteurEcran);
     }
 
-    /** Format des compteurs d'une zone */
-    public static String formaterCompteurs(ZoneClient zone) {
+    /** Format des compteurs d'une zone (n'apparaît que dans le panneau : l'écran de
+     *  ciblage [N] ne liste que les noms) */
+    private static String formaterCompteurs(ZoneClient zone) {
         // Avec la spécialisation (option de la config) : détail Bleu/Rouge en plus des
         // bonbons non-visibles ; sans spécialisation, les compteurs typés restent à zéro.
         // La COULEUR du nombre porte le type (bleu/rouge) — pas de libellé, pour garder

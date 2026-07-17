@@ -62,8 +62,9 @@ public class EcranZonesSousMode3 extends Screen {
             HUDZonesSousMode3.ZoneClient zone = zones.get(i);
             final String nomZone = zone.nom;
             boolean estCiblee = nomZone.equals(HUDZonesSousMode3.obtenirZoneCiblee());
-            String etiquette = (estCiblee ? "§b➤ " : "") + nomZone + " §7— "
-                + HUDZonesSousMode3.formaterCompteurs(zone);
+            // Nom seul : les compteurs de bonbons vivent dans le panneau HUD (paginé par F) ;
+            // cet écran ne sert qu'à choisir la cible de la flèche.
+            String etiquette = (estCiblee ? "§b➤ " : "") + nomZone;
             addRenderableWidget(Button.builder(
                 Component.literal(etiquette),
                 bouton -> {

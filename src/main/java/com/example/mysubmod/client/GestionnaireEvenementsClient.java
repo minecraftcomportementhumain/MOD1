@@ -78,11 +78,10 @@ public class GestionnaireEvenementsClient {
                     "§cLe HUD des parcelles est désactivé dans cette partie"));
                 return;
             }
-            boolean affiche = com.example.mysubmod.sousmodes.sousmode3.client.HUDZonesSousMode3.basculerPanneau();
             String touche = HUDClavier.TOUCHE_BASCULE_HUD_PARCELLES.getTranslatedKeyMessage().getString();
-            mc.player.sendSystemMessage(net.minecraft.network.chat.Component.literal(affiche
-                ? "§7HUD des parcelles affiché"
-                : "§7HUD des parcelles masqué — §e[" + touche + "]§7 pour le réafficher"));
+            mc.player.sendSystemMessage(net.minecraft.network.chat.Component.literal(
+                com.example.mysubmod.sousmodes.sousmode3.client.HUDZonesSousMode3.basculerPanneauOuPage(
+                    net.minecraft.client.gui.screens.Screen.hasShiftDown(), touche)));
         }
 
         // Touche M - Ouvrir l'écran de contrôle des sous-modes
