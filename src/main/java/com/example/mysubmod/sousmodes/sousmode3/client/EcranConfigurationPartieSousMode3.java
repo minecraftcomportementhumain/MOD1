@@ -89,17 +89,18 @@ public class EcranConfigurationPartieSousMode3 extends Screen {
             config.destructionBloc = true;
         }
 
-        // Mode compact sous 352 px : toutes les options tiennent sur UN seul écran (pas de
+        // Mode compact sous 357 px : toutes les options tiennent sur UN seul écran (pas de
         // sous-fenêtre), au prix de rangées resserrées. La fenêtre Minecraft par défaut
         // donne une GUI de 427×240. Seuil : en non-compact la colonne la plus chargée
-        // descend à y=297 et la rangée des presets commence à h−51 → il faut h ≥ 352
-        // pour garder un écart (sous 348 elles se chevaucheraient).
-        compact = this.height < 352;
+        // (B : 12 rangées) descend à y=302 et la rangée des presets commence à h−51 →
+        // il faut h ≥ 357 pour garder un écart. En compact, le départ à y=13 fait finir
+        // la colonne B à y=200, juste au-dessus des presets (y=201 à la hauteur GUI min 240).
+        compact = this.height < 357;
         pasLigne = compact ? 14 : 20;
         pasTitre = compact ? 10 : 15;
         hauteurWidget = compact ? 13 : 20;
         largeurColonne = Math.max(126, Math.min(150, (this.width - 2 * ECART_COLONNE - 12) / 3));
-        int yDepart = compact ? 15 : 32;
+        int yDepart = compact ? 13 : 32;
 
         int largeurTotale = 3 * largeurColonne + 2 * ECART_COLONNE;
         int xA = (this.width - largeurTotale) / 2;
@@ -154,10 +155,23 @@ public class EcranConfigurationPartieSousMode3 extends Screen {
         caseAcocher(xB, yb, "Jour permanent", config.jourPermanent, v -> config.jourPermanent = v);
         caseAcocher(xB, yb, "Dégâts de chute", config.degatsChute, v -> config.degatsChute = v);
         caseAcocher(xB, yb, "Noyade mortelle", config.noyadeMortelle, v -> config.noyadeMortelle = v);
-        caseAcocher(xB, yb, "Faim", config.faim, v -> config.faim = v);
+        // Faim et Pluie jumelées sur une rangée (libellés courts) : libère la place de la case
+        // « Monstres hostiles » — l'option existait dans la config mais n'était pas exposée ici.
+        casesJumelees(xB, yb,
+            "Faim", config.faim, v -> config.faim = v,
+            "Faim / perte de nourriture naturelle",
+            "Pluie", config.pluie, v -> config.pluie = v,
+            "Pluie pendant toute la partie (sinon temps clair)");
         caseAcocher(xB, yb, "PvP entre joueurs", config.pvp, v -> config.pvp = v);
         caseAcocher(xB, yb, "Chat entre joueurs", config.chatJoueurs, v -> config.chatJoueurs = v);
-        caseAcocher(xB, yb, "Pluie", config.pluie, v -> config.pluie = v);
+        caseAcocher(xB, yb, "Monstres hostiles", config.monstresHostiles, v -> config.monstresHostiles = v);
+        // Interface d'aide au joueur : flèche de navigation (touche N) et panneau des
+        // parcelles (touche F), activées par défaut — jumelées avec infobulles.
+        casesJumelees(xB, yb,
+            "Flèche", config.flecheNavigation, v -> config.flecheNavigation = v,
+            "Flèche de navigation vers la parcelle ciblée (touche N des joueurs)",
+            "Panneau", config.hudParcelles, v -> config.hudParcelles = v,
+            "HUD des parcelles : compteurs de bonbons par parcelle (touche F)");
 
         // ---- Colonne C : Mode, Interactions & fin de partie ----
         int[] yc = {yDepart};
@@ -314,6 +328,23 @@ public class EcranConfigurationPartieSousMode3 extends Screen {
         return c;
     }
 
+    /** Deux cases à cocher côte à côte sur une même rangée (libellés courts, infobulles
+     *  explicatives) — économise une rangée dans une colonne à l'étroit. */
+    private void casesJumelees(int x, int[] y,
+                               String texte1, boolean coche1, Consumer<Boolean> surChangement1, String infobulle1,
+                               String texte2, boolean coche2, Consumer<Boolean> surChangement2, String infobulle2) {
+        int demiLargeur = (largeurColonne - 4) / 2;
+        CaseConfig c1 = new CaseConfig(x, y[0], demiLargeur, hauteurWidget,
+            Component.literal(texte1), coche1, surChangement1);
+        c1.setTooltip(net.minecraft.client.gui.components.Tooltip.create(Component.literal(infobulle1)));
+        addRenderableWidget(c1);
+        CaseConfig c2 = new CaseConfig(x + demiLargeur + 4, y[0], demiLargeur, hauteurWidget,
+            Component.literal(texte2), coche2, surChangement2);
+        c2.setTooltip(net.minecraft.client.gui.components.Tooltip.create(Component.literal(infobulle2)));
+        addRenderableWidget(c2);
+        y[0] += pasLigne;
+    }
+
     private Button selecteurInt(int x, int[] y, String prefixe, int[] valeurs, int valeurCourante,
                                 IntConsumer setter, IntFunction<String> formateur) {
         int[] idx = {indexPlusProche(valeurs, valeurCourante)};
@@ -463,6 +494,8 @@ public class EcranConfigurationPartieSousMode3 extends Screen {
         cible.dropObjet = source.dropObjet;
         cible.dropInventaireMort = source.dropInventaireMort;
         cible.mangerDepasseMax = source.mangerDepasseMax;
+        cible.flecheNavigation = source.flecheNavigation;
+        cible.hudParcelles = source.hudParcelles;
     }
 
     @Override

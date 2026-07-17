@@ -104,6 +104,12 @@ public class ConfigPartieSousMode3 {
      *  incassable : l'option ne les concerne pas. */
     public float tempsMinageSecondes = 0;
 
+    // ==================== Groupe 7 : Interface ====================
+    /** Flèche de navigation vers la parcelle ciblée (touche N des joueurs). Défaut historique : oui. */
+    public boolean flecheNavigation = true;
+    /** HUD des parcelles : panneau des compteurs de bonbons par parcelle (touche F). Défaut historique : oui. */
+    public boolean hudParcelles = true;
+
     // ==================== Bornage / validation ====================
 
     /**
@@ -198,6 +204,9 @@ public class ConfigPartieSousMode3 {
         tampon.writeBoolean(dropInventaireMort);
         tampon.writeBoolean(mangerDepasseMax);
         tampon.writeFloat(tempsMinageSecondes);
+        // Groupe 7
+        tampon.writeBoolean(flecheNavigation);
+        tampon.writeBoolean(hudParcelles);
     }
 
     /** Lit une config depuis un tampon (ordre miroir de {@link #ecrire}). */
@@ -243,6 +252,9 @@ public class ConfigPartieSousMode3 {
         c.dropInventaireMort = tampon.readBoolean();
         c.mangerDepasseMax = tampon.readBoolean();
         c.tempsMinageSecondes = tampon.readFloat();
+        // Groupe 7
+        c.flecheNavigation = tampon.readBoolean();
+        c.hudParcelles = tampon.readBoolean();
         return c;
     }
 }

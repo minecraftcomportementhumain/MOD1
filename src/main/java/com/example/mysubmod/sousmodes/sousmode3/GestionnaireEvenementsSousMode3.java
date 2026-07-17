@@ -577,6 +577,12 @@ public class GestionnaireEvenementsSousMode3 {
                     net.minecraftforge.network.PacketDistributor.PLAYER.with(() -> joueur),
                     new com.example.mysubmod.sousmodes.sousmode3.reseau.PaquetVitesseMinageSousMode3(
                         gestionnaire.obtenirConfig().tempsMinageSecondes));
+                // Options d'interface de la partie en cours (flèche de navigation, panneau)
+                com.example.mysubmod.reseau.GestionnaireReseau.INSTANCE.send(
+                    net.minecraftforge.network.PacketDistributor.PLAYER.with(() -> joueur),
+                    new com.example.mysubmod.sousmodes.sousmode3.reseau.PaquetOptionsHudSousMode3(
+                        gestionnaire.obtenirConfig().flecheNavigation,
+                        gestionnaire.obtenirConfig().hudParcelles));
             } else {
                 // Avant le lancement : effacer les HUD résiduels d'une partie précédente
                 // (l'état du HUD côté client survit à une déconnexion/reconnexion)
@@ -589,6 +595,9 @@ public class GestionnaireEvenementsSousMode3 {
                 com.example.mysubmod.reseau.GestionnaireReseau.INSTANCE.send(
                     net.minecraftforge.network.PacketDistributor.PLAYER.with(() -> joueur),
                     new com.example.mysubmod.sousmodes.sousmode3.reseau.PaquetVitesseMinageSousMode3(0));
+                com.example.mysubmod.reseau.GestionnaireReseau.INSTANCE.send(
+                    net.minecraftforge.network.PacketDistributor.PLAYER.with(() -> joueur),
+                    com.example.mysubmod.sousmodes.sousmode3.reseau.PaquetOptionsHudSousMode3.defauts());
             }
 
             if (gestionnaire.etaitJoueurDeconnecte(joueur.getName().getString())) {
@@ -629,6 +638,9 @@ public class GestionnaireEvenementsSousMode3 {
             com.example.mysubmod.reseau.GestionnaireReseau.INSTANCE.send(
                 net.minecraftforge.network.PacketDistributor.PLAYER.with(() -> joueur),
                 new com.example.mysubmod.sousmodes.sousmode3.reseau.PaquetVitesseMinageSousMode3(0));
+            com.example.mysubmod.reseau.GestionnaireReseau.INSTANCE.send(
+                net.minecraftforge.network.PacketDistributor.PLAYER.with(() -> joueur),
+                com.example.mysubmod.sousmodes.sousmode3.reseau.PaquetOptionsHudSousMode3.defauts());
         }
     }
 

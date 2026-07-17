@@ -241,6 +241,8 @@ public class EnregistreurDonneesSousMode3 {
             enregistreur.write("drop_inventaire_mort," + config.dropInventaireMort + "\n");
             enregistreur.write("manger_depasse_max," + config.mangerDepasseMax + "\n");
             enregistreur.write(String.format(Locale.US, "temps_minage_secondes,%.1f%n", config.tempsMinageSecondes));
+            enregistreur.write("fleche_navigation," + config.flecheNavigation + "\n");
+            enregistreur.write("hud_parcelles," + config.hudParcelles + "\n");
         } catch (IOException e) {
             MonSubMod.JOURNALISEUR.error("Erreur lors de l'écriture de la config de partie", e);
         }

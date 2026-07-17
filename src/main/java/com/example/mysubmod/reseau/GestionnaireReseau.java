@@ -409,6 +409,16 @@ public class GestionnaireReseau {
             java.util.Optional.of(NetworkDirection.PLAY_TO_CLIENT)
         );
 
+        // Options d'interface de la partie (menu N › Interface : flèche, panneau) — serveur -> client
+        INSTANCE.registerMessage(
+            idPaquet++,
+            com.example.mysubmod.sousmodes.sousmode3.reseau.PaquetOptionsHudSousMode3.class,
+            com.example.mysubmod.sousmodes.sousmode3.reseau.PaquetOptionsHudSousMode3::encode,
+            com.example.mysubmod.sousmodes.sousmode3.reseau.PaquetOptionsHudSousMode3::decode,
+            com.example.mysubmod.sousmodes.sousmode3.reseau.PaquetOptionsHudSousMode3::traiter,
+            java.util.Optional.of(NetworkDirection.PLAY_TO_CLIENT)
+        );
+
         // Presets de config du menu N : action admin — client -> serveur
         INSTANCE.registerMessage(
             idPaquet++,

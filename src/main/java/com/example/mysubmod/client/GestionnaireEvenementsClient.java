@@ -71,6 +71,13 @@ public class GestionnaireEvenementsClient {
         if (event.getAction() == GLFW.GLFW_PRESS
             && HUDClavier.TOUCHE_BASCULE_HUD_PARCELLES.matches(event.getKey(), event.getScanCode())
             && mc.screen == null && mc.player != null) {
+            // Panneau interdit par la config de la partie en cours (menu N › Interface)
+            if (GestionnaireSubModeClient.obtenirModeActuel() == SousMode.SOUS_MODE_3
+                && !com.example.mysubmod.sousmodes.sousmode3.client.OptionsHudClientSousMode3.panneauAutorise()) {
+                mc.player.sendSystemMessage(net.minecraft.network.chat.Component.literal(
+                    "§cLe HUD des parcelles est désactivé dans cette partie"));
+                return;
+            }
             boolean affiche = com.example.mysubmod.sousmodes.sousmode3.client.HUDZonesSousMode3.basculerPanneau();
             String touche = HUDClavier.TOUCHE_BASCULE_HUD_PARCELLES.getTranslatedKeyMessage().getString();
             mc.player.sendSystemMessage(net.minecraft.network.chat.Component.literal(affiche
@@ -134,6 +141,12 @@ public class GestionnaireEvenementsClient {
                 mc.setScreen(new com.example.mysubmod.sousmodes.sousmode3.client.EcranConfigurationPartieSousMode3());
             }
         } else if (com.example.mysubmod.sousmodes.sousmode3.client.HUDZonesSousMode3.estActif()) {
+            // Ciblage de parcelle interdit par la config de la partie (menu N › Interface)
+            if (!com.example.mysubmod.sousmodes.sousmode3.client.OptionsHudClientSousMode3.flecheAutorisee()) {
+                mc.player.sendSystemMessage(net.minecraft.network.chat.Component.literal(
+                    "§cLa navigation par flèche est désactivée dans cette partie"));
+                return;
+            }
             mc.setScreen(new com.example.mysubmod.sousmodes.sousmode3.client.EcranZonesSousMode3());
         }
     }

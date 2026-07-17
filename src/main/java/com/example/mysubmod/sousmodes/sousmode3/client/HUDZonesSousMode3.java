@@ -140,9 +140,9 @@ public class HUDZonesSousMode3 {
         if (!actif) {
             return;
         }
-        // Panneau masqué par le joueur : ne garder que la flèche de navigation,
-        // demandée volontairement via [N]
-        if (!panneauAffiche) {
+        // Panneau interdit par la config de partie (menu N › Interface), ou masqué par le
+        // joueur (touche F) : ne garder que la flèche de navigation, demandée via [N]
+        if (!OptionsHudClientSousMode3.panneauAutorise() || !panneauAffiche) {
             afficherFleche(guiGraphics, largeurEcran, hauteurEcran);
             return;
         }
@@ -163,10 +163,11 @@ public class HUDZonesSousMode3 {
         // à largeur fixe, une ligne longue — nom + « N bleu(s), N rouge(s), N invis. »
         // avec la spécialisation — sortait de l'écran). Un nom de parcelle trop long est
         // abrégé (…) pour que les compteurs restent toujours entièrement lisibles.
-        String pied = "§8[N] cibler une parcelle";
+        // Pied « [N] cibler » masqué quand la navigation est interdite par la config.
+        String pied = OptionsHudClientSousMode3.flecheAutorisee() ? "§8[N] cibler une parcelle" : null;
         int largeurLigneMax = largeurEcran / 2;
         List<String> lignes = new ArrayList<>(zones.size());
-        int largeurContenu = Math.max(police.width(pied),
+        int largeurContenu = Math.max(pied != null ? police.width(pied) : 0,
             texteSpec != null ? police.width(texteSpec) : 0);
         for (ZoneClient zone : zones) {
             String prefixe = zone.nom.equals(zoneCiblee) ? "§b➤ " : "§f";
@@ -189,7 +190,8 @@ public class HUDZonesSousMode3 {
         int x = largeurEcran - largeurPanneau - 5;
         int y = 30;
         int hauteurLigne = 11;
-        int hauteurPanneau = 16 + zones.size() * hauteurLigne + 12 + (texteSpec != null ? 12 : 0);
+        int hauteurPanneau = 16 + zones.size() * hauteurLigne + (pied != null ? 12 : 0)
+            + (texteSpec != null ? 12 : 0);
 
         guiGraphics.fill(x - 4, y - 4, x + largeurPanneau, y + hauteurPanneau - 4, 0x80000000);
 
@@ -206,7 +208,9 @@ public class HUDZonesSousMode3 {
             y += hauteurLigne;
         }
 
-        guiGraphics.drawString(police, pied, x, y + 2, 0xFFFFFF);
+        if (pied != null) {
+            guiGraphics.drawString(police, pied, x, y + 2, 0xFFFFFF);
+        }
 
         // Flèche de navigation
         afficherFleche(guiGraphics, largeurEcran, hauteurEcran);
@@ -240,6 +244,11 @@ public class HUDZonesSousMode3 {
      * grande île — ou à l'entrée dans la parcelle quand elle est vide.
      */
     private static void afficherFleche(GuiGraphics guiGraphics, int largeurEcran, int hauteurEcran) {
+        // Navigation interdite par la config de partie (menu N › Interface) : jamais de flèche
+        // (le ciblage est aussi bloqué en amont, ceci est une défense en profondeur)
+        if (!OptionsHudClientSousMode3.flecheAutorisee()) {
+            return;
+        }
         String cible = zoneCiblee;
         if (cible == null) {
             return;

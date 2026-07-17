@@ -606,6 +606,11 @@ public class GestionnaireSousMode3 {
             new com.example.mysubmod.sousmodes.sousmode3.reseau.PaquetVitesseMinageSousMode3(
                 config.tempsMinageSecondes));
 
+        // Options d'interface de la partie (menu N › Interface : flèche de navigation, panneau)
+        GestionnaireReseau.INSTANCE.send(PacketDistributor.ALL.noArg(),
+            new com.example.mysubmod.sousmodes.sousmode3.reseau.PaquetOptionsHudSousMode3(
+                config.flecheNavigation, config.hudParcelles));
+
         // Apparitions initiales différées (délai configuré par bloc, depuis le début de partie)
         GestionnaireBonbonsSousMode3.obtenirInstance().planifierApparitionsInitiales();
 
@@ -653,6 +658,8 @@ public class GestionnaireSousMode3 {
                 GestionnaireReseau.INSTANCE.send(PacketDistributor.ALL.noArg(), PaquetZonesSousMode3.vide());
                 GestionnaireReseau.INSTANCE.send(PacketDistributor.ALL.noArg(),
                     new com.example.mysubmod.sousmodes.sousmode3.reseau.PaquetVitesseMinageSousMode3(0));
+                GestionnaireReseau.INSTANCE.send(PacketDistributor.ALL.noArg(),
+                    com.example.mysubmod.sousmodes.sousmode3.reseau.PaquetOptionsHudSousMode3.defauts());
             } catch (Exception e) {
                 MonSubMod.JOURNALISEUR.error("Erreur lors de l'arrêt de la minuterie de partie", e);
             }
@@ -1446,6 +1453,15 @@ public class GestionnaireSousMode3 {
         // Seulement une fois la partie lancée : avant, les compteurs ne reflètent rien.
         if (partieActive) {
             GestionnaireBonbonsSousMode3.obtenirInstance().envoyerZonesCompletesAJoueur(joueur, true);
+            // Resynchroniser aussi le temps de minage et les options d'interface de la partie :
+            // ce chemin (reconnexion via authentification) ne passe pas par le onPlayerJoin du
+            // sous-mode, et l'état client ne survit pas à un redémarrage du client.
+            GestionnaireReseau.INSTANCE.send(PacketDistributor.PLAYER.with(() -> joueur),
+                new com.example.mysubmod.sousmodes.sousmode3.reseau.PaquetVitesseMinageSousMode3(
+                    config.tempsMinageSecondes));
+            GestionnaireReseau.INSTANCE.send(PacketDistributor.PLAYER.with(() -> joueur),
+                new com.example.mysubmod.sousmodes.sousmode3.reseau.PaquetOptionsHudSousMode3(
+                    config.flecheNavigation, config.hudParcelles));
         }
 
         if (joueurEstMort) {
