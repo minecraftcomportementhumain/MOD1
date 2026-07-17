@@ -22,6 +22,7 @@ public class GestionnaireSubModeClient {
             com.example.mysubmod.sousmodes.sousmode3.client.HUDZonesSousMode3.desactiver();
             com.example.mysubmod.sousmodes.sousmode3.client.SpecialisationClientSousMode3.reinitialiser();
             com.example.mysubmod.sousmodes.sousmode3.client.HUDPenaliteSousMode3.desactiver();
+            com.example.mysubmod.sousmodes.sousmode3.client.VitesseMinageClientSousMode3.definir(0);
         }
 
         // Sortie du Sous-mode 3 : purger minuterie, spécialisation et pénalité
@@ -29,6 +30,7 @@ public class GestionnaireSubModeClient {
             com.example.mysubmod.sousmodes.sousmode3.client.MinuterieJeuClientSousMode3.desactiver();
             com.example.mysubmod.sousmodes.sousmode3.client.SpecialisationClientSousMode3.reinitialiser();
             com.example.mysubmod.sousmodes.sousmode3.client.HUDPenaliteSousMode3.desactiver();
+            com.example.mysubmod.sousmodes.sousmode3.client.VitesseMinageClientSousMode3.definir(0);
         }
     }
 

@@ -4,10 +4,6 @@ import com.example.mysubmod.MonSubMod;
 import com.google.gson.JsonObject;
 import net.minecraft.server.level.ServerPlayer;
 
-import java.nio.charset.StandardCharsets;
-import java.security.MessageDigest;
-import java.security.NoSuchAlgorithmException;
-import java.security.SecureRandom;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 
@@ -389,15 +385,28 @@ public class GestionnaireAuthAdmin {
 
         JsonObject blacklist = obtenirCredentiels().getAsJsonObject("blacklist");
         int tentatives = 0;
+        long derniereTentative = 0;
         if (blacklist.has(nom)) {
             JsonObject entree = blacklist.getAsJsonObject(nom);
             if (entree.has("currentAttempts")) {
                 tentatives = entree.get("currentAttempts").getAsInt();
             }
+            if (entree.has("lastAttempt")) {
+                derniereTentative = entree.get("lastAttempt").getAsLong();
+            }
+            // Réinitialise les tentatives après 24 h d'inactivité, comme tenterConnexion.
+            if (System.currentTimeMillis() - derniereTentative > TEMPS_REINITIALISATION_ECHECS) {
+                tentatives = 0;
+            }
         }
         tentatives++;
 
         if (verifierMotDePasse(nom, motDePasse)) {
+            // Mot de passe correct : réinitialiser le compteur (compte + IP) comme le fait
+            // tenterConnexion — sinon un compteur périmé déclenche une mise sur liste noire au
+            // prochain essai unique sur l'écran d'authentification normal.
+            effacerTentatives(nom);
+            effacerTentativesIP(adresseIP);
             return 0;
         }
 
@@ -450,7 +459,10 @@ public class GestionnaireAuthAdmin {
         JsonObject listeNoire = obtenirCredentiels().getAsJsonObject("blacklist");
         if (listeNoire.has(nomJoueur.toLowerCase())) {
             JsonObject entree = listeNoire.getAsJsonObject(nomJoueur.toLowerCase());
-            entree.addProperty("failureCount", 0);
+            // Le compteur de tentatives de compte est stocké sous « currentAttempts » (voir
+            // tenterConnexion / sauvegarderTentatives), pas « failureCount » (clé du compteur
+            // d'échecs IP) — l'ancienne clé rendait cette réinitialisation sans effet.
+            entree.addProperty("currentAttempts", 0);
             entree.addProperty("lastAttempt", System.currentTimeMillis());
             StockageIdentifiants.getInstance().sauvegarder();
             MonSubMod.JOURNALISEUR.info("Compte d'échecs réinitialisé pour {}", nomJoueur);

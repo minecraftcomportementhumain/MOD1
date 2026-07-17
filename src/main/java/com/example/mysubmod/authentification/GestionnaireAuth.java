@@ -4,10 +4,6 @@ import com.example.mysubmod.MonSubMod;
 import com.google.gson.JsonObject;
 import net.minecraft.server.level.ServerPlayer;
 
-import java.nio.charset.StandardCharsets;
-import java.security.MessageDigest;
-import java.security.NoSuchAlgorithmException;
-import java.security.SecureRandom;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 
@@ -24,8 +20,6 @@ public class GestionnaireAuth {
 
     private static final int TENTATIVES_MAX = 3;
     private static final long DUREE_LISTE_NOIRE_COMPTE = 3 * 60 * 1000; // 3 minutes
-    private static final long DUREE_LISTE_NOIRE_IP_BASE = 3 * 60 * 1000; // 3 minutes (base pour l'escalade)
-    private static final long TEMPS_REINITIALISATION_ECHECS = 24 * 60 * 60 * 1000; // 24 heures
     private static final long DUREE_PROTECTION_AUTH = 30 * 1000; // 30 secondes
 
     public enum TypeCompte {
@@ -59,7 +53,10 @@ public class GestionnaireAuth {
         }
 
         JsonObject joueursProtèges = obtenirInformationsIdentification().getAsJsonObject("protected_players");
-        if (joueursProtèges.has(nomJoueur)) {
+        // Recherche insensible à la casse (comme verifierMotDePasseJoueurProtege et les
+        // recherches admin) : sinon un compte protégé enregistré avec une casse différente
+        // de celle du pseudo n'est jamais reconnu et contourne complètement l'authentification.
+        if (joueursProtèges.has(nomJoueur) || joueursProtèges.has(nomJoueur.toLowerCase())) {
             return TypeCompte.JOUEUR_PROTEGE;
         }
 
@@ -250,29 +247,9 @@ public class GestionnaireAuth {
      * Gère les formats IPv4 (/127.0.0.1:port) et IPv6 (/[::1]:port)
      */
     private String extraireIpSansPort(String adresseIp) {
-        if (adresseIp == null) return "";
-
-        String resultat = adresseIp;
-
-        // Retirer la barre oblique initiale si présente
-        if (resultat.startsWith("/")) {
-            resultat = resultat.substring(1);
-        }
-
-        // Vérifier le format IPv6: [adresse]:port
-        int indexCrochet = resultat.lastIndexOf(']');
-        if (indexCrochet > 0) {
-            // IPv6 - extraire tout jusqu'au crochet fermant inclus
-            return resultat.substring(0, indexCrochet + 1);
-        }
-
-        // Format IPv4: adresse:port
-        int indexDeuxPoints = resultat.lastIndexOf(':');
-        if (indexDeuxPoints > 0) {
-            return resultat.substring(0, indexDeuxPoints);
-        }
-
-        return resultat;
+        // Normalisation partagée (voir UtilitaireIp) : forme canonique identique pour toutes les
+        // sources, indispensable pour que les clés de liste noire IPv4/IPv6 coïncident.
+        return UtilitaireIp.extraireIpSansPort(adresseIp);
     }
 
     /**

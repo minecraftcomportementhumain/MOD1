@@ -38,6 +38,16 @@ public class GestionnaireEvenementsSousMode3 {
     private static int ticksSynchronisationZones = 0;
     private static final int INTERVALLE_SYNCHRONISATION_ZONES = 100; // 5 secondes (les changements sont envoyés en temps réel)
 
+    // Vrai pendant qu'on redépose de force un objet refusé (inventaire plein). joueur.drop()
+    // re-déclenche ItemTossEvent de façon synchrone dans ce même handler : sans cette garde, le
+    // dépôt de secours se ré-annulait puis se re-déposait à l'infini -> StackOverflowError.
+    private static boolean depotForceEnCours = false;
+
+    /** UUID constant du modificateur d'attribut « pas de bonus de sprint » : évite un
+     *  UUID.fromString par joueur et par tick dans onServerTick. */
+    private static final java.util.UUID UUID_MODIFICATEUR_SPRINT =
+        java.util.UUID.fromString("662A6B8D-DA3E-4C1C-8813-96EA6097278D");
+
     private static boolean estModeActif() {
         return GestionnaireSousModes.getInstance().obtenirModeActuel() == SousMode.SOUS_MODE_3;
     }
@@ -265,10 +275,15 @@ public class GestionnaireEvenementsSousMode3 {
         if (!estModeActif()) {
             return;
         }
-        if (event.getHand() != InteractionHand.MAIN_HAND) {
+        if (!(event.getEntity() instanceof ServerPlayer joueur)) {
             return;
         }
-        if (!(event.getEntity() instanceof ServerPlayer joueur)) {
+        // Ne pas ignorer la main secondaire : l'ancien filtre MAIN_HAND laissait un objet en
+        // main gauche contourner la restriction (ex. un spectateur mangeant un bonbon en visant
+        // un bloc). On la traite dès qu'elle tient un objet ; une main gauche vide est ignorée
+        // pour ne pas déclencher de faux refus à chaque clic normal.
+        if (event.getHand() == InteractionHand.OFF_HAND
+            && joueur.getItemInHand(InteractionHand.OFF_HAND).isEmpty()) {
             return;
         }
 
@@ -388,7 +403,12 @@ public class GestionnaireEvenementsSousMode3 {
         joueur.server.execute(() -> {
             for (ItemStack pile : ingredients) {
                 if (!joueur.getInventory().add(pile)) {
-                    joueur.drop(pile, false);
+                    depotForceEnCours = true;
+                    try {
+                        joueur.drop(pile, false);
+                    } finally {
+                        depotForceEnCours = false;
+                    }
                 }
             }
         });
@@ -471,6 +491,11 @@ public class GestionnaireEvenementsSousMode3 {
 
     @SubscribeEvent
     public static void onPlayerDropItem(net.minecraftforge.event.entity.item.ItemTossEvent event) {
+        if (depotForceEnCours) {
+            // Notre propre dépôt de secours (inventaire plein) : laisser vanilla le poser au sol
+            // sans le ré-annuler, sous peine de récursion infinie sur le thread serveur.
+            return;
+        }
         if (!estModeActif()) {
             return;
         }
@@ -512,7 +537,12 @@ public class GestionnaireEvenementsSousMode3 {
         event.setCanceled(true);
         ItemStack objetJete = event.getEntity().getItem();
         if (!joueur.getInventory().add(objetJete.copy())) {
-            joueur.drop(objetJete.copy(), false);
+            depotForceEnCours = true;
+            try {
+                joueur.drop(objetJete.copy(), false);
+            } finally {
+                depotForceEnCours = false;
+            }
         }
         joueur.sendSystemMessage(Component.literal("§cVous ne pouvez pas jeter d'objets en sous-mode 3"));
     }
@@ -637,14 +667,13 @@ public class GestionnaireEvenementsSousMode3 {
             net.minecraft.world.entity.ai.attributes.AttributeInstance vitesseDeplacement =
                 joueur.getAttribute(net.minecraft.world.entity.ai.attributes.Attributes.MOVEMENT_SPEED);
             if (vitesseDeplacement != null) {
-                java.util.UUID uuidModificateurSprint = java.util.UUID.fromString("662A6B8D-DA3E-4C1C-8813-96EA6097278D");
-                vitesseDeplacement.removeModifier(uuidModificateurSprint);
+                vitesseDeplacement.removeModifier(UUID_MODIFICATEUR_SPRINT);
                 if (!config.bonusSprint && joueur.isSprinting()) {
                     net.minecraft.world.entity.ai.attributes.AttributeModifier modificateurPasDeSprint =
                         new net.minecraft.world.entity.ai.attributes.AttributeModifier(
-                            uuidModificateurSprint, "No sprint boost", -0.003,
+                            UUID_MODIFICATEUR_SPRINT, "No sprint boost", -0.003,
                             net.minecraft.world.entity.ai.attributes.AttributeModifier.Operation.ADDITION);
-                    if (vitesseDeplacement.getModifier(uuidModificateurSprint) == null) {
+                    if (vitesseDeplacement.getModifier(UUID_MODIFICATEUR_SPRINT) == null) {
                         vitesseDeplacement.addTransientModifier(modificateurPasDeSprint);
                     }
                 }

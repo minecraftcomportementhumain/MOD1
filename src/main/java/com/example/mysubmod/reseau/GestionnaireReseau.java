@@ -52,7 +52,8 @@ public class GestionnaireReseau {
             PaquetChangementSousMode.class,
             PaquetChangementSousMode::encode,
             PaquetChangementSousMode::decode,
-            PaquetChangementSousMode::traiter
+            PaquetChangementSousMode::traiter,
+            java.util.Optional.of(NetworkDirection.PLAY_TO_CLIENT)
         );
 
         INSTANCE.registerMessage(
@@ -159,7 +160,8 @@ public class GestionnaireReseau {
             com.example.mysubmod.authentification.PaquetJetonFile.class,
             com.example.mysubmod.authentification.PaquetJetonFile::encode,
             com.example.mysubmod.authentification.PaquetJetonFile::decode,
-            com.example.mysubmod.authentification.PaquetJetonFile::traiter
+            com.example.mysubmod.authentification.PaquetJetonFile::traiter,
+            java.util.Optional.of(NetworkDirection.PLAY_TO_CLIENT)
         );
 
         INSTANCE.registerMessage(
@@ -167,7 +169,8 @@ public class GestionnaireReseau {
             com.example.mysubmod.authentification.PaquetDemandeJetonFile.class,
             com.example.mysubmod.authentification.PaquetDemandeJetonFile::encode,
             com.example.mysubmod.authentification.PaquetDemandeJetonFile::decode,
-            com.example.mysubmod.authentification.PaquetDemandeJetonFile::traiter
+            com.example.mysubmod.authentification.PaquetDemandeJetonFile::traiter,
+            java.util.Optional.of(NetworkDirection.PLAY_TO_CLIENT)
         );
 
         INSTANCE.registerMessage(
@@ -325,7 +328,8 @@ public class GestionnaireReseau {
             com.example.mysubmod.cartes.reseau.PaquetSelectionZoneDepart.class,
             com.example.mysubmod.cartes.reseau.PaquetSelectionZoneDepart::encode,
             com.example.mysubmod.cartes.reseau.PaquetSelectionZoneDepart::decode,
-            com.example.mysubmod.cartes.reseau.PaquetSelectionZoneDepart::traiter
+            com.example.mysubmod.cartes.reseau.PaquetSelectionZoneDepart::traiter,
+            java.util.Optional.of(NetworkDirection.PLAY_TO_CLIENT)
         );
 
         INSTANCE.registerMessage(
@@ -342,7 +346,8 @@ public class GestionnaireReseau {
             com.example.mysubmod.cartes.reseau.PaquetRefusLancement.class,
             com.example.mysubmod.cartes.reseau.PaquetRefusLancement::encode,
             com.example.mysubmod.cartes.reseau.PaquetRefusLancement::decode,
-            com.example.mysubmod.cartes.reseau.PaquetRefusLancement::traiter
+            com.example.mysubmod.cartes.reseau.PaquetRefusLancement::traiter,
+            java.util.Optional.of(NetworkDirection.PLAY_TO_CLIENT)
         );
 
         // Progression de la génération de carte (barre de chargement) — serveur -> client

@@ -282,7 +282,10 @@ public class EffaceurCarteSousMode3 {
             }
         } catch (Exception e) {
             MonSubMod.JOURNALISEUR.error("Erreur pendant l'effacement étalé de la carte", e);
-            terminer(); // abandonner proprement (le fichier de région est tout de même supprimé)
+            // Abandon en cours de balayage : NE PAS supprimer le fichier de région, sinon le
+            // terrain généré non essuyé subsisterait à jamais. On le conserve pour qu'un
+            // balayage de secours (nettoyerRegionResiduelle) reprenne au prochain démarrage.
+            terminer(false);
         }
     }
 
@@ -349,16 +352,32 @@ public class EffaceurCarteSousMode3 {
     }
 
     private static void terminer() {
+        terminer(true);
+    }
+
+    /**
+     * @param succes vrai si le balayage est allé jusqu'au bout. Le fichier de région (record de
+     *   reprise après crash) n'est supprimé que dans ce cas. En cas d'abandon (exception en
+     *   cours de balayage), on le conserve pour qu'un balayage de secours reprenne au prochain
+     *   démarrage — sinon les chunks générés non encore essuyés subsisteraient définitivement.
+     */
+    private static void terminer(boolean succes) {
         // Les chunks déjà traités de la plage ont libéré leur ticket au traitement :
         // un retrait redondant est sans effet
         for (int i = Math.max(index, 0); i < prochainTicket; i++) {
             ChunkPos pos = cibles.get(i);
             niveau.getChunkSource().removeRegionTicket(TicketType.FORCED, pos, DISTANCE_TICKET, pos);
         }
-        MonSubMod.JOURNALISEUR.info("Carte Sous-mode 3 effacée : {} blocs supprimés ({} chunks balayés, "
-            + "{} objets résiduels retirés)", blocsEffaces, nbTraites, objetsResiduelsRetires);
-        GenerateurCarteSousMode3.supprimerFichierRegion();
-        envoyerProgression(100, false); // 100 % puis barre masquée
+        if (succes) {
+            MonSubMod.JOURNALISEUR.info("Carte Sous-mode 3 effacée : {} blocs supprimés ({} chunks balayés, "
+                + "{} objets résiduels retirés)", blocsEffaces, nbTraites, objetsResiduelsRetires);
+            GenerateurCarteSousMode3.supprimerFichierRegion();
+        } else {
+            MonSubMod.JOURNALISEUR.warn("Effacement de la carte Sous-mode 3 interrompu ({}/{} chunks balayés) : "
+                + "fichier de région conservé pour un nouveau balayage au prochain démarrage",
+                nbTraites, cibles != null ? cibles.size() : 0);
+        }
+        envoyerProgression(100, false); // barre masquée
 
         niveau = null;
         cibles = null;

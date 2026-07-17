@@ -156,6 +156,13 @@ public class GestionnaireSalleAttente {
     }
 
     private void stockerInventaireJoueur(ServerPlayer joueur) {
+        // Ne jamais écraser un instantané déjà préservé : un second passage (ré-activation de la
+        // salle d'attente alors que le joueur y est déjà, inventaire vidé) capturerait un
+        // inventaire vide et ferait perdre les objets réels à la restauration.
+        if (inventairesStockes.containsKey(joueur.getUUID())) {
+            return;
+        }
+
         List<ItemStack> inventaire = new ArrayList<>();
 
         // Stocker l'inventaire principal
@@ -192,10 +199,15 @@ public class GestionnaireSalleAttente {
         minuterieRappel.scheduleAtFixedRate(new TimerTask() {
             @Override
             public void run() {
-                Component message = Component.literal("§e[Salle d'attente] Veuillez attendre qu'un administrateur lance un jeu");
-                for (ServerPlayer joueur : UtilitaireFiltreJoueurs.obtenirJoueursAuthentifies(serveur)) {
-                    joueur.sendSystemMessage(message);
-                }
+                // Exécuter sur le thread serveur : ni la liste des joueurs ni l'envoi réseau ne
+                // sont thread-safe (risque de ConcurrentModificationException et d'accès réseau
+                // hors thread, ce qui tuerait silencieusement la tâche de rappel).
+                serveur.execute(() -> {
+                    Component message = Component.literal("§e[Salle d'attente] Veuillez attendre qu'un administrateur lance un jeu");
+                    for (ServerPlayer joueur : UtilitaireFiltreJoueurs.obtenirJoueursAuthentifies(serveur)) {
+                        joueur.sendSystemMessage(message);
+                    }
+                });
             }
         }, 60000, 60000); // Délai initial d'1 minute, puis toutes les minutes
     }

@@ -28,10 +28,19 @@ public abstract class MixinServeurPlein {
      */
     @Inject(
         method = "canPlayerLogin",
-        at = @At("HEAD"),
+        at = @At("RETURN"),
         cancellable = true
     )
     private void surConnexionJoueur(SocketAddress address, GameProfile profile, CallbackInfoReturnable<Component> cir) {
+        // On agit UNIQUEMENT quand vanilla refuse pour cause de serveur plein. Une autorisation
+        // vanilla (null) ou tout autre refus (ban, liste blanche, ban d'IP) est laissé intact :
+        // le comptage « joueurs réels » du mod ne doit jamais outrepasser ces contrôles vanilla.
+        // (L'ancienne injection en HEAD renvoyait null avant même que vanilla ne vérifie les bans.)
+        Component refusVanilla = cir.getReturnValue();
+        if (refusVanilla == null || !estMessageServeurPlein(refusVanilla)) {
+            return;
+        }
+
         String nomJoueur = profile.getName();
 
         // Vérifier s'il s'agit d'un nom temporaire (candidat en file d'attente)
@@ -146,5 +155,15 @@ public abstract class MixinServeurPlein {
                 nombreJoueursReels, joueursMax, nombreAdmins, nombreNonAuthentifies, nombreCandidatsFile, nomCompteReel);
             // Ne pas définir la valeur de retour - laisser vanilla le gérer (affichera le message "serveur plein")
         }
+    }
+
+    /**
+     * Vrai si le composant est exactement le refus vanilla « serveur plein » (clé de traduction
+     * stable et non obfusquée), par opposition à un refus de ban, de liste blanche ou de ban
+     * d'IP — que le mod ne doit jamais outrepasser.
+     */
+    private static boolean estMessageServeurPlein(Component composant) {
+        return composant.getContents() instanceof net.minecraft.network.chat.contents.TranslatableContents contenu
+            && "multiplayer.disconnect.server_full".equals(contenu.getKey());
     }
 }

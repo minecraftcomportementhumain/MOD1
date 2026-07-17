@@ -68,7 +68,7 @@ public class UtilitaireFiltreJoueurs {
         // C'est la vérification primaire - s'ils sont dans le lobby d'attente, ils sont restreints
         boolean dansLobbyAttente = salleAttente.estDansLobbyStationnement(joueur.getUUID());
         if (dansLobbyAttente) {
-            com.example.mysubmod.MonSubMod.JOURNALISEUR.info("DEBUG: Joueur {} est restreint (dans le lobby d'attente)", nomJoueur);
+            com.example.mysubmod.MonSubMod.JOURNALISEUR.debug("Joueur {} restreint (dans le lobby d'attente)", nomJoueur);
             return true;
         }
 

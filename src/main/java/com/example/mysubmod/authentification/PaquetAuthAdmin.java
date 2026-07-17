@@ -189,8 +189,12 @@ public class PaquetAuthAdmin {
 
                     // Envoie le jeton au client AVANT d'expulser
                     if (fenetreMonopole != null && jeton != null) {
+                        // Envoyer des durées RELATIVES : le client les ancre sur son horloge, sans
+                        // dépendre de la synchro d'horloge serveur/client.
+                        long maintenant = System.currentTimeMillis();
                         com.example.mysubmod.reseau.GestionnaireReseau.sendToPlayer(
-                            new PaquetJetonFile(nomCompteReel, jeton, fenetreMonopole[0], fenetreMonopole[1]),
+                            new PaquetJetonFile(nomCompteReel, jeton,
+                                fenetreMonopole[0] - maintenant, fenetreMonopole[1] - maintenant),
                             joueur
                         );
                         MonSubMod.JOURNALISEUR.info("Jeton envoyé au client pour {}", nomCompteReel);

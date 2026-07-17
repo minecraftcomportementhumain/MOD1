@@ -7,6 +7,7 @@ import net.minecraft.server.level.ServerPlayer;
 import java.io.File;
 import java.io.FileWriter;
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.Locale;
@@ -25,10 +26,21 @@ public class EnregistreurDonneesSousMode3 {
     private static final DateTimeFormatter FORMAT_HORODATAGE = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss.SSS");
 
     public void demarrerNouvellePartie() {
-        idSessionPartie = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyy-MM-dd_HH-mm-ss"));
+        String horodatage = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyy-MM-dd_HH-mm-ss"));
 
         File repertoireMods = new File(".", "donnees_monsubmod");
-        repertoirePartie = new File(repertoireMods, "sousmode3_partie_" + idSessionPartie);
+        File repertoire = new File(repertoireMods, "sousmode3_partie_" + horodatage);
+        // Garantir l'unicité du dossier : à la seconde près, deux parties peuvent tomber sur le
+        // même horodatage (redémarrage rapide, ou heure murale répétée au passage à l'heure
+        // d'hiver). Les CSV étant ouverts en ajout, une collision fusionnerait deux parties
+        // distinctes dans les mêmes fichiers — on suffixe donc tant que le dossier existe.
+        int suffixe = 2;
+        while (repertoire.exists()) {
+            repertoire = new File(repertoireMods, "sousmode3_partie_" + horodatage + "_" + suffixe);
+            suffixe++;
+        }
+        repertoirePartie = repertoire;
+        idSessionPartie = repertoire.getName().substring("sousmode3_partie_".length());
 
         if (!repertoirePartie.exists()) {
             repertoirePartie.mkdirs();
@@ -55,7 +67,10 @@ public class EnregistreurDonneesSousMode3 {
         return enregistreursJoueurs.computeIfAbsent(nomJoueur, nom -> {
             try {
                 File fichierJoueur = new File(repertoirePartie, nom + "_journal.csv");
-                FileWriter enregistreur = new FileWriter(fichierJoueur, true);
+                // UTF-8 explicite : sans charset, FileWriter utilise l'encodage plateforme
+                // (cp1252 sur le serveur Windows) — les caractères hors cp1252 des noms de
+                // parcelles/objets seraient perdus (« ? ») et l'accentué deviendrait du mojibake.
+                FileWriter enregistreur = new FileWriter(fichierJoueur, StandardCharsets.UTF_8, true);
                 enregistreur.write("horodatage,joueur,type_evenement,x,y,z,sante,donnees_supplementaires\n");
                 enregistreur.flush();
                 return enregistreur;
@@ -191,7 +206,7 @@ public class EnregistreurDonneesSousMode3 {
             return;
         }
         File fichier = new File(repertoirePartie, "config_partie.csv");
-        try (FileWriter enregistreur = new FileWriter(fichier, false)) {
+        try (FileWriter enregistreur = new FileWriter(fichier, StandardCharsets.UTF_8, false)) {
             enregistreur.write("option,valeur\n");
             enregistreur.write("horodatage," + LocalDateTime.now().format(FORMAT_HORODATAGE) + "\n");
             enregistreur.write("carte," + (nomCarte != null ? nomCarte : "") + "\n");

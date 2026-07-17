@@ -215,7 +215,7 @@ public class GestionnaireSousModes {
         if (admins.contains(nomJoueur)) {
             // Les comptes admin DOIVENT être authentifiés
             boolean authentifie = gestAuth.estAuthentifie(joueur);
-            MonSubMod.JOURNALISEUR.info("Vérification estAdmin (liste admin): {} -> authentifié={}", nomJoueur, authentifie);
+            MonSubMod.JOURNALISEUR.debug("Vérification estAdmin (liste admin): {} -> authentifié={}", nomJoueur, authentifie);
             return authentifie;
         }
 
@@ -224,22 +224,22 @@ public class GestionnaireSousModes {
             if (gestAuth.estCompteAdmin(nomJoueur)) {
                 // Ils ont un mot de passe défini - exiger l'authentification
                 boolean authentifie = gestAuth.estAuthentifie(joueur);
-                MonSubMod.JOURNALISEUR.info("Vérification estAdmin (op avec mot de passe): {} -> authentifié={}", nomJoueur, authentifie);
+                MonSubMod.JOURNALISEUR.debug("Vérification estAdmin (op avec mot de passe): {} -> authentifié={}", nomJoueur, authentifie);
                 return authentifie;
             }
             // Pas encore de mot de passe défini - autoriser l'accès (ils peuvent définir leur mot de passe)
-            MonSubMod.JOURNALISEUR.info("Vérification estAdmin (op sans mot de passe): {} -> true", nomJoueur);
+            MonSubMod.JOURNALISEUR.debug("Vérification estAdmin (op sans mot de passe): {} -> true", nomJoueur);
             return true;
         }
 
         // Vérifier si le joueur a un compte admin (même s'il n'est pas op et pas dans la liste admin)
         if (gestAuth.estCompteAdmin(nomJoueur)) {
             boolean authentifie = gestAuth.estAuthentifie(joueur);
-            MonSubMod.JOURNALISEUR.info("Vérification estAdmin (compte admin): {} -> authentifié={}", nomJoueur, authentifie);
+            MonSubMod.JOURNALISEUR.debug("Vérification estAdmin (compte admin): {} -> authentifié={}", nomJoueur, authentifie);
             return authentifie;
         }
 
-        MonSubMod.JOURNALISEUR.info("Vérification estAdmin: {} -> false (pas op, pas dans la liste admin, pas de compte admin)", nomJoueur);
+        MonSubMod.JOURNALISEUR.debug("Vérification estAdmin: {} -> false (pas op, pas dans la liste admin, pas de compte admin)", nomJoueur);
         return false;
     }
 

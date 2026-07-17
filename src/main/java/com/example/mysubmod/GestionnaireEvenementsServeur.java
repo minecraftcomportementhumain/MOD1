@@ -286,8 +286,8 @@ public class GestionnaireEvenementsServeur {
                         joueur.connection.disconnect(Component.literal(
                             "§c§lLimite de tentatives dépassée\n\n" +
                             "§eTrop de tentatives de connexion depuis votre IP.\n" +
-                            "§7Limite par compte: §e5 tentatives parallèles§7\n" +
-                            "§7Limite globale: §e10 comptes différents§7\n\n" +
+                            "§7Limite par compte: §e" + com.example.mysubmod.authentification.GestionnaireSalleAttente.obtenirMaxCandidatsParCompteParIp() + " tentatives parallèles§7\n" +
+                            "§7Limite globale: §e" + com.example.mysubmod.authentification.GestionnaireSalleAttente.obtenirMaxCandidatsParIpGlobal() + " comptes différents§7\n\n" +
                             "§7Tous les candidats actuels sont récents (<20s).\n" +
                             "§7Veuillez réessayer plus tard."
                         ));
@@ -560,9 +560,6 @@ public class GestionnaireEvenementsServeur {
         });
     }
 
-    /**
-     * Vérifier si le joueur est un candidat file OU un protégé/admin non authentifié (les deux sont restreints)
-     */
     /**
      * Vérifier si le joueur est un VRAI candidat file (nom temporaire _Q_)
      * PAS les comptes protégés/admin réguliers en attente d'authentification

@@ -42,6 +42,16 @@ public class GestionnaireSalleAttente {
     private static final int MAX_CANDIDATS_PAR_IP_GLOBAL = 10; // Maximum 10 comptes _Q_ depuis la même IP à travers tous les comptes (protection DoS)
     private static final long AGE_MIN_CANDIDAT_POUR_EVICTION_MS = 20 * 1000; // 20 secondes - âge minimum avant qu'un candidat puisse être évincé
 
+    /** Limite de candidats parallèles par compte depuis une même IP (protection DoS). */
+    public static int obtenirMaxCandidatsParCompteParIp() {
+        return MAX_CANDIDATS_PAR_COMPTE_PAR_IP;
+    }
+
+    /** Limite globale de candidats depuis une même IP, tous comptes confondus (protection DoS). */
+    public static int obtenirMaxCandidatsParIpGlobal() {
+        return MAX_CANDIDATS_PAR_IP_GLOBAL;
+    }
+
     private GestionnaireSalleAttente() {
         // Démarrer la tâche de nettoyage pour les entrées de file et listes blanches expirées
         minuterieExpiration.scheduleAtFixedRate(new TimerTask() {
@@ -820,29 +830,10 @@ public class GestionnaireSalleAttente {
      * Gère les formats IPv4 (/127.0.0.1:port) et IPv6 (/[::1]:port)
      */
     private String extraireIpSansPort(String adresseIp) {
-        if (adresseIp == null) return adresseIp;
-
-        String resultat = adresseIp;
-
-        // Supprimer la barre oblique initiale si présente
-        if (resultat.startsWith("/")) {
-            resultat = resultat.substring(1);
-        }
-
-        // Vérifier le format IPv6 : [adresse]:port
-        int indexCrochet = resultat.lastIndexOf(']');
-        if (indexCrochet > 0) {
-            // IPv6 - extraire tout jusqu'au crochet fermant inclus
-            return resultat.substring(0, indexCrochet + 1);
-        }
-
-        // Format IPv4 : adresse:port
-        int indexDeuxPoints = resultat.lastIndexOf(':');
-        if (indexDeuxPoints > 0) {
-            return resultat.substring(0, indexDeuxPoints);
-        }
-
-        return resultat;
+        // Normalisation partagée (voir UtilitaireIp) : même forme canonique que celle dérivée de
+        // getRemoteAddress().toString() côté MixinPlacementNouveauJoueur, sinon la fenêtre de
+        // monopole stockée ne correspondrait jamais à l'IP vérifiée au login (surtout en IPv6).
+        return UtilitaireIp.extraireIpSansPort(adresseIp);
     }
 
     /**
@@ -1167,30 +1158,6 @@ public class GestionnaireSalleAttente {
     }
 
     /**
-     * Mettre à jour les fenêtres de monopole de la file après qu'un joueur soit autorisé tôt
-     */
-    private void mettreAJourFenetresFileApresAutorisation(Queue<EntreeFile> file, long nouveauTempsBase) {
-        if (file.isEmpty()) return;
-
-        int position = 1;
-        for (EntreeFile entree : file) {
-            // Calculer le nouveau temps de début potentiel (si tout le monde avant obtient son tour tôt)
-            long nouveauDebutMs = nouveauTempsBase + ((position - 1) * DELAI_EXPIRATION_AUTH_MS);
-
-            // Mettre à jour uniquement si le nouveau temps est PLUS TÔT (nous ne retardons jamais la fenêtre garantie)
-            // Mais nous gardons le temps de fin garanti (ils obtiennent toujours leurs 30s complètes depuis le début garanti)
-            if (nouveauDebutMs < entree.monopoleDebutMs) {
-                long dureeGarantie = entree.monopoleFinMs - entree.monopoleDebutMs;
-                entree.monopoleDebutMs = nouveauDebutMs;
-                entree.monopoleFinMs = nouveauDebutMs + dureeGarantie;
-                MonSubMod.JOURNALISEUR.info("Fenêtre de monopole mise à jour pour la position {} pour commencer à {} (plus tôt)",
-                    position, nouveauDebutMs);
-            }
-            position++;
-        }
-    }
-
-    /**
      * Obtenir le temps restant pour la session active sur le compte (en millisecondes)
      */
     public long obtenirTempsRestantPourCompte(String nomCompte) {
@@ -1202,38 +1169,6 @@ public class GestionnaireSalleAttente {
             }
         }
         return 0;
-    }
-
-    /**
-     * Compter le nombre total d'entrées de file pour une IP à travers tous les comptes
-     */
-    private int compterEntreesFilePourIp(String adresseIp) {
-        String ipSeule = extraireIpSansPort(adresseIp);
-        int compte = 0;
-        for (Queue<EntreeFile> file : filesAttente.values()) {
-            for (EntreeFile entree : file) {
-                String ipEntree = extraireIpSansPort(entree.adresseIp);
-                if (ipEntree.equals(ipSeule) && !entree.estExpiree()) {
-                    compte++;
-                }
-            }
-        }
-        return compte;
-    }
-
-    /**
-     * Obtenir la position d'une IP dans la file
-     */
-    private int obtenirPositionDansFile(Queue<EntreeFile> file, String adresseIp) {
-        String ipSeule = extraireIpSansPort(adresseIp);
-        int position = 1;
-        for (EntreeFile entree : file) {
-            if (extraireIpSansPort(entree.adresseIp).equals(ipSeule)) {
-                return position;
-            }
-            position++;
-        }
-        return -1;
     }
 
     /**

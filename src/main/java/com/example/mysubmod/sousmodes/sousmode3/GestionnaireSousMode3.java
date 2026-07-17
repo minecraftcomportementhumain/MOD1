@@ -107,6 +107,12 @@ public class GestionnaireSousMode3 {
     /** Valeurs de gamerules sauvegardées avant application de la config, à restaurer à la fin (null = non modifié). */
     private Boolean gameruleDegatsChuteOrigine;
     private Boolean gameruleRegenOrigine;
+    /** Persistance des gamerules d'origine : les champs ci-dessus sont transitoires et perdus si
+     *  la JVM s'arrête en pleine partie. Ce fichier permet de les restaurer au démarrage suivant
+     *  (via deactivate -> restaurerReglagesMonde) au lieu de laisser la valeur modifiée figée dans
+     *  le monde. Même dossier que le fichier de région de reprise après crash. */
+    private static final java.io.File FICHIER_REGLAGES_ORIGINE =
+        new java.io.File("donnees_monsubmod", "sousmode3_reglages_origine.json");
 
     // Sélection de la zone de départ (option du menu N) : choix des joueurs pendant la phase
     // de sélection, puis point d'apparition individuel utilisé à la place de celui de la carte.
@@ -224,6 +230,9 @@ public class GestionnaireSousMode3 {
         MinecraftServer serveur = monde.getServer();
         gameruleDegatsChuteOrigine = regles.getBoolean(net.minecraft.world.level.GameRules.RULE_FALL_DAMAGE);
         gameruleRegenOrigine = regles.getBoolean(net.minecraft.world.level.GameRules.RULE_NATURAL_REGENERATION);
+        // Persister les origines : si la JVM s'arrête en pleine partie, la restauration au
+        // prochain démarrage les relira ici (les champs transitoires étant alors perdus).
+        persisterReglagesOrigine(gameruleDegatsChuteOrigine, gameruleRegenOrigine);
         regles.getRule(net.minecraft.world.level.GameRules.RULE_FALL_DAMAGE).set(config.degatsChute, serveur);
         regles.getRule(net.minecraft.world.level.GameRules.RULE_NATURAL_REGENERATION).set(config.regenerationNaturelle, serveur);
     }
@@ -232,6 +241,12 @@ public class GestionnaireSousMode3 {
     private void restaurerReglagesMonde(ServerLevel monde) {
         if (monde == null) {
             return;
+        }
+        // Champs transitoires perdus (redémarrage du serveur en pleine partie) : les relire depuis
+        // le fichier persistant, sinon la gamerule modifiée resterait figée dans le monde et
+        // deviendrait la nouvelle baseline de la partie suivante.
+        if (gameruleDegatsChuteOrigine == null && gameruleRegenOrigine == null) {
+            chargerReglagesOriginePersistes();
         }
         net.minecraft.world.level.GameRules regles = monde.getGameRules();
         MinecraftServer serveur = monde.getServer();
@@ -242,6 +257,55 @@ public class GestionnaireSousMode3 {
         if (gameruleRegenOrigine != null) {
             regles.getRule(net.minecraft.world.level.GameRules.RULE_NATURAL_REGENERATION).set(gameruleRegenOrigine, serveur);
             gameruleRegenOrigine = null;
+        }
+        supprimerReglagesOriginePersistes();
+    }
+
+    /** Écrit les gamerules d'origine sur disque pour survivre à un arrêt en pleine partie. */
+    private void persisterReglagesOrigine(boolean degatsChute, boolean regenerationNaturelle) {
+        try {
+            java.io.File dossier = FICHIER_REGLAGES_ORIGINE.getParentFile();
+            if (dossier != null && !dossier.exists()) {
+                dossier.mkdirs();
+            }
+            com.google.gson.JsonObject obj = new com.google.gson.JsonObject();
+            obj.addProperty("degatsChute", degatsChute);
+            obj.addProperty("regenerationNaturelle", regenerationNaturelle);
+            try (java.io.Writer w = new java.io.FileWriter(FICHIER_REGLAGES_ORIGINE, java.nio.charset.StandardCharsets.UTF_8)) {
+                new com.google.gson.Gson().toJson(obj, w);
+            }
+        } catch (Exception e) {
+            MonSubMod.JOURNALISEUR.warn("Impossible de persister les gamerules d'origine du Sous-mode 3 : {}", e.toString());
+        }
+    }
+
+    /** Recharge les gamerules d'origine depuis le disque dans les champs transitoires (repli). */
+    private void chargerReglagesOriginePersistes() {
+        if (!FICHIER_REGLAGES_ORIGINE.exists()) {
+            return;
+        }
+        try (java.io.Reader r = new java.io.FileReader(FICHIER_REGLAGES_ORIGINE, java.nio.charset.StandardCharsets.UTF_8)) {
+            com.google.gson.JsonObject obj = com.google.gson.JsonParser.parseReader(r).getAsJsonObject();
+            if (obj.has("degatsChute")) {
+                gameruleDegatsChuteOrigine = obj.get("degatsChute").getAsBoolean();
+            }
+            if (obj.has("regenerationNaturelle")) {
+                gameruleRegenOrigine = obj.get("regenerationNaturelle").getAsBoolean();
+            }
+            MonSubMod.JOURNALISEUR.info("Gamerules d'origine du Sous-mode 3 récupérées sur disque après un redémarrage en pleine partie");
+        } catch (Exception e) {
+            MonSubMod.JOURNALISEUR.warn("Impossible de relire les gamerules d'origine persistées : {}", e.toString());
+        }
+    }
+
+    /** Supprime le fichier de gamerules d'origine une fois la restauration effectuée. */
+    private void supprimerReglagesOriginePersistes() {
+        try {
+            if (FICHIER_REGLAGES_ORIGINE.exists() && !FICHIER_REGLAGES_ORIGINE.delete()) {
+                MonSubMod.JOURNALISEUR.warn("Impossible de supprimer {}", FICHIER_REGLAGES_ORIGINE.getPath());
+            }
+        } catch (Exception e) {
+            MonSubMod.JOURNALISEUR.warn("Erreur en supprimant le fichier de gamerules d'origine : {}", e.toString());
         }
     }
 

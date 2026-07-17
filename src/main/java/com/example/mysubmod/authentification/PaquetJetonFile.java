@@ -13,21 +13,24 @@ import java.util.function.Supplier;
 public class PaquetJetonFile {
     private final String nomCompte;
     private final String jeton;
-    private final long monopoleDebutMs;
-    private final long monopoleFinMs;
+    // Durées RELATIVES (ms à partir de la réception), et NON des horodatages absolus du serveur :
+    // le client les ancre sur SA propre horloge, pour que la fenêtre de monopole de 45 s ne
+    // dépende pas de la synchro d'horloge serveur/client (même principe que PaquetSynchronisationPenalite).
+    private final long debutDansMs;
+    private final long finDansMs;
 
-    public PaquetJetonFile(String nomCompte, String jeton, long monopoleDebutMs, long monopoleFinMs) {
+    public PaquetJetonFile(String nomCompte, String jeton, long debutDansMs, long finDansMs) {
         this.nomCompte = nomCompte;
         this.jeton = jeton;
-        this.monopoleDebutMs = monopoleDebutMs;
-        this.monopoleFinMs = monopoleFinMs;
+        this.debutDansMs = debutDansMs;
+        this.finDansMs = finDansMs;
     }
 
     public static void encode(PaquetJetonFile paquet, FriendlyByteBuf tampon) {
         tampon.writeUtf(paquet.nomCompte, 50);
         tampon.writeUtf(paquet.jeton, 64);
-        tampon.writeLong(paquet.monopoleDebutMs);
-        tampon.writeLong(paquet.monopoleFinMs);
+        tampon.writeLong(paquet.debutDansMs);
+        tampon.writeLong(paquet.finDansMs);
     }
 
     public static PaquetJetonFile decode(FriendlyByteBuf tampon) {
@@ -46,8 +49,11 @@ public class PaquetJetonFile {
                 StockageJetonsFile.retirerJeton(paquet.nomCompte);
                 MonSubMod.JOURNALISEUR.info("Jeton de file effacé pour {}", paquet.nomCompte);
             } else {
-                // Stocke le jeton côté client
-                StockageJetonsFile.stockerJeton(paquet.nomCompte, paquet.jeton, paquet.monopoleDebutMs, paquet.monopoleFinMs);
+                // Ancre les durées relatives reçues sur l'horloge du CLIENT : évite tout décalage
+                // d'horloge serveur/client qui fausserait la fenêtre de monopole.
+                long maintenant = System.currentTimeMillis();
+                StockageJetonsFile.stockerJeton(paquet.nomCompte, paquet.jeton,
+                    maintenant + paquet.debutDansMs, maintenant + paquet.finDansMs);
                 MonSubMod.JOURNALISEUR.info("Jeton de file reçu et stocké pour {}", paquet.nomCompte);
             }
         });

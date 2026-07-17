@@ -89,11 +89,45 @@ public class EcranImportCsvCarte extends Screen {
                 return;
             }
 
-            String contenu = Files.readString(fichier);
+            String contenu = lireFichierTexte(fichier);
+            // Retirer un éventuel BOM (U+FEFF) résiduel : String.trim() ne l'enlève pas et il
+            // collerait au premier champ, faisant échouer Integer.parseInt.
+            if (!contenu.isEmpty() && contenu.charAt(0) == 0xFEFF) {
+                contenu = contenu.substring(1);
+            }
             analyserCsv(contenu);
         } catch (Exception e) {
             messageStatut = "ERREUR : " + e.getMessage();
             statutErreur = true;
+        }
+    }
+
+    /**
+     * Lit un fichier texte en tolérant les encodages produits par Excel : BOM UTF-8/UTF-16
+     * (export « CSV UTF-8 »), puis, à défaut de BOM, UTF-8 strict avec repli sur Windows-1252
+     * (export « CSV » d'un Windows français). {@link java.nio.file.Files#readString} échouait
+     * sur ces deux cas (MalformedInputException, ou BOM collé au premier champ).
+     */
+    private static String lireFichierTexte(Path fichier) throws java.io.IOException {
+        byte[] octets = Files.readAllBytes(fichier);
+        if (octets.length >= 3 && (octets[0] & 0xFF) == 0xEF
+            && (octets[1] & 0xFF) == 0xBB && (octets[2] & 0xFF) == 0xBF) {
+            return new String(octets, 3, octets.length - 3, java.nio.charset.StandardCharsets.UTF_8);
+        }
+        if (octets.length >= 2 && (octets[0] & 0xFF) == 0xFF && (octets[1] & 0xFF) == 0xFE) {
+            return new String(octets, 2, octets.length - 2, java.nio.charset.StandardCharsets.UTF_16LE);
+        }
+        if (octets.length >= 2 && (octets[0] & 0xFF) == 0xFE && (octets[1] & 0xFF) == 0xFF) {
+            return new String(octets, 2, octets.length - 2, java.nio.charset.StandardCharsets.UTF_16BE);
+        }
+        try {
+            return java.nio.charset.StandardCharsets.UTF_8.newDecoder()
+                .onMalformedInput(java.nio.charset.CodingErrorAction.REPORT)
+                .onUnmappableCharacter(java.nio.charset.CodingErrorAction.REPORT)
+                .decode(java.nio.ByteBuffer.wrap(octets)).toString();
+        } catch (java.nio.charset.CharacterCodingException e) {
+            // Non-UTF-8 : très probablement un export « CSV » Windows-1252 (accents FR).
+            return new String(octets, java.nio.charset.Charset.forName("windows-1252"));
         }
     }
 
