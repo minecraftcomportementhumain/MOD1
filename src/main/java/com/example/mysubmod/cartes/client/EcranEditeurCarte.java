@@ -249,6 +249,10 @@ public class EcranEditeurCarte extends Screen {
     // des statistiques d'inspecteur, pour que les modifications apparaissent sans délai perceptible.
     private static final int GODET_DEZOOM = 4;
     private static final long RASTER_THROTTLE_MS = 120;
+    /** Luminosité minimale de la teinte terrain d'un godet à couverture rare : garde un élément
+     *  isolé visible (revue #7) tout en laissant la couverture pleine paraître plus vive — donc
+     *  effacer une partie du terrain d'un godet le fait pâlir, visible même en vue dézoomée. */
+    private static final float COUVERTURE_MIN_DEZOOM = 0.4f;
     private int[] rasterDezoom = new int[0];
     private int[] rasterDezoomPriorite = new int[0];
     private int rasterDezoomLargeur = 0;
@@ -3476,6 +3480,11 @@ public class EcranEditeurCarte extends Screen {
         int rasterHauteur = (carte.hauteur + GODET_DEZOOM - 1) / GODET_DEZOOM;
         int[] priorites = new int[rasterLargeur * rasterHauteur];
         int[] zonesGodets = new int[rasterLargeur * rasterHauteur];
+        // Nombre de cellules du godet à sa priorité dominante : module la luminosité (couverture),
+        // pour que l'EFFACEMENT progressif d'un godet le fasse pâlir — sinon un godet dont il reste
+        // une seule cellule de terrain gardait la même couleur pleine, et le trait de suppression
+        // restait invisible en vue dézoomée.
+        int[] comptes = new int[rasterLargeur * rasterHauteur];
         for (Map.Entry<Long, BlocCarte> entree : carte.blocs.entrySet()) {
             BlocCarte bloc = entree.getValue();
             int x = CarteDonnees.cleX(entree.getKey());
@@ -3493,6 +3502,9 @@ public class EcranEditeurCarte extends Screen {
             };
             if (priorite > priorites[godet]) {
                 priorites[godet] = priorite;
+                comptes[godet] = 1;
+            } else if (priorite == priorites[godet]) {
+                comptes[godet]++;
             }
             // Plus petit id de parcelle du godet : déterministe (indépendant de l'ordre
             // d'itération du HashMap), pour que la teinte d'une frontière ne vacille pas
@@ -3507,6 +3519,8 @@ public class EcranEditeurCarte extends Screen {
             couleurTypeTerrain(TypeElementCarte.PIERRE),
             couleurTypeTerrain(TypeElementCarte.ILE),
             couleurTypeTerrain(TypeElementCarte.LIMITE)};
+        int couleurVide = couleurTypeTerrain(TypeElementCarte.VIDE);
+        float surfaceGodet = GODET_DEZOOM * GODET_DEZOOM;
         int[] couleurs = new int[rasterLargeur * rasterHauteur];
         for (int i = 0; i < couleurs.length; i++) {
             int couleur = couleursPriorite[priorites[i]];
@@ -3514,6 +3528,13 @@ public class EcranEditeurCarte extends Screen {
             // (0,35) que couleurBloc pour ne pas « sauter » au franchissement du seuil de zoom.
             if (zonesGodets[i] > 0 && priorites[i] != 4) {
                 couleur = melanger(couleur, couleurZone(zonesGodets[i]), 0.35f);
+            }
+            // Moduler par la couverture (sauf Limite — repère toujours plein — et godet vide) :
+            // effacer une partie du terrain fait pâlir le godet, rendant le trait de suppression
+            // visible en dézoom, sans faire disparaître un élément isolé (plancher).
+            if (priorites[i] != 4 && priorites[i] != 0) {
+                float couverture = Math.max(COUVERTURE_MIN_DEZOOM, Math.min(1f, comptes[i] / surfaceGodet));
+                couleur = melanger(couleurVide, couleur, couverture);
             }
             couleurs[i] = couleur;
         }
