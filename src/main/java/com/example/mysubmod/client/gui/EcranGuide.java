@@ -290,8 +290,10 @@ public class EcranGuide extends Screen {
             + "régler les délais (réapparition, apparition, fin, expiration) et le §etype§r "
             + "(Standard/Bleu/Rouge), puis §eAppliquer à la sélection§r.");
         puce(l, "§eParcelle§r : découpez la carte en parcelles nommées — la navigation en jeu "
-            + "([N] + flèche) et le choix de la parcelle de départ s'appuient dessus. Créez une "
-            + "parcelle dans le panneau de droite (molette pour faire défiler la liste), peignez "
+            + "([N] + flèche) et le choix de la parcelle de départ s'appuient dessus. Les cellules "
+            + "zonées gardent leur teinte en permanence, visible même dézoomé. Créez une "
+            + "parcelle dans le panneau de droite (molette pour faire défiler la liste ; "
+            + "double-clic sur une parcelle = cadrer la vue dessus), peignez "
             + "ses cellules (Eau comprise), renommez-la. §cChaque bonbon doit appartenir à une "
             + "parcelle§7, chaque parcelle est §cd'un seul tenant§7 (ses blocs se touchent, côté "
             + "ou diagonale — ⚠ dans le panneau sinon) et porte un §cnom unique§7 — la sauvegarde "
