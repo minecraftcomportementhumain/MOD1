@@ -61,7 +61,7 @@ public class EcranEditeurCarte extends Screen {
     private static final int MAX_ANNULATIONS = 20;
     private static final int HAUTEUR_BARRE_ETAT = 16;
     /** Largeur d'écran à partir de laquelle la barre du haut tient sur une seule rangée */
-    private static final int SEUIL_BARRE_UNIQUE = 880;
+    private static final int SEUIL_BARRE_UNIQUE = 950;
     /** En dessous de cette largeur, palette et inspecteur se compactent pour préserver la grille */
     private static final int SEUIL_LATERAUX_COMPACTS = 640;
     private static final int LARGEUR_CHAMP_SELECTION = 62;
@@ -321,9 +321,9 @@ public class EcranEditeurCarte extends Screen {
             x = 6;
         }
 
-        // Étiquettes de groupes omises sous 480 px : la rangée Aire+Limite doit tenir
-        // aux largeurs GUI minimales (elles n'apportent que du contexte visuel)
-        boolean etiquettesGroupes = this.width >= 480;
+        // Étiquettes de groupes omises sous 490 px : la rangée Aire+Limite (avec le bouton
+        // Vérifier) doit tenir aux largeurs GUI minimales (elles n'apportent que du contexte)
+        boolean etiquettesGroupes = this.width >= 490;
         if (etiquettesGroupes) {
             textesPeints.add(new TextePeint(x, yTexte2, "Aire", COULEUR_ETIQUETTE));
             x += this.font.width("Aire") + 6;
@@ -363,6 +363,16 @@ public class EcranEditeurCarte extends Screen {
                 "Place la Limite sur le contour de l'aire totale (écrase l'existante sans confirmation)")))
             .build());
         x += 74;
+
+        boutonDefautLimite = Button.builder(Component.literal("Vérifier"), b -> surBoutonDefautLimite())
+            .bounds(x, yBoutons2, 60, 20)
+            .tooltip(net.minecraft.client.gui.components.Tooltip.create(Component.literal(
+                "Vérifie que le périmètre Limite est bien fermé ; sinon, surligne le défaut "
+                    + "(trou du tracé, trait isolé) et centre la vue dessus")))
+            .build();
+        addRenderableWidget(boutonDefautLimite);
+        mettreAJourBoutonDefautLimite(); // init() reconstruit les widgets : garder le libellé de l'état courant
+        x += 64;
 
         addRenderableWidget(Button.builder(Component.literal("Supprimer"), b -> supprimerLimite())
             .bounds(x, yBoutons2, 70, 20)
@@ -477,8 +487,8 @@ public class EcranEditeurCarte extends Screen {
         boutonSupprimerZone = Button.builder(Component.literal("Supprimer"), b -> supprimerZoneActive())
             .bounds(xPanneauZones, 0, largeurPanneauZones, 16)
             .tooltip(net.minecraft.client.gui.components.Tooltip.create(Component.literal(
-                "Retire toutes les cellules de la parcelle active (annulable) ; une parcelle restée "
-                    + "vide disparaît du fichier à la sauvegarde")))
+                "Supprime la parcelle active : retire ses cellules de la carte et sa rangée de "
+                    + "cette liste (annulable) ; les parcelles suivantes sont renumérotées")))
             .build();
         addRenderableWidget(boutonSupprimerZone);
         mettreAJourPanneauZones();
@@ -609,15 +619,6 @@ public class EcranEditeurCarte extends Screen {
             .bounds(this.width - 56, yZoom, 50, 14)
             .tooltip(net.minecraft.client.gui.components.Tooltip.create(Component.literal("Cadrer toute la carte dans la vue")))
             .build());
-
-        boutonDefautLimite = Button.builder(Component.literal("Vérifier Limite"), b -> surBoutonDefautLimite())
-            .bounds(this.width - 232, yZoom, 92, 14)
-            .tooltip(net.minecraft.client.gui.components.Tooltip.create(Component.literal(
-                "Vérifie que le périmètre Limite est bien fermé ; sinon, surligne le défaut "
-                    + "(trou du tracé, trait isolé) et centre la vue dessus")))
-            .build();
-        addRenderableWidget(boutonDefautLimite);
-        mettreAJourBoutonDefautLimite(); // init() reconstruit les widgets : garder le libellé de l'état courant
 
         mettreAJourBoutonsAnnulation();
         mettreAJourIndicateurSauvegarde();
@@ -776,35 +777,33 @@ public class EcranEditeurCarte extends Screen {
         if (zoneActive < 1 || zoneActive > carte.zones.size()) {
             return;
         }
-        // desassignerCellules passe par la pile d'annulation (via enregistrerAction) qui
-        // marque déjà la carte modifiée : ne PAS armer zonesRegistreModifie (non annulable),
-        // sinon annuler la suppression laisserait le ● et une confirmation de fermeture à tort.
-        desassignerCellules(zoneActive);
-        afficherToast("Cellules de « " + carte.zones.get(zoneActive - 1).nom + " » retirées", false);
-    }
+        int id = zoneActive;
+        String nom = nomZoneAffiche(id);
 
-    /** Retire les cellules de la parcelle {@code id} (0 = toutes) — même garde-fou
-     *  d'annulation que les autres actions de masse */
-    private void desassignerCellules(int id) {
+        // Cellules touchées : celles de la parcelle (zone -> 0) et celles des parcelles
+        // suivantes (zone -> zone-1) — les ids étant des index du registre, retirer une
+        // parcelle du milieu renumérote toutes les suivantes.
         List<Long> cibles = new ArrayList<>();
         for (Map.Entry<Long, BlocCarte> entree : carte.blocs.entrySet()) {
-            int zoneBloc = entree.getValue().zone;
-            if (zoneBloc > 0 && (id == 0 || zoneBloc == id)) {
+            if (entree.getValue().zone >= id) {
                 cibles.add(entree.getKey());
             }
         }
-        if (cibles.isEmpty()) {
-            return;
-        }
+
         boolean annulable = cibles.size() <= MAX_BLOCS_ACTION_ANNULABLE;
         ActionEditeur action = annulable ? new ActionEditeur(carte) : null;
+        if (action != null) {
+            // L'action porte aussi le registre des parcelles : annuler restaure la rangée
+            // supprimée ET la numérotation d'origine (via apresActionZones)
+            action.zonesAvant = new ArrayList<>(carte.zones);
+        }
         for (long cle : cibles) {
             BlocCarte bloc = carte.blocs.get(cle);
             if (bloc == null) {
                 continue;
             }
             BlocCarte apres = bloc.copier();
-            apres.zone = 0;
+            apres.zone = bloc.zone == id ? 0 : bloc.zone - 1;
             int cx = CarteDonnees.cleX(cle);
             int cz = CarteDonnees.cleZ(cle);
             if (action != null) {
@@ -812,14 +811,21 @@ public class EcranEditeurCarte extends Screen {
             }
             carte.definirBloc(cx, cz, apres);
         }
+        // Retirer la parcelle du registre : elle disparaît aussi de la liste du panneau
+        // (avant, seules les cellules étaient désassignées et la rangée restait affichée)
+        carte.zones.remove(id - 1);
+        zoneActive = 0;
         if (action != null) {
-            if (!action.estVide()) {
-                enregistrerAction(action);
-            }
+            action.zonesApres = new ArrayList<>(carte.zones);
+            enregistrerAction(action);
         } else {
-            conclureOperationNonAnnulable("Parcelle retirée de " + cibles.size()
-                + " blocs (trop volumineux pour l'annulation)");
+            // Registre modifié sans passer par la pile : marquer « modifié » à part
+            zonesRegistreModifie = true;
+            conclureOperationNonAnnulable("Parcelle supprimée — " + cibles.size()
+                + " blocs modifiés (trop volumineux pour l'annulation)");
         }
+        mettreAJourPanneauZones();
+        afficherToast("Parcelle « " + nom + " » supprimée", false);
     }
 
     /** Nom d'une parcelle pour l'affichage (tronqué, « ? » si l'id ne correspond plus) */
@@ -2453,7 +2459,7 @@ public class EcranEditeurCarte extends Screen {
                     activerDiagnosticLimite(defauts, false);
                     erreurs = new ArrayList<>(erreurs);
                     erreurs.add("§eDéfaut repéré vers (" + defauts.get(0)[0] + ", " + defauts.get(0)[1]
-                        + ") — il clignote dans la grille ; « Défaut suiv. » (barre du bas) pour naviguer.");
+                        + ") — il clignote dans la grille ; « Suivant » (en haut, groupe Limite) pour naviguer.");
                 }
             }
             afficherMessage("Sauvegarde bloquée", erreurs);
@@ -2886,11 +2892,11 @@ public class EcranEditeurCarte extends Screen {
         }
     }
 
-    /** Le bouton devient « Défaut suiv. » tant qu'un diagnostic est actif. */
+    /** Le bouton devient « Suivant » tant qu'un diagnostic est actif. */
     private void mettreAJourBoutonDefautLimite() {
         if (boutonDefautLimite != null) {
             boutonDefautLimite.setMessage(Component.literal(
-                defautsLimite != null && !defautsLimite.isEmpty() ? "Défaut suiv." : "Vérifier Limite"));
+                defautsLimite != null && !defautsLimite.isEmpty() ? "Suivant" : "Vérifier"));
         }
     }
 

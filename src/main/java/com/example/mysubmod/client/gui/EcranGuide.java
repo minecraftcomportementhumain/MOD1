@@ -300,8 +300,8 @@ public class EcranGuide extends Screen {
             + "est refusée sinon.");
         puce(l, "§eLimite§r : bouton « Par défaut » = mur sur tout le contour de l'aire ; "
             + "« Supprimer » retire toute la Limite.");
-        puce(l, "§eVérifier Limite§r (barre du bas) : localise un trou du périmètre — le défaut "
-            + "clignote en rouge/jaune et la vue se centre dessus ; « Défaut suiv. » navigue s'il y en "
+        puce(l, "§eLimite › Vérifier§r (barre du haut) : localise un trou du périmètre — le défaut "
+            + "clignote en rouge/jaune et la vue se centre dessus ; « Suivant » navigue s'il y en "
             + "a plusieurs (lancé aussi automatiquement quand la sauvegarde échoue pour cette raison).");
         para(l, "§7Le panneau de droite montre le bloc survolé, l'état de la carte (limite fermée, apparition, "
             + "totaux de bonbons) et la légende ; la barre du bas rappelle les contrôles de l'outil actif. "
