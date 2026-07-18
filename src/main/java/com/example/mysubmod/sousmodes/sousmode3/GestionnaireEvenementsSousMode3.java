@@ -99,15 +99,21 @@ public class GestionnaireEvenementsSousMode3 {
             return;
         }
         GestionnaireSousMode3 gestionnaire = GestionnaireSousMode3.getInstance();
-        if (!gestionnaire.estPartieActive() || gestionnaire.obtenirConfig().chatJoueurs) {
-            return;
-        }
         ServerPlayer joueur = event.getPlayer();
-        if (GestionnaireSousModes.getInstance().estAdmin(joueur)) {
-            return;
+        boolean bloque = gestionnaire.estPartieActive() && !gestionnaire.obtenirConfig().chatJoueurs
+            && !GestionnaireSousModes.getInstance().estAdmin(joueur);
+
+        // Corpus de recherche : journaliser TOUS les messages de la session, y compris ceux
+        // que l'option « Chat entre joueurs » bloque (marqués diffuse=false).
+        if (gestionnaire.obtenirEnregistreurDonnees() != null) {
+            gestionnaire.obtenirEnregistreurDonnees()
+                .enregistrerChat(joueur, event.getMessage().getString(), !bloque);
         }
-        event.setCanceled(true);
-        joueur.sendSystemMessage(Component.literal("§cLe chat est désactivé dans cette partie"));
+
+        if (bloque) {
+            event.setCanceled(true);
+            joueur.sendSystemMessage(Component.literal("§cLe chat est désactivé dans cette partie"));
+        }
     }
 
     // ==================== Minage ====================
@@ -382,8 +388,16 @@ public class GestionnaireEvenementsSousMode3 {
             return;
         }
 
-        // Crafting autorisé par la config : laisser la fabrication vanilla suivre son cours.
-        if (GestionnaireSousMode3.getInstance().obtenirConfig().crafting) {
+        // Crafting autorisé par la config : laisser la fabrication vanilla suivre son cours,
+        // en journalisant l'objet produit (corpus de recherche).
+        GestionnaireSousMode3 gestionnaireCraft = GestionnaireSousMode3.getInstance();
+        if (gestionnaireCraft.obtenirConfig().crafting) {
+            if (gestionnaireCraft.obtenirEnregistreurDonnees() != null && !event.getCrafting().isEmpty()) {
+                gestionnaireCraft.obtenirEnregistreurDonnees().enregistrerCraft(joueur,
+                    net.minecraftforge.registries.ForgeRegistries.ITEMS.getKey(
+                        event.getCrafting().getItem()).toString(),
+                    event.getCrafting().getCount());
+            }
             return;
         }
 
@@ -825,6 +839,34 @@ public class GestionnaireEvenementsSousMode3 {
                 }
             }
         }
+    }
+
+    // ==================== Dégâts appliqués (journalisation de recherche) ====================
+
+    /**
+     * Journalise chaque dégât vanilla RÉELLEMENT appliqué à un participant vivant (PvP, chute,
+     * faim, monstres, flèches...), avec sa cause et — pour le PvP — l'attaquant. Les dégâts
+     * annulés en amont (noyade gérée par le sous-mode, chute désactivée, étouffement) ne
+     * déclenchent pas cet événement ; la dégradation programmée de la santé, qui passe par
+     * setHealth, non plus (elle est journalisée en CHANGEMENT_SANTE).
+     */
+    @SubscribeEvent
+    public static void onLivingDamage(net.minecraftforge.event.entity.living.LivingDamageEvent event) {
+        if (!estModeActif()) {
+            return;
+        }
+        if (!(event.getEntity() instanceof ServerPlayer joueur)) {
+            return;
+        }
+        GestionnaireSousMode3 gestionnaire = GestionnaireSousMode3.getInstance();
+        if (gestionnaire.obtenirEnregistreurDonnees() == null
+            || !gestionnaire.estJoueurVivant(joueur.getUUID())) {
+            return;
+        }
+        String attaquant = event.getSource().getEntity() instanceof ServerPlayer auteur
+            ? auteur.getName().getString() : null;
+        gestionnaire.obtenirEnregistreurDonnees().enregistrerDegat(
+            joueur, event.getSource().getMsgId(), event.getAmount(), attaquant);
     }
 
     // ==================== Mort d'un participant (chute, PvP, faim, feu...) ====================

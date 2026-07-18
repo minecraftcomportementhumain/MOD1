@@ -419,6 +419,16 @@ public class GestionnaireReseau {
             java.util.Optional.of(NetworkDirection.PLAY_TO_CLIENT)
         );
 
+        // Journalisation du ciblage de la flèche de navigation (recherche) — client -> serveur
+        INSTANCE.registerMessage(
+            idPaquet++,
+            com.example.mysubmod.sousmodes.sousmode3.reseau.PaquetCiblageParcelleSousMode3.class,
+            com.example.mysubmod.sousmodes.sousmode3.reseau.PaquetCiblageParcelleSousMode3::encode,
+            com.example.mysubmod.sousmodes.sousmode3.reseau.PaquetCiblageParcelleSousMode3::decode,
+            com.example.mysubmod.sousmodes.sousmode3.reseau.PaquetCiblageParcelleSousMode3::traiter,
+            java.util.Optional.of(NetworkDirection.PLAY_TO_SERVER)
+        );
+
         // Presets de config du menu N : action admin — client -> serveur
         INSTANCE.registerMessage(
             idPaquet++,

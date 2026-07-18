@@ -186,9 +186,22 @@ public class HUDZonesSousMode3 {
         return Math.max(1, (ZONES.size() + parPage - 1) / parPage);
     }
 
-    /** Cibler une zone : active la flèche de navigation (une seule flèche à la fois) */
+    /** Cibler une zone : active la flèche de navigation (une seule flèche à la fois).
+     *  Le choix — ou la désactivation — est rapporté au serveur pour la journalisation de
+     *  recherche : le ciblage est un état purement client, invisible du serveur sinon. */
     public static void ciblerZone(String nom) {
         zoneCiblee = nom;
+        envoyerCiblage(nom != null ? nom : "", nom != null
+            ? com.example.mysubmod.sousmodes.sousmode3.reseau.PaquetCiblageParcelleSousMode3.RAISON_CHOISIE
+            : com.example.mysubmod.sousmodes.sousmode3.reseau.PaquetCiblageParcelleSousMode3.RAISON_DESACTIVEE);
+    }
+
+    /** Rapporte un événement de ciblage au serveur (ligne CIBLAGE_PARCELLE du journal CSV). */
+    private static void envoyerCiblage(String zone, String raison) {
+        if (Minecraft.getInstance().getConnection() != null) {
+            com.example.mysubmod.reseau.GestionnaireReseau.INSTANCE.sendToServer(
+                new com.example.mysubmod.sousmodes.sousmode3.reseau.PaquetCiblageParcelleSousMode3(zone, raison));
+        }
     }
 
     public static String obtenirZoneCiblee() {
@@ -368,6 +381,9 @@ public class HUDZonesSousMode3 {
         if (distance <= RAYON_ARRIVEE
             || (parcelleVide && zone.contientPosition(mc.player.getX(), mc.player.getZ()))) {
             zoneCiblee = null;
+            // Arrivée au but : rapportée aussi (fin de l'épisode de navigation dans le journal)
+            envoyerCiblage(cible,
+                com.example.mysubmod.sousmodes.sousmode3.reseau.PaquetCiblageParcelleSousMode3.RAISON_ARRIVEE);
             return;
         }
 

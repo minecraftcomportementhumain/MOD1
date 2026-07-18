@@ -186,6 +186,35 @@ public class EnregistreurDonneesSousMode3 {
             String.format(Locale.US, "ancienne_sante=%.1f;nouvelle_sante=%.1f", ancienneSante, nouvelleSante));
     }
 
+    /**
+     * Dégât vanilla réellement appliqué au joueur (PvP, chute, faim, monstres, flèches...),
+     * avec sa cause et, pour le PvP, l'attaquant. La dégradation PROGRAMMÉE de la santé passe,
+     * elle, par CHANGEMENT_SANTE — les deux ne se recouvrent pas. La colonne santé de la ligne
+     * reflète la santé AVANT application du dégât.
+     */
+    public void enregistrerDegat(ServerPlayer joueur, String cause, float quantite, String attaquant) {
+        ecrireLigne(joueur, "DEGAT", String.format(Locale.US, "cause=%s;quantite=%.2f%s",
+            cause, quantite, attaquant != null ? ";attaquant=" + attaquant : ""));
+    }
+
+    /** Objet fabriqué (option « Crafting » du menu N). */
+    public void enregistrerCraft(ServerPlayer joueur, String objet, int quantite) {
+        ecrireLigne(joueur, "CRAFT", String.format(Locale.US, "objet=%s;quantite=%d", objet, quantite));
+    }
+
+    /** Message de chat du joueur ({@code diffuse} = faux si bloqué par l'option « Chat entre
+     *  joueurs »). Le texte est en DERNIER champ : il peut contenir « ; » et « = ». */
+    public void enregistrerChat(ServerPlayer joueur, String message, boolean diffuse) {
+        ecrireLigne(joueur, "CHAT", "diffuse=" + diffuse + ";message=" + message);
+    }
+
+    /** Ciblage de la flèche de navigation (état purement client, rapporté par paquet) :
+     *  raison CHOISIE / DESACTIVEE / ARRIVEE. Le nom de parcelle est en DERNIER champ
+     *  (caractères arbitraires possibles). */
+    public void enregistrerCiblageParcelle(ServerPlayer joueur, String zone, String raison) {
+        ecrireLigne(joueur, "CIBLAGE_PARCELLE", "raison=" + raison + ";zone=" + zone);
+    }
+
     public void enregistrerMortJoueur(ServerPlayer joueur) {
         ecrireLigne(joueur, "MORT", "");
     }
