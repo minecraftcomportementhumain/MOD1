@@ -161,6 +161,29 @@ public class GestionnaireSousMode3 {
     }
 
     /**
+     * Synchronise vers une cible réseau l'état d'interface de la partie EN COURS : temps de
+     * minage imposé et options d'aide (flèche de navigation, panneau des parcelles). Ces deux
+     * paquets doivent partir ENSEMBLE à chaque moment du cycle de vie où un client (re)découvre
+     * la partie ; les centraliser ici évite d'en oublier un (le trou de la reconnexion l'a prouvé).
+     */
+    public void envoyerInterfacePartie(net.minecraftforge.network.PacketDistributor.PacketTarget cible) {
+        GestionnaireReseau.INSTANCE.send(cible,
+            new com.example.mysubmod.sousmodes.sousmode3.reseau.PaquetVitesseMinageSousMode3(config.tempsMinageSecondes));
+        GestionnaireReseau.INSTANCE.send(cible,
+            new com.example.mysubmod.sousmodes.sousmode3.reseau.PaquetOptionsHudSousMode3(
+                config.flecheNavigation, config.hudParcelles));
+    }
+
+    /** Remet une cible aux valeurs d'interface par défaut (hors partie) : minage vanilla et
+     *  toutes les aides autorisées. Pendant de {@link #envoyerInterfacePartie}. */
+    public static void envoyerInterfaceDefauts(net.minecraftforge.network.PacketDistributor.PacketTarget cible) {
+        GestionnaireReseau.INSTANCE.send(cible,
+            new com.example.mysubmod.sousmodes.sousmode3.reseau.PaquetVitesseMinageSousMode3(0));
+        GestionnaireReseau.INSTANCE.send(cible,
+            com.example.mysubmod.sousmodes.sousmode3.reseau.PaquetOptionsHudSousMode3.defauts());
+    }
+
+    /**
      * Enregistre la config choisie par l'admin, juste avant le lancement. Applique aussi
      * les contraintes non négociables imposées par la carte (ex. : la destruction de blocs
      * reste obligatoire tant que la carte cache des bonbons non-visibles).
@@ -600,16 +623,9 @@ public class GestionnaireSousMode3 {
         // HUD des zones pour tous les joueurs
         GestionnaireBonbonsSousMode3.obtenirInstance().envoyerZonesCompletesATous(true);
 
-        // Temps de minage imposé : synchroniser les clients — la casse est prédite côté
-        // client, un client resté aux vitesses vanilla verrait sa casse désynchronisée
-        GestionnaireReseau.INSTANCE.send(PacketDistributor.ALL.noArg(),
-            new com.example.mysubmod.sousmodes.sousmode3.reseau.PaquetVitesseMinageSousMode3(
-                config.tempsMinageSecondes));
-
-        // Options d'interface de la partie (menu N › Interface : flèche de navigation, panneau)
-        GestionnaireReseau.INSTANCE.send(PacketDistributor.ALL.noArg(),
-            new com.example.mysubmod.sousmodes.sousmode3.reseau.PaquetOptionsHudSousMode3(
-                config.flecheNavigation, config.hudParcelles));
+        // Temps de minage imposé (casse prédite côté client) + options d'interface de la partie
+        // (menu N › Interface : flèche, panneau) : synchroniser tous les clients.
+        envoyerInterfacePartie(PacketDistributor.ALL.noArg());
 
         // Apparitions initiales différées (délai configuré par bloc, depuis le début de partie)
         GestionnaireBonbonsSousMode3.obtenirInstance().planifierApparitionsInitiales();
@@ -656,10 +672,7 @@ public class GestionnaireSousMode3 {
                 }
                 GestionnaireReseau.INSTANCE.send(PacketDistributor.ALL.noArg(), new PaquetMinuterieJeuSousMode3(-1));
                 GestionnaireReseau.INSTANCE.send(PacketDistributor.ALL.noArg(), PaquetZonesSousMode3.vide());
-                GestionnaireReseau.INSTANCE.send(PacketDistributor.ALL.noArg(),
-                    new com.example.mysubmod.sousmodes.sousmode3.reseau.PaquetVitesseMinageSousMode3(0));
-                GestionnaireReseau.INSTANCE.send(PacketDistributor.ALL.noArg(),
-                    com.example.mysubmod.sousmodes.sousmode3.reseau.PaquetOptionsHudSousMode3.defauts());
+                envoyerInterfaceDefauts(PacketDistributor.ALL.noArg());
             } catch (Exception e) {
                 MonSubMod.JOURNALISEUR.error("Erreur lors de l'arrêt de la minuterie de partie", e);
             }
@@ -1453,15 +1466,10 @@ public class GestionnaireSousMode3 {
         // Seulement une fois la partie lancée : avant, les compteurs ne reflètent rien.
         if (partieActive) {
             GestionnaireBonbonsSousMode3.obtenirInstance().envoyerZonesCompletesAJoueur(joueur, true);
-            // Resynchroniser aussi le temps de minage et les options d'interface de la partie :
-            // ce chemin (reconnexion via authentification) ne passe pas par le onPlayerJoin du
-            // sous-mode, et l'état client ne survit pas à un redémarrage du client.
-            GestionnaireReseau.INSTANCE.send(PacketDistributor.PLAYER.with(() -> joueur),
-                new com.example.mysubmod.sousmodes.sousmode3.reseau.PaquetVitesseMinageSousMode3(
-                    config.tempsMinageSecondes));
-            GestionnaireReseau.INSTANCE.send(PacketDistributor.PLAYER.with(() -> joueur),
-                new com.example.mysubmod.sousmodes.sousmode3.reseau.PaquetOptionsHudSousMode3(
-                    config.flecheNavigation, config.hudParcelles));
+            // Resynchroniser le temps de minage et les options d'interface de la partie : ce chemin
+            // (reconnexion via authentification) ne passe pas par le onPlayerJoin du sous-mode, et
+            // l'état client ne survit pas à un redémarrage du client.
+            envoyerInterfacePartie(PacketDistributor.PLAYER.with(() -> joueur));
         }
 
         if (joueurEstMort) {

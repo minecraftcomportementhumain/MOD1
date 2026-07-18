@@ -70,9 +70,6 @@ public class HUDZonesSousMode3 {
 
     /** Page affichée du panneau (base 0) — la touche F fait défiler les pages. */
     private static int pageCourante = 0;
-    /** Dernier nombre total de pages calculé au rendu ; repris par la touche F quand le
-     *  panneau est masqué (pour « reculer » directement sur la dernière page). */
-    private static int dernierTotalPages = 1;
 
     public static synchronized void mettreAJourZones(List<PaquetZonesSousMode3.ZoneReseau> zonesRecues,
                                                      boolean complet, boolean reinitialiser) {
@@ -146,10 +143,12 @@ public class HUDZonesSousMode3 {
      * Touche F : fait défiler le panneau des parcelles — page suivante, puis masqué après la
      * dernière page, puis retour à la page 1 ({@code recule} = sens inverse, convention Maj du
      * mod). Avec une seule page, simple bascule affiché/masqué (comportement historique).
-     * Retourne le message d'état à montrer au joueur ({@code nomTouche} = libellé de la touche).
+     * Le total de pages est recalculé ici depuis l'état courant ({@code hauteurEcran} du client),
+     * jamais repris d'une valeur figée au rendu — sans quoi, panneau masqué, F se fiait à un
+     * total périmé. Retourne le message d'état à montrer au joueur.
      */
-    public static String basculerPanneauOuPage(boolean recule, String nomTouche) {
-        int total = Math.max(1, dernierTotalPages);
+    public static synchronized String basculerPanneauOuPage(boolean recule, String nomTouche, int hauteurEcran) {
+        int total = totalPagesPour(hauteurEcran);
         if (!panneauAffiche) {
             panneauAffiche = true;
             pageCourante = recule ? total - 1 : 0;
@@ -171,6 +170,20 @@ public class HUDZonesSousMode3 {
             return "§7Parcelles — page §e" + (pageCourante + 1) + "§7/§e" + total;
         }
         return "§7HUD des parcelles affiché";
+    }
+
+    /** Lignes de parcelles par page, adaptées à la hauteur d'écran (bornées par
+     *  LIGNES_MAX_PANNEAU). Partagé par le rendu et la pagination pour qu'ils s'accordent. */
+    private static int lignesParPage(int hauteurEcran) {
+        boolean spec = SpecialisationClientSousMode3.obtenirSpecialisation() != null;
+        int espaceVertical = hauteurEcran - MARGE_BASSE_PANNEAU - 30 - 16 - 12 - (spec ? 12 : 0);
+        return Math.max(4, Math.min(LIGNES_MAX_PANNEAU, espaceVertical / HAUTEUR_LIGNE_PANNEAU));
+    }
+
+    /** Nombre total de pages pour l'état courant (nombre de parcelles + hauteur d'écran). */
+    private static synchronized int totalPagesPour(int hauteurEcran) {
+        int parPage = lignesParPage(hauteurEcran);
+        return Math.max(1, (ZONES.size() + parPage - 1) / parPage);
     }
 
     /** Cibler une zone : active la flèche de navigation (une seule flèche à la fois) */
@@ -211,22 +224,19 @@ public class HUDZonesSousMode3 {
         // à largeur fixe, une ligne longue — nom + « N bleu(s), N rouge(s), N invis. »
         // avec la spécialisation — sortait de l'écran). Un nom de parcelle trop long est
         // abrégé (…) pour que les compteurs restent toujours entièrement lisibles.
-        // Lignes par page : adaptées à la hauteur de l'écran, bornées par LIGNES_MAX_PANNEAU
-        // pour que le panneau ne sorte jamais de l'écran ni n'en occupe une part démesurée.
-        // La place du pied est toujours réservée dans le calcul (12 px).
-        int espaceVertical = hauteurEcran - MARGE_BASSE_PANNEAU - 30 - 16 - 12
-            - (texteSpec != null ? 12 : 0);
-        int lignesParPage = Math.max(4, Math.min(LIGNES_MAX_PANNEAU, espaceVertical / HAUTEUR_LIGNE_PANNEAU));
+        // Lignes par page : helper partagé avec la pagination (touche F), pour que F voie
+        // toujours le MÊME total de pages que ce qui est affiché (la place du pied — 12 px —
+        // est toujours réservée dans le calcul).
+        int lignesPage = lignesParPage(hauteurEcran);
 
         // Pagination par la touche F (suivante ; Maj = précédente ; masqué en fin de cycle) :
         // toutes les parcelles restent consultables avec leurs compteurs, sans agrandir le
         // panneau — l'écran [N] ne liste plus que les noms, pour le ciblage.
-        int totalPages = Math.max(1, (zones.size() + lignesParPage - 1) / lignesParPage);
-        dernierTotalPages = totalPages;
+        int totalPages = Math.max(1, (zones.size() + lignesPage - 1) / lignesPage);
         pageCourante = Math.max(0, Math.min(pageCourante, totalPages - 1));
-        int debut = pageCourante * lignesParPage;
+        int debut = pageCourante * lignesPage;
         List<ZoneClient> zonesAffichees = zones.subList(debut,
-            Math.min(zones.size(), debut + lignesParPage));
+            Math.min(zones.size(), debut + lignesPage));
 
         boolean flecheOk = OptionsHudClientSousMode3.flecheAutorisee();
         String pied;

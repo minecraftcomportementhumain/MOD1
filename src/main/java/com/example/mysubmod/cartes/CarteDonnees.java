@@ -170,6 +170,20 @@ public class CarteDonnees {
         pile.empiler(index);
     }
 
+    /** Une cellule Limite (x, z) est-elle 8-adjacente à au moins une cellule de l'intérieur ?
+     *  Critère partagé par la validation du périmètre et le localisateur de défauts, pour qu'ils
+     *  ne divergent pas (sinon on surlignerait des cellules que la validation accepte, ou vice versa). */
+    private boolean toucheInterieur(int x, int z, EnsembleCellules interieur) {
+        for (int dx = -1; dx <= 1; dx++) {
+            for (int dz = -1; dz <= 1; dz++) {
+                if ((dx != 0 || dz != 0) && interieur.contientXZ(x + dx, z + dz)) {
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
     /**
      * Vérifie que le périmètre Limite forme une boucle fermée entourant complètement
      * des blocs non-Limite (au moins un bloc intérieur, et chaque bloc Limite touche l'intérieur).
@@ -197,20 +211,7 @@ public class CarteDonnees {
             if (entree.getValue().type != TypeElementCarte.LIMITE) {
                 continue;
             }
-            int x = cleX(entree.getKey());
-            int z = cleZ(entree.getKey());
-            boolean toucheInterieur = false;
-            for (int dx = -1; dx <= 1 && !toucheInterieur; dx++) {
-                for (int dz = -1; dz <= 1 && !toucheInterieur; dz++) {
-                    if (dx == 0 && dz == 0) {
-                        continue;
-                    }
-                    if (interieur.contientXZ(x + dx, z + dz)) {
-                        toucheInterieur = true;
-                    }
-                }
-            }
-            if (!toucheInterieur) {
+            if (!toucheInterieur(cleX(entree.getKey()), cleZ(entree.getKey()), interieur)) {
                 return false;
             }
         }
@@ -306,17 +307,9 @@ public class CarteDonnees {
             return resultat;
         }
 
-        // 3) Limites orphelines (le même critère que la validation)
+        // 3) Limites orphelines (critère partagé avec la validation : toucheInterieur)
         for (int[] cellule : cellulesLimite) {
-            boolean toucheInterieur = false;
-            for (int dx = -1; dx <= 1 && !toucheInterieur; dx++) {
-                for (int dz = -1; dz <= 1 && !toucheInterieur; dz++) {
-                    if ((dx != 0 || dz != 0) && interieur.contientXZ(cellule[0] + dx, cellule[1] + dz)) {
-                        toucheInterieur = true;
-                    }
-                }
-            }
-            if (!toucheInterieur && resultat.size() < MAX_CELLULES_DEFAUT) {
+            if (!toucheInterieur(cellule[0], cellule[1], interieur) && resultat.size() < MAX_CELLULES_DEFAUT) {
                 resultat.add(cellule);
             }
         }

@@ -182,8 +182,9 @@ public class EcranEditeurCarte extends Screen {
     // ----- Parcelles (outil Parcelle ; « zones » dans le code et le format) -----
     /** Parcelle active de l'outil : 0 = aucune, sinon 1 + index dans carte.zones */
     private int zoneActive = 0;
-    /** Le registre des parcelles (création / renommage) a changé depuis la sauvegarde —
-     *  ces opérations ne passent pas par la pile d'annulation, d'où ce drapeau à part */
+    /** Le registre des parcelles (création, renommage, suppression) a changé depuis la
+     *  sauvegarde — ces opérations ne passent pas par la pile d'annulation (la suppression
+     *  la vide même), d'où ce drapeau à part */
     private boolean zonesRegistreModifie = false;
     /** Rangées cliquables du panneau Parcelles, reconstruites à chaque image : {y0, y1, id} */
     private final List<int[]> lignesZonesInspecteur = new ArrayList<>();
@@ -238,14 +239,20 @@ public class EcranEditeurCarte extends Screen {
     // Cellules portant au moins un bonbon : marqueurs compacts dessinés sous le seuil
     // des icônes détaillées, pour que les bonbons restent repérables en dézoom
     private long[] cellulesBonbonsCache = new long[0];
-    // Raster de dézoom : couleur agrégée par godet de 4×4 cellules, par PRIORITÉ
-    // (Limite > Île > Pierre > Eau > vide, teinte parcelle comprise). En fort dézoom,
-    // l'échantillonnage par cellule sautait les éléments fins (île d'une cellule, trait
-    // de pierre...) qui disparaissaient de la vue d'ensemble ; le passage terrain lit ce
-    // raster à la place. Reconstruit avec les stats (cadence 500 ms).
+    // Raster de dézoom : couleur ET priorité (Limite > Île > Pierre > Eau > vide, teinte
+    // parcelle comprise) agrégées par godet de 4×4 cellules. En fort dézoom, l'échantillonnage
+    // par cellule sautait les éléments fins (île d'une cellule, trait de pierre...) ; le passage
+    // terrain lit ce raster et couleurEchantillon agrège TOUS les godets couverts par un
+    // échantillon (le pas peut dépasser 4). Rafraîchi à sa propre cadence courte, indépendante
+    // des statistiques d'inspecteur, pour que les modifications apparaissent sans délai perceptible.
     private static final int GODET_DEZOOM = 4;
+    private static final long RASTER_THROTTLE_MS = 120;
     private int[] rasterDezoom = new int[0];
+    private int[] rasterDezoomPriorite = new int[0];
     private int rasterDezoomLargeur = 0;
+    private int rasterDezoomHauteur = 0;
+    private boolean rasterObsolete = true;
+    private long rasterDernierCalcul = 0;
 
     // Fenêtre modale interne (messages / confirmations / choix)
     private boolean modalActif = false;
@@ -780,52 +787,29 @@ public class EcranEditeurCarte extends Screen {
         int id = zoneActive;
         String nom = nomZoneAffiche(id);
 
-        // Cellules touchées : celles de la parcelle (zone -> 0) et celles des parcelles
-        // suivantes (zone -> zone-1) — les ids étant des index du registre, retirer une
-        // parcelle du milieu renumérote toutes les suivantes.
-        List<Long> cibles = new ArrayList<>();
-        for (Map.Entry<Long, BlocCarte> entree : carte.blocs.entrySet()) {
-            if (entree.getValue().zone >= id) {
-                cibles.add(entree.getKey());
+        // Suppression d'une parcelle : opération de REGISTRE, non annulable — comme la création
+        // (« + ») et l'import CSV. Le registre carte.zones utilise des ids = index de liste :
+        // retirer une parcelle renumérote toutes les suivantes (zone > id -> zone-1), donc les
+        // ids de zone stockés dans les blocs des actions déjà EMPILÉES deviendraient périmés.
+        // On applique donc les changements directement (mutation en place : definirBloc ne fait
+        // qu'un put pour un bloc non-vide) et on purge l'historique d'annulation, au lieu de
+        // l'ancien instantané global du registre qui écrasait silencieusement les parcelles
+        // créées entre-temps et rendait la suppression annulable de façon incohérente.
+        for (BlocCarte bloc : carte.blocs.values()) {
+            if (bloc.zone > id) {
+                bloc.zone--;
+            } else if (bloc.zone == id) {
+                bloc.zone = 0;
             }
         }
-
-        boolean annulable = cibles.size() <= MAX_BLOCS_ACTION_ANNULABLE;
-        ActionEditeur action = annulable ? new ActionEditeur(carte) : null;
-        if (action != null) {
-            // L'action porte aussi le registre des parcelles : annuler restaure la rangée
-            // supprimée ET la numérotation d'origine (via apresActionZones)
-            action.zonesAvant = new ArrayList<>(carte.zones);
-        }
-        for (long cle : cibles) {
-            BlocCarte bloc = carte.blocs.get(cle);
-            if (bloc == null) {
-                continue;
-            }
-            BlocCarte apres = bloc.copier();
-            apres.zone = bloc.zone == id ? 0 : bloc.zone - 1;
-            int cx = CarteDonnees.cleX(cle);
-            int cz = CarteDonnees.cleZ(cle);
-            if (action != null) {
-                action.ajouterChangement(cx, cz, bloc.copier(), apres);
-            }
-            carte.definirBloc(cx, cz, apres);
-        }
-        // Retirer la parcelle du registre : elle disparaît aussi de la liste du panneau
-        // (avant, seules les cellules étaient désassignées et la rangée restait affichée)
         carte.zones.remove(id - 1);
         zoneActive = 0;
-        if (action != null) {
-            action.zonesApres = new ArrayList<>(carte.zones);
-            enregistrerAction(action);
-        } else {
-            // Registre modifié sans passer par la pile : marquer « modifié » à part
-            zonesRegistreModifie = true;
-            conclureOperationNonAnnulable("Parcelle supprimée — " + cibles.size()
-                + " blocs modifiés (trop volumineux pour l'annulation)");
-        }
+        zonesRegistreModifie = true;
         mettreAJourPanneauZones();
-        afficherToast("Parcelle « " + nom + " » supprimée", false);
+        // conclureOperationNonAnnulable vide les piles Annuler/Rétablir et pose LE toast :
+        // ne pas en afficher un second qui masquerait l'avertissement de perte d'annulation.
+        conclureOperationNonAnnulable("Parcelle « " + nom
+            + " » supprimée (annulation réinitialisée : la suppression n'est pas annulable)");
     }
 
     /** Nom d'une parcelle pour l'affichage (tronqué, « ? » si l'id ne correspond plus) */
@@ -1010,6 +994,7 @@ public class EcranEditeurCarte extends Screen {
     /** À appeler après toute action sur la carte : statistiques, indicateur ●, boutons ↶/↷ */
     private void surCarteModifiee() {
         statsObsoletes = true;
+        rasterObsolete = true;
         mettreAJourIndicateurSauvegarde();
         mettreAJourBoutonsAnnulation();
         // Le diagnostic du périmètre ne survit pas à une modification : les cellules
@@ -2452,8 +2437,11 @@ public class EcranEditeurCarte extends Screen {
         List<String> erreurs = carte.validerPourSauvegarde();
         if (!erreurs.isEmpty()) {
             // Périmètre non fermé : localiser le défaut, le faire clignoter et centrer la
-            // vue dessus — sur une grande carte, un trou d'une cellule est introuvable à l'œil
-            if (!carte.limiteEstBoucleFermeeValide()) {
+            // vue dessus — sur une grande carte, un trou d'une cellule est introuvable à l'œil.
+            // On ne re-teste PAS la validité (validerPourSauvegarde vient de faire ce remplissage
+            // complet de l'aire) : on détecte l'erreur de périmètre par son message.
+            boolean perimetreNonFerme = erreurs.stream().anyMatch(e -> e.contains("boucle fermée"));
+            if (perimetreNonFerme) {
                 List<int[]> defauts = carte.localiserDefautsLimite();
                 if (!defauts.isEmpty()) {
                     activerDiagnosticLimite(defauts, false);
@@ -2895,8 +2883,13 @@ public class EcranEditeurCarte extends Screen {
     /** Le bouton devient « Suivant » tant qu'un diagnostic est actif. */
     private void mettreAJourBoutonDefautLimite() {
         if (boutonDefautLimite != null) {
-            boutonDefautLimite.setMessage(Component.literal(
-                defautsLimite != null && !defautsLimite.isEmpty() ? "Suivant" : "Vérifier"));
+            boolean diagnostic = defautsLimite != null && !defautsLimite.isEmpty();
+            boutonDefautLimite.setMessage(Component.literal(diagnostic ? "Suivant" : "Vérifier"));
+            boutonDefautLimite.setTooltip(net.minecraft.client.gui.components.Tooltip.create(
+                Component.literal(diagnostic
+                    ? "Centre la vue sur le défaut de périmètre suivant (les cellules fautives clignotent)"
+                    : "Vérifie que le périmètre Limite est bien fermé ; sinon, surligne le défaut "
+                        + "(trou du tracé, trait isolé) et centre la vue dessus")));
         }
     }
 
@@ -3077,7 +3070,7 @@ public class EcranEditeurCarte extends Screen {
         //    proportionnel à l'écran et non à l'aire (indispensable en 1800×1800 dézoomé)
         int pasEchantillon = Math.max(1, (int) Math.ceil(1.0 / tailleCellule));
         if (pasEchantillon > 1) {
-            rafraichirStatsCarte(); // rafraîchit le raster de dézoom avant le passage terrain
+            rafraichirRasterDezoom(); // raster de dézoom rafraîchi à sa cadence courte propre
         }
         for (int cz = czMin; cz <= czMax; cz += pasEchantillon) {
             int czFin = Math.min(cz + pasEchantillon, czMax + 1);
@@ -3315,12 +3308,26 @@ public class EcranEditeurCarte extends Screen {
      */
     private int couleurEchantillon(int cx, int cz, int pasEchantillon) {
         if (pasEchantillon > 1 && rasterDezoomLargeur > 0) {
-            int gx = cx / GODET_DEZOOM;
-            int gz = cz / GODET_DEZOOM;
-            int index = gz * rasterDezoomLargeur + gx;
-            if (gx < rasterDezoomLargeur && index >= 0 && index < rasterDezoom.length) {
-                return rasterDezoom[index];
+            // Agréger TOUS les godets couverts par l'échantillon [cx..cx+pas) × [cz..cz+pas) :
+            // en fort dézoom, pasEchantillon dépasse la taille du godet (4) et un simple godet
+            // fixe en sauterait — on retient la couleur du godet de plus haute priorité.
+            int gx0 = cx / GODET_DEZOOM;
+            int gz0 = cz / GODET_DEZOOM;
+            int gx1 = Math.min(rasterDezoomLargeur - 1, (cx + pasEchantillon - 1) / GODET_DEZOOM);
+            int gz1 = Math.min(rasterDezoomHauteur - 1, (cz + pasEchantillon - 1) / GODET_DEZOOM);
+            int meilleurePriorite = -1;
+            int couleur = couleurTypeTerrain(TypeElementCarte.VIDE);
+            for (int gz = gz0; gz <= gz1; gz++) {
+                for (int gx = gx0; gx <= gx1; gx++) {
+                    int index = gz * rasterDezoomLargeur + gx;
+                    if (index >= 0 && index < rasterDezoom.length
+                        && rasterDezoomPriorite[index] > meilleurePriorite) {
+                        meilleurePriorite = rasterDezoomPriorite[index];
+                        couleur = rasterDezoom[index];
+                    }
+                }
             }
+            return couleur;
         }
         return couleurBloc(carte.obtenirBlocOuNull(cx, cz));
     }
@@ -3339,12 +3346,11 @@ public class EcranEditeurCarte extends Screen {
             return couleurTypeTerrain(TypeElementCarte.VIDE);
         }
         int base = couleurTypeTerrain(bloc.type);
-        // Cellules zonées : teinte de leur parcelle en PERMANENCE — appuyée quand l'outil
-        // Parcelle est actif (travail de zonage), plus légère sinon pour que le terrain
-        // reste lisible. La Limite garde toujours son rouge de repère.
+        // Cellules zonées : teinte de leur parcelle en PERMANENCE, à intensité fixe (0,35) —
+        // identique à celle du raster de dézoom, sinon les teintes « sauteraient » au
+        // franchissement du seuil de zoom. La Limite garde toujours son rouge de repère.
         if (bloc.zone > 0 && bloc.type != TypeElementCarte.LIMITE) {
-            return melanger(base, couleurZone(bloc.zone),
-                outilActif == OutilPalette.ZONE ? 0.55f : 0.35f);
+            return melanger(base, couleurZone(bloc.zone), 0.35f);
         }
         return base;
     }
@@ -3417,6 +3423,70 @@ public class EcranEditeurCarte extends Screen {
     // ==================== Inspecteur (panneau latéral droit) ====================
 
     /**
+     * Raster de dézoom (couleur + priorité Limite &gt; Île &gt; Pierre &gt; Eau &gt; vide par
+     * godet de 4×4 cellules), lu par {@link #couleurEchantillon} quand la vue est dézoomée sous
+     * 1 px par cellule. Cadence courte propre ({@value #RASTER_THROTTLE_MS} ms), indépendante des
+     * statistiques d'inspecteur (500 ms) : sans cela, un coup de pinceau en vue dézoomée
+     * n'apparaissait qu'après un demi-délai (jusqu'à 500 ms).
+     */
+    private void rafraichirRasterDezoom() {
+        if (!rasterObsolete || net.minecraft.Util.getMillis() - rasterDernierCalcul < RASTER_THROTTLE_MS) {
+            return;
+        }
+        rasterDernierCalcul = net.minecraft.Util.getMillis();
+        rasterObsolete = false;
+        int rasterLargeur = (carte.largeur + GODET_DEZOOM - 1) / GODET_DEZOOM;
+        int rasterHauteur = (carte.hauteur + GODET_DEZOOM - 1) / GODET_DEZOOM;
+        int[] priorites = new int[rasterLargeur * rasterHauteur];
+        int[] zonesGodets = new int[rasterLargeur * rasterHauteur];
+        for (Map.Entry<Long, BlocCarte> entree : carte.blocs.entrySet()) {
+            BlocCarte bloc = entree.getValue();
+            int x = CarteDonnees.cleX(entree.getKey());
+            int z = CarteDonnees.cleZ(entree.getKey());
+            if (x < 0 || x >= carte.largeur || z < 0 || z >= carte.hauteur) {
+                continue;
+            }
+            int godet = (z / GODET_DEZOOM) * rasterLargeur + (x / GODET_DEZOOM);
+            int priorite = switch (bloc.type) {
+                case LIMITE -> 4;
+                case ILE -> 3;
+                case PIERRE -> 2;
+                case EAU -> 1;
+                default -> 0;
+            };
+            if (priorite > priorites[godet]) {
+                priorites[godet] = priorite;
+            }
+            // Plus petit id de parcelle du godet : déterministe (indépendant de l'ordre
+            // d'itération du HashMap), pour que la teinte d'une frontière ne vacille pas
+            // d'une reconstruction à l'autre.
+            if (bloc.zone > 0 && (zonesGodets[godet] == 0 || bloc.zone < zonesGodets[godet])) {
+                zonesGodets[godet] = bloc.zone;
+            }
+        }
+        int[] couleursPriorite = {
+            couleurTypeTerrain(TypeElementCarte.VIDE),
+            couleurTypeTerrain(TypeElementCarte.EAU),
+            couleurTypeTerrain(TypeElementCarte.PIERRE),
+            couleurTypeTerrain(TypeElementCarte.ILE),
+            couleurTypeTerrain(TypeElementCarte.LIMITE)};
+        int[] couleurs = new int[rasterLargeur * rasterHauteur];
+        for (int i = 0; i < couleurs.length; i++) {
+            int couleur = couleursPriorite[priorites[i]];
+            // Teinte parcelle jamais appliquée à un godet dominé par la Limite ; même intensité
+            // (0,35) que couleurBloc pour ne pas « sauter » au franchissement du seuil de zoom.
+            if (zonesGodets[i] > 0 && priorites[i] != 4) {
+                couleur = melanger(couleur, couleurZone(zonesGodets[i]), 0.35f);
+            }
+            couleurs[i] = couleur;
+        }
+        rasterDezoom = couleurs;
+        rasterDezoomPriorite = priorites;
+        rasterDezoomLargeur = rasterLargeur;
+        rasterDezoomHauteur = rasterHauteur;
+    }
+
+    /**
      * Rafraîchit les statistiques affichées par l'inspecteur après une action sur la
      * carte, au plus toutes les 500 ms : sur une très grande carte, le calcul du
      * périmètre (remplissage de toute l'aire) ne doit pas s'exécuter à chaque coup
@@ -3434,11 +3504,6 @@ public class EcranEditeurCarte extends Screen {
         List<Long> limites = new ArrayList<>();
         List<Long> bonbons = new ArrayList<>();
         int[] comptes = new int[carte.zones.size() + 1];
-        // Raster de dézoom : priorité du terrain et parcelle par godet de 4×4 cellules
-        int rasterLargeur = (carte.largeur + GODET_DEZOOM - 1) / GODET_DEZOOM;
-        int rasterHauteur = (carte.hauteur + GODET_DEZOOM - 1) / GODET_DEZOOM;
-        int[] prioritesGodets = new int[rasterLargeur * rasterHauteur];
-        int[] zonesGodets = new int[rasterLargeur * rasterHauteur];
         for (Map.Entry<Long, BlocCarte> entree : carte.blocs.entrySet()) {
             BlocCarte bloc = entree.getValue();
             visibles += bloc.qteBonbonVisible;
@@ -3452,44 +3517,8 @@ public class EcranEditeurCarte extends Screen {
             if (bloc.zone > 0 && bloc.zone < comptes.length) {
                 comptes[bloc.zone]++;
             }
-            int x = CarteDonnees.cleX(entree.getKey());
-            int z = CarteDonnees.cleZ(entree.getKey());
-            if (x >= 0 && x < carte.largeur && z >= 0 && z < carte.hauteur) {
-                int godet = (z / GODET_DEZOOM) * rasterLargeur + (x / GODET_DEZOOM);
-                int priorite = switch (bloc.type) {
-                    case LIMITE -> 4;
-                    case ILE -> 3;
-                    case PIERRE -> 2;
-                    case EAU -> 1;
-                    default -> 0;
-                };
-                if (priorite > prioritesGodets[godet]) {
-                    prioritesGodets[godet] = priorite;
-                }
-                if (bloc.zone > 0 && zonesGodets[godet] == 0) {
-                    zonesGodets[godet] = bloc.zone;
-                }
-            }
         }
         comptesZones = comptes;
-        // Composition des couleurs finales du raster (mêmes couleurs que couleurBloc ;
-        // la teinte parcelle n'est jamais appliquée sur un godet dominé par la Limite)
-        int[] couleursPriorite = {
-            couleurTypeTerrain(TypeElementCarte.VIDE),
-            couleurTypeTerrain(TypeElementCarte.EAU),
-            couleurTypeTerrain(TypeElementCarte.PIERRE),
-            couleurTypeTerrain(TypeElementCarte.ILE),
-            couleurTypeTerrain(TypeElementCarte.LIMITE)};
-        int[] raster = new int[rasterLargeur * rasterHauteur];
-        for (int i = 0; i < raster.length; i++) {
-            int couleur = couleursPriorite[prioritesGodets[i]];
-            if (zonesGodets[i] > 0 && prioritesGodets[i] != 4) {
-                couleur = melanger(couleur, couleurZone(zonesGodets[i]), 0.35f);
-            }
-            raster[i] = couleur;
-        }
-        rasterDezoom = raster;
-        rasterDezoomLargeur = rasterLargeur;
         // Connexité des parcelles (⚠ dans le panneau quand une parcelle est en morceaux) —
         // même cadence throttlée que le reste des stats
         morceauxZones = carte.compterMorceauxParcelles();

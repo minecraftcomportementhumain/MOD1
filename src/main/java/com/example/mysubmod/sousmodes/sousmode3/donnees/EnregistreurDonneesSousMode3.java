@@ -219,6 +219,9 @@ public class EnregistreurDonneesSousMode3 {
             enregistreur.write("regeneration_naturelle," + config.regenerationNaturelle + "\n");
             enregistreur.write("reapparition_autorisee," + config.reapparitionAutorisee + "\n");
             enregistreur.write("sante_max_points," + config.santeMaxPoints + "\n");
+            enregistreur.write(String.format(Locale.US, "soin_bonbon_standard,%.1f%n", config.soinBonbonStandard));
+            enregistreur.write(String.format(Locale.US, "soin_bonbon_bleu,%.1f%n", config.soinBonbonBleu));
+            enregistreur.write(String.format(Locale.US, "soin_bonbon_rouge,%.1f%n", config.soinBonbonRouge));
             enregistreur.write("specialisation," + config.specialisation + "\n");
             enregistreur.write("duree_penalite_specialisation_secondes," + config.dureePenaliteSpecialisationSecondes + "\n");
             enregistreur.write(String.format(Locale.US, "multiplicateur_sante_penalite,%.2f%n", config.multiplicateurSantePenalite));

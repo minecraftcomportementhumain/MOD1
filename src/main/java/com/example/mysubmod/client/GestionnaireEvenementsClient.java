@@ -81,7 +81,8 @@ public class GestionnaireEvenementsClient {
             String touche = HUDClavier.TOUCHE_BASCULE_HUD_PARCELLES.getTranslatedKeyMessage().getString();
             mc.player.sendSystemMessage(net.minecraft.network.chat.Component.literal(
                 com.example.mysubmod.sousmodes.sousmode3.client.HUDZonesSousMode3.basculerPanneauOuPage(
-                    net.minecraft.client.gui.screens.Screen.hasShiftDown(), touche)));
+                    net.minecraft.client.gui.screens.Screen.hasShiftDown(), touche,
+                    mc.getWindow().getGuiScaledHeight())));
         }
 
         // Touche M - Ouvrir l'écran de contrôle des sous-modes
