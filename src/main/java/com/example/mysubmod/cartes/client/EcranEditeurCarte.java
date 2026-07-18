@@ -1290,6 +1290,11 @@ public class EcranEditeurCarte extends Screen {
     /** Applique le changement d'une cellule dans l'action collectrice en cours
      *  (trait de peinture, tampon du pinceau) ou comme action autonome sinon */
     private void appliquerChangement(int cx, int cz, BlocCarte avant, BlocCarte apres) {
+        // Rafraîchir le raster de dézoom dès CETTE cellule : pendant un trait de pinceau,
+        // surCarteModifiee() n'est appelé qu'au relâchement (terminerPeinture) — sans ce marquage
+        // le raster restait figé et le trait n'apparaissait, en vue dézoomée, qu'à la fin.
+        // Le rebâtiment reste borné par sa propre cadence (RASTER_THROTTLE_MS) : pas de coût par cellule.
+        rasterObsolete = true;
         if (peintureEnCours && actionPeinture != null) {
             actionPeinture.ajouterChangement(cx, cz, avant, apres);
             carte.definirBloc(cx, cz, apres);
