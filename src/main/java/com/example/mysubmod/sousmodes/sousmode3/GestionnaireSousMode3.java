@@ -1958,9 +1958,24 @@ public class GestionnaireSousMode3 {
         objetsAuSolAutorises.add(entite);
     }
 
-    /** Vrai si cet objet a été volontairement jeté/déposé (le filtre anti-résidus le laisse passer) */
-    public boolean estObjetAuSolAutorise(net.minecraft.world.entity.item.ItemEntity entite) {
-        return objetsAuSolAutorises.contains(entite);
+    /**
+     * Vrai si cet objet est légitimement au sol pour la session EN COURS : soit suivi par instance
+     * (jeté/déposé pendant cette partie), soit estampillé de la session courante. Le suivi par
+     * instance ne survit PAS à un cycle décharge/recharge du chunk (l'objet revient comme une
+     * nouvelle instance) ; le marqueur NBT, lui, survit — un drop de mort ou un objet jeté revenant
+     * du disque en cours de partie est donc repris dans le suivi, au lieu d'être supprimé à tort
+     * comme un résidu étranger par le filtre d'apparition.
+     */
+    public boolean reprendreSuiviObjetSessionCourante(net.minecraft.world.entity.item.ItemEntity entite) {
+        if (objetsAuSolAutorises.contains(entite)) {
+            return true;
+        }
+        long sessionObjet = entite.getPersistentData().getLong(TAG_SESSION_CARTE);
+        if (sessionObjet != 0 && sessionObjet == idSessionCarte) {
+            objetsAuSolAutorises.add(entite); // reprendre le suivi (pour le nettoyage de désactivation)
+            return true;
+        }
+        return false;
     }
 
     /** Retire du monde les objets jetés/déposés encore au sol (désactivation du sous-mode) */

@@ -808,11 +808,14 @@ public class GestionnaireEvenementsSousMode3 {
         // sont autorisés) : empêche les résidus de la destruction du terrain principal
         // (fleurs, pousses, graines...) d'apparaître sur la carte
         if (event.getEntity() instanceof ItemEntity entiteObjet) {
-            if (gestionnaire.estDansAireCarte(entiteObjet.blockPosition())
-                && !GestionnaireBonbonsSousMode3.estObjetBonbon(entiteObjet.getItem())
-                && !gestionnaire.estObjetAuSolAutorise(entiteObjet)) {
+            boolean bonbon = GestionnaireBonbonsSousMode3.estObjetBonbon(entiteObjet.getItem());
+            if (!bonbon && gestionnaire.estDansAireCarte(entiteObjet.blockPosition())
+                && !gestionnaire.reprendreSuiviObjetSessionCourante(entiteObjet)) {
+                // Résidu étranger dans l'aire (ni bonbon, ni objet jeté/déposé de cette session) :
+                // supprimé. Un drop de mort/objet jeté de la session courante revenant du disque
+                // est, lui, reconnu par son estampille NBT et repris dans le suivi (pas supprimé).
                 event.setCanceled(true);
-            } else if (GestionnaireBonbonsSousMode3.estObjetBonbon(entiteObjet.getItem())) {
+            } else if (bonbon) {
                 // Un bonbon visible qui (re)charge dans un chunk : le réassocier à sa cellule
                 // si le déchargement avait cassé le suivi (keyé par instance d'entité), sinon
                 // son ramassage ne décrémenterait plus le compteur ni ne réapparaîtrait.
