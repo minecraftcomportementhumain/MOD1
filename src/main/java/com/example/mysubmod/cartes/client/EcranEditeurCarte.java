@@ -113,8 +113,10 @@ public class EcranEditeurCarte extends Screen {
     private int selectionNbTerrain = 0;
     private Integer selectionElevationCommune = null;
 
-    // Pinceau (peinture continue par glissement pour Eau / Île / Pierre / Limite)
+    // Pinceau (peinture continue par glissement pour Eau / Île / Pierre / Limite / Zone)
     private boolean peintureEnCours = false;
+    // Trait en cours de suppression (clic droit maintenu) plutôt que de placement (clic gauche)
+    private boolean peintureSuppression = false;
     private int dernierePeintureCx;
     private int dernierePeintureCz;
     private ActionEditeur actionPeinture = null;
@@ -1366,7 +1368,13 @@ public class EcranEditeurCarte extends Screen {
             retirerElement(cxCentre, czCentre);
             return;
         }
-        actionGroupe = new ActionEditeur(carte);
+        // Même structure que placerZone : pendant un trait (peintureEnCours), les changements
+        // sont collectés par actionPeinture — on ne crée PAS d'action groupe locale (sinon un
+        // trait de suppression empilerait une action par cellule au lieu d'une seule).
+        boolean groupeLocal = !peintureEnCours && actionGroupe == null;
+        if (groupeLocal) {
+            actionGroupe = new ActionEditeur(carte);
+        }
         for (int cx = cxCentre - rayon; cx <= cxCentre + rayon; cx++) {
             for (int cz = czCentre - rayon; cz <= czCentre + rayon; cz++) {
                 if (carte.estDansAire(cx, cz)) {
@@ -1374,10 +1382,12 @@ public class EcranEditeurCarte extends Screen {
                 }
             }
         }
-        ActionEditeur action = actionGroupe;
-        actionGroupe = null;
-        if (!action.estVide()) {
-            enregistrerAction(action);
+        if (groupeLocal) {
+            ActionEditeur action = actionGroupe;
+            actionGroupe = null;
+            if (!action.estVide()) {
+                enregistrerAction(action);
+            }
         }
     }
 
@@ -1388,25 +1398,39 @@ public class EcranEditeurCarte extends Screen {
             || outilActif == OutilPalette.ZONE;
     }
 
-    private void commencerPeinture(int cx, int cz) {
+    private void commencerPeinture(int cx, int cz, boolean suppression) {
         peintureEnCours = true;
+        peintureSuppression = suppression;
         actionPeinture = new ActionEditeur(carte);
         dernierePeintureCx = cx;
         dernierePeintureCz = cz;
-        // Mettre en cache l'intérieur du périmètre : le trait d'Eau ne modifie pas la Limite
-        limiteValidePeinture = outilActif == OutilPalette.EAU && carte.limiteEstBoucleFermeeValide();
+        // Cache de l'intérieur du périmètre (validation du placement d'Eau) : inutile pour un
+        // trait de suppression, qui n'appelle pas placerElement.
+        limiteValidePeinture = !suppression && outilActif == OutilPalette.EAU
+            && carte.limiteEstBoucleFermeeValide();
         interieurPeinture = limiteValidePeinture ? carte.calculerInterieurLimite() : null;
-        placerZone(cx, cz, false); // Premier tampon : messages d'erreur autorisés au centre
+        // Premier tampon : messages d'erreur autorisés au centre (placement seulement)
+        appliquerTampon(cx, cz, false);
     }
 
-    /** Peint tous les blocs entre deux cellules (mouvements rapides de la souris) */
+    /** Un tampon du pinceau au centre (cx, cz) : place l'outil actif, ou le retire si le trait
+     *  est en mode suppression (clic droit). {@code silencieux} coupe les messages d'erreur. */
+    private void appliquerTampon(int cx, int cz, boolean silencieux) {
+        if (peintureSuppression) {
+            retirerZone(cx, cz);
+        } else {
+            placerZone(cx, cz, silencieux);
+        }
+    }
+
+    /** Peint (ou retire) tous les blocs entre deux cellules (mouvements rapides de la souris) */
     private void peindreSegment(int deCx, int deCz, int versCx, int versCz) {
         int etapes = Math.max(Math.abs(versCx - deCx), Math.abs(versCz - deCz));
         for (int i = 1; i <= etapes; i++) {
             int cx = deCx + Math.round((float) (versCx - deCx) * i / etapes);
             int cz = deCz + Math.round((float) (versCz - deCz) * i / etapes);
             if (carte.estDansAire(cx, cz)) {
-                placerZone(cx, cz, true); // Pendant le trait : silencieux
+                appliquerTampon(cx, cz, true); // Pendant le trait : silencieux
             }
         }
     }
@@ -1427,6 +1451,7 @@ public class EcranEditeurCarte extends Screen {
         actionPeinture = null;
         interieurPeinture = null;
         limiteValidePeinture = false;
+        peintureSuppression = false;
     }
 
     /** Clic droit sur un bloc : retire l'élément du dessus de la pile / décrémente un bonbon */
@@ -1885,6 +1910,7 @@ public class EcranEditeurCarte extends Screen {
         // (non encore empilé) écrirait sinon sur la nouvelle, et son annulation
         // restaurerait les dimensions/blocs de l'ancienne carte.
         peintureEnCours = false;
+        peintureSuppression = false;
         actionPeinture = null;
         actionGroupe = null;
         interieurPeinture = null;
@@ -2637,13 +2663,19 @@ public class EcranEditeurCarte extends Screen {
             } else {
                 if (bouton == 0) {
                     if (estOutilPinceau()) {
-                        commencerPeinture(cellule[0], cellule[1]); // Pinceau : peinture par glissement
+                        commencerPeinture(cellule[0], cellule[1], false); // Pinceau : peinture par glissement
                     } else {
                         placerZone(cellule[0], cellule[1], false);
                     }
                     return true;
                 } else if (bouton == 1) {
-                    retirerZone(cellule[0], cellule[1]);
+                    // Clic droit = suppression. Sur un outil pinceau, la suppression peint aussi
+                    // par glissement (symétrique du clic gauche) ; sinon suppression ponctuelle.
+                    if (estOutilPinceau()) {
+                        commencerPeinture(cellule[0], cellule[1], true);
+                    } else {
+                        retirerZone(cellule[0], cellule[1]);
+                    }
                     return true;
                 }
             }
@@ -2673,8 +2705,8 @@ public class EcranEditeurCarte extends Screen {
             selectionCouranteY = sourisY;
             return true;
         }
-        // Pinceau : peindre les blocs traversés par le glissement
-        if (peintureEnCours && bouton == 0) {
+        // Pinceau : peindre (clic gauche) ou retirer (clic droit) les blocs traversés par le glissement
+        if (peintureEnCours && (bouton == 0 || bouton == 1)) {
             int[] cellule = celluleSousSouris(sourisX, sourisY);
             if (cellule != null && (cellule[0] != dernierePeintureCx || cellule[1] != dernierePeintureCz)) {
                 peindreSegment(dernierePeintureCx, dernierePeintureCz, cellule[0], cellule[1]);
@@ -2696,7 +2728,7 @@ public class EcranEditeurCarte extends Screen {
             finaliserSelection(sourisX, sourisY);
             return true;
         }
-        if (peintureEnCours && bouton == 0) {
+        if (peintureEnCours && (bouton == 0 || bouton == 1)) {
             terminerPeinture();
             return true;
         }
