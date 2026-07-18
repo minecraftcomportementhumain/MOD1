@@ -244,6 +244,295 @@ public class CarteDonnees {
         return nombreVisites == interieur.size();
     }
 
+    /** Plafond de cellules retournées par {@link #localiserDefautsLimite()} (le surlignage
+     *  est redessiné à chaque image de l'éditeur : la liste doit rester bornée). */
+    private static final int MAX_CELLULES_DEFAUT = 2000;
+
+    /**
+     * Localise les défauts du périmètre Limite quand {@link #limiteEstBoucleFermeeValide()}
+     * est faux — pour surligner dans l'éditeur l'endroit à corriger, introuvable à l'œil sur
+     * une grande carte. Retourne des cellules {x, z} à inspecter (vide si aucune Limite ou
+     * aucun point précis identifiable), la première étant la plus significative.
+     *
+     * <p>Stratégies, dans l'ordre :</p>
+     * <ol>
+     *   <li><b>Bouts de trait</b> : cellules Limite avec au plus une voisine Limite
+     *       (8 directions) — les deux lèvres d'un trou dans un trait fin, le cas typique
+     *       d'un grand périmètre tracé rapidement.</li>
+     *   <li><b>Chemin de fuite</b> (intérieur vide) : remontée du remplissage extérieur
+     *       depuis le cœur présumé de la carte (barycentre des Limites) vers le bord ;
+     *       la cellule du chemin la plus entourée de Limites est le passage du trou —
+     *       couvre les murs épais, sans extrémité de trait détectable.</li>
+     *   <li><b>Limites orphelines</b> (intérieur non vide) : cellules Limite qui ne
+     *       touchent pas l'intérieur — traits parasites hors du périmètre.</li>
+     *   <li><b>Enclos multiples</b> (intérieur non connexe) : Limites entourant les
+     *       enclos secondaires (le plus grand est considéré comme la carte voulue).</li>
+     * </ol>
+     */
+    public List<int[]> localiserDefautsLimite() {
+        List<int[]> resultat = new ArrayList<>();
+
+        List<int[]> cellulesLimite = new ArrayList<>();
+        for (Map.Entry<Long, BlocCarte> entree : blocs.entrySet()) {
+            if (entree.getValue().type == TypeElementCarte.LIMITE) {
+                int x = cleX(entree.getKey());
+                int z = cleZ(entree.getKey());
+                if (estDansAire(x, z)) {
+                    cellulesLimite.add(new int[]{x, z});
+                }
+            }
+        }
+        if (cellulesLimite.isEmpty()) {
+            return resultat;
+        }
+
+        // 1) Bouts de trait
+        for (int[] cellule : cellulesLimite) {
+            if (compterVoisinesLimite(cellule[0], cellule[1]) <= 1 && resultat.size() < MAX_CELLULES_DEFAUT) {
+                resultat.add(cellule);
+            }
+        }
+        if (!resultat.isEmpty()) {
+            return resultat;
+        }
+
+        EnsembleCellules interieur = interieurLimite();
+        if (interieur.isEmpty()) {
+            // 2) Chemin de fuite (aucun intérieur : l'extérieur s'infiltre partout)
+            int[] fuite = localiserFuiteVersCoeur();
+            if (fuite != null) {
+                resultat.add(fuite);
+            }
+            return resultat;
+        }
+
+        // 3) Limites orphelines (le même critère que la validation)
+        for (int[] cellule : cellulesLimite) {
+            boolean toucheInterieur = false;
+            for (int dx = -1; dx <= 1 && !toucheInterieur; dx++) {
+                for (int dz = -1; dz <= 1 && !toucheInterieur; dz++) {
+                    if ((dx != 0 || dz != 0) && interieur.contientXZ(cellule[0] + dx, cellule[1] + dz)) {
+                        toucheInterieur = true;
+                    }
+                }
+            }
+            if (!toucheInterieur && resultat.size() < MAX_CELLULES_DEFAUT) {
+                resultat.add(cellule);
+            }
+        }
+        if (!resultat.isEmpty()) {
+            return resultat;
+        }
+
+        // 4) Enclos multiples : étiqueter les composantes de l'intérieur, puis surligner
+        //    les Limites adjacentes aux enclos secondaires (hors la plus grande composante)
+        BitSet bitsInterieur = interieur.bits();
+        int total = largeur * hauteur;
+        int[] etiquettes = new int[total];
+        int nbComposantes = 0;
+        int plusGrande = 0;
+        int taillePlusGrande = 0;
+        PileIndices pile = new PileIndices();
+        for (int depart = bitsInterieur.nextSetBit(0); depart >= 0; depart = bitsInterieur.nextSetBit(depart + 1)) {
+            if (etiquettes[depart] != 0) {
+                continue;
+            }
+            nbComposantes++;
+            int tailleComposante = 0;
+            etiquettes[depart] = nbComposantes;
+            pile.empiler(depart);
+            while (!pile.estVide()) {
+                int index = pile.depiler();
+                tailleComposante++;
+                int x = index % largeur;
+                int z = index / largeur;
+                int[] voisins = {
+                    x + 1 < largeur ? index + 1 : -1,
+                    x - 1 >= 0 ? index - 1 : -1,
+                    z + 1 < hauteur ? index + largeur : -1,
+                    z - 1 >= 0 ? index - largeur : -1
+                };
+                for (int voisin : voisins) {
+                    if (voisin >= 0 && bitsInterieur.get(voisin) && etiquettes[voisin] == 0) {
+                        etiquettes[voisin] = nbComposantes;
+                        pile.empiler(voisin);
+                    }
+                }
+            }
+            if (tailleComposante > taillePlusGrande) {
+                taillePlusGrande = tailleComposante;
+                plusGrande = nbComposantes;
+            }
+        }
+        for (int[] cellule : cellulesLimite) {
+            boolean bordeEnclosSecondaire = false;
+            for (int dx = -1; dx <= 1 && !bordeEnclosSecondaire; dx++) {
+                for (int dz = -1; dz <= 1 && !bordeEnclosSecondaire; dz++) {
+                    int x = cellule[0] + dx;
+                    int z = cellule[1] + dz;
+                    if ((dx != 0 || dz != 0) && estDansAire(x, z)) {
+                        int etiquette = etiquettes[z * largeur + x];
+                        if (etiquette != 0 && etiquette != plusGrande) {
+                            bordeEnclosSecondaire = true;
+                        }
+                    }
+                }
+            }
+            if (bordeEnclosSecondaire && resultat.size() < MAX_CELLULES_DEFAUT) {
+                resultat.add(cellule);
+            }
+        }
+        return resultat;
+    }
+
+    /** Nombre de voisines Limite (8 directions) d'une cellule. */
+    private int compterVoisinesLimite(int x, int z) {
+        int voisines = 0;
+        for (int dx = -1; dx <= 1; dx++) {
+            for (int dz = -1; dz <= 1; dz++) {
+                if (dx == 0 && dz == 0) {
+                    continue;
+                }
+                BlocCarte voisin = obtenirBlocOuNull(x + dx, z + dz);
+                if (voisin != null && voisin.type == TypeElementCarte.LIMITE) {
+                    voisines++;
+                }
+            }
+        }
+        return voisines;
+    }
+
+    /**
+     * Intérieur vide (le périmètre fuit) : remonte le remplissage extérieur depuis le cœur
+     * présumé de la carte (la cellule non-Limite la plus proche du barycentre des Limites)
+     * jusqu'au bord de l'aire, et retourne la cellule du chemin la plus entourée de Limites —
+     * le passage du trou. Le parcours est en largeur (plus court chemin) : le chemin traverse
+     * le trou directement au lieu de serpenter. Null si aucun point pertinent.
+     */
+    private int[] localiserFuiteVersCoeur() {
+        int total = largeur * hauteur;
+        BitSet limites = new BitSet(total);
+        long sommeX = 0;
+        long sommeZ = 0;
+        long nbLimites = 0;
+        for (Map.Entry<Long, BlocCarte> entree : blocs.entrySet()) {
+            if (entree.getValue().type == TypeElementCarte.LIMITE) {
+                int x = cleX(entree.getKey());
+                int z = cleZ(entree.getKey());
+                if (estDansAire(x, z)) {
+                    limites.set(z * largeur + x);
+                    sommeX += x;
+                    sommeZ += z;
+                    nbLimites++;
+                }
+            }
+        }
+        if (nbLimites == 0) {
+            return null;
+        }
+
+        // Cœur présumé : cellule non-Limite la plus proche du barycentre (anneaux croissants)
+        int barycentreX = (int) (sommeX / nbLimites);
+        int barycentreZ = (int) (sommeZ / nbLimites);
+        int cible = -1;
+        int rayonMax = Math.max(largeur, hauteur);
+        for (int rayon = 0; rayon <= rayonMax && cible < 0; rayon++) {
+            for (int i = -rayon; i <= rayon && cible < 0; i++) {
+                cible = indexSiNonLimite(limites, barycentreX + i, barycentreZ - rayon);
+                if (cible < 0) {
+                    cible = indexSiNonLimite(limites, barycentreX + i, barycentreZ + rayon);
+                }
+                if (cible < 0) {
+                    cible = indexSiNonLimite(limites, barycentreX - rayon, barycentreZ + i);
+                }
+                if (cible < 0) {
+                    cible = indexSiNonLimite(limites, barycentreX + rayon, barycentreZ + i);
+                }
+            }
+        }
+        if (cible < 0) {
+            return null;
+        }
+
+        // Parcours en largeur depuis tout le bord de l'aire, avec mémoire du parent
+        int[] parent = new int[total];
+        java.util.Arrays.fill(parent, -1);
+        int[] file = new int[total];
+        int tete = 0;
+        int queue = 0;
+        for (int x = 0; x < largeur; x++) {
+            queue = amorcerFuite(parent, file, queue, limites, x, 0);
+            queue = amorcerFuite(parent, file, queue, limites, x, hauteur - 1);
+        }
+        for (int z = 0; z < hauteur; z++) {
+            queue = amorcerFuite(parent, file, queue, limites, 0, z);
+            queue = amorcerFuite(parent, file, queue, limites, largeur - 1, z);
+        }
+        while (tete < queue && parent[cible] < 0) {
+            int index = file[tete++];
+            int x = index % largeur;
+            int z = index / largeur;
+            queue = poursuivreFuite(parent, file, queue, limites, x + 1, z, index);
+            queue = poursuivreFuite(parent, file, queue, limites, x - 1, z, index);
+            queue = poursuivreFuite(parent, file, queue, limites, x, z + 1, index);
+            queue = poursuivreFuite(parent, file, queue, limites, x, z - 1, index);
+        }
+        if (parent[cible] < 0) {
+            return null; // Cible inatteignable (ne devrait pas arriver : l'intérieur est vide)
+        }
+
+        // Remonter le chemin cible -> bord : la cellule la plus entourée de Limites est le trou
+        int meilleur = -1;
+        int meilleuresVoisines = 0;
+        int courant = cible;
+        for (int pas = 0; pas < total; pas++) {
+            int voisines = compterVoisinesLimite(courant % largeur, courant / largeur);
+            if (voisines > meilleuresVoisines) {
+                meilleuresVoisines = voisines;
+                meilleur = courant;
+            }
+            if (parent[courant] == courant) {
+                break; // Racine (cellule du bord de l'aire)
+            }
+            courant = parent[courant];
+        }
+        if (meilleur < 0 || meilleuresVoisines == 0) {
+            return null; // Le chemin ne frôle aucune Limite : rien de localisable
+        }
+        return new int[]{meilleur % largeur, meilleur / largeur};
+    }
+
+    /** Index de la cellule si elle est dans l'aire et non-Limite, sinon -1. */
+    private int indexSiNonLimite(BitSet limites, int x, int z) {
+        if (!estDansAire(x, z)) {
+            return -1;
+        }
+        int index = z * largeur + x;
+        return limites.get(index) ? -1 : index;
+    }
+
+    /** Amorce du parcours de fuite sur une cellule du bord (son propre parent = racine). */
+    private int amorcerFuite(int[] parent, int[] file, int queue, BitSet limites, int x, int z) {
+        int index = indexSiNonLimite(limites, x, z);
+        if (index < 0 || parent[index] >= 0) {
+            return queue;
+        }
+        parent[index] = index;
+        file[queue++] = index;
+        return queue;
+    }
+
+    /** Étape du parcours de fuite : visite une voisine non-Limite pas encore atteinte. */
+    private int poursuivreFuite(int[] parent, int[] file, int queue, BitSet limites, int x, int z, int depuis) {
+        int index = indexSiNonLimite(limites, x, z);
+        if (index < 0 || parent[index] >= 0) {
+            return queue;
+        }
+        parent[index] = depuis;
+        file[queue++] = index;
+        return queue;
+    }
+
     // ==================== Validation ====================
 
     /**

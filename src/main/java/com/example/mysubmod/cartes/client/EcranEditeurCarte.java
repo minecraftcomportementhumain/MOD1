@@ -213,6 +213,14 @@ public class EcranEditeurCarte extends Screen {
     private boolean toastErreur = false;
     private long toastExpiration = 0;
 
+    // Localisateur de défauts du périmètre Limite : cellules {x, z} surlignées en clignotant
+    // dans la grille (null = aucun diagnostic actif) et curseur du bouton « Défaut suiv. ».
+    // Sur une grande carte, un trou d'une cellule dans le périmètre est introuvable à l'œil :
+    // le diagnostic le repère et y centre la vue. Invalidé à la moindre modification.
+    private List<int[]> defautsLimite = null;
+    private int indexDefautLimite = 0;
+    private Button boutonDefautLimite;
+
     // Statistiques de la carte pour l'inspecteur (recalculées après une action,
     // au plus toutes les 500 ms — voir rafraichirStatsCarte)
     private boolean statsObsoletes = true;
@@ -589,6 +597,15 @@ public class EcranEditeurCarte extends Screen {
             .bounds(this.width - 56, yZoom, 50, 14)
             .tooltip(net.minecraft.client.gui.components.Tooltip.create(Component.literal("Cadrer toute la carte dans la vue")))
             .build());
+
+        boutonDefautLimite = Button.builder(Component.literal("Vérifier Limite"), b -> surBoutonDefautLimite())
+            .bounds(this.width - 232, yZoom, 92, 14)
+            .tooltip(net.minecraft.client.gui.components.Tooltip.create(Component.literal(
+                "Vérifie que le périmètre Limite est bien fermé ; sinon, surligne le défaut "
+                    + "(trou du tracé, trait isolé) et centre la vue dessus")))
+            .build();
+        addRenderableWidget(boutonDefautLimite);
+        mettreAJourBoutonDefautLimite(); // init() reconstruit les widgets : garder le libellé de l'état courant
 
         mettreAJourBoutonsAnnulation();
         mettreAJourIndicateurSauvegarde();
@@ -977,6 +994,13 @@ public class EcranEditeurCarte extends Screen {
         statsObsoletes = true;
         mettreAJourIndicateurSauvegarde();
         mettreAJourBoutonsAnnulation();
+        // Le diagnostic du périmètre ne survit pas à une modification : les cellules
+        // surlignées pourraient ne plus être fautives (relancer « Vérifier Limite » au besoin)
+        if (defautsLimite != null) {
+            defautsLimite = null;
+            indexDefautLimite = 0;
+            mettreAJourBoutonDefautLimite();
+        }
     }
 
     /**
@@ -2409,6 +2433,17 @@ public class EcranEditeurCarte extends Screen {
     private void poursuivreSauvegarde() {
         List<String> erreurs = carte.validerPourSauvegarde();
         if (!erreurs.isEmpty()) {
+            // Périmètre non fermé : localiser le défaut, le faire clignoter et centrer la
+            // vue dessus — sur une grande carte, un trou d'une cellule est introuvable à l'œil
+            if (!carte.limiteEstBoucleFermeeValide()) {
+                List<int[]> defauts = carte.localiserDefautsLimite();
+                if (!defauts.isEmpty()) {
+                    activerDiagnosticLimite(defauts, false);
+                    erreurs = new ArrayList<>(erreurs);
+                    erreurs.add("§eDéfaut repéré vers (" + defauts.get(0)[0] + ", " + defauts.get(0)[1]
+                        + ") — il clignote dans la grille ; « Défaut suiv. » (barre du bas) pour naviguer.");
+                }
+            }
             afficherMessage("Sauvegarde bloquée", erreurs);
             return;
         }
@@ -2749,6 +2784,62 @@ public class EcranEditeurCarte extends Screen {
         tailleCellule = Math.max(0.05, Math.min(48, tailleCelluleAjustee()));
         decalageX = (grilleDroiteEcran() - grilleGaucheEcran() - carte.largeur * tailleCellule) / 2;
         decalageY = (basGrille() - hautGrille - carte.hauteur * tailleCellule) / 2;
+    }
+
+    // ==================== Localisateur de défauts du périmètre Limite ====================
+
+    /** Centre la vue sur une cellule, à un zoom lisible (ne dézoome jamais). */
+    private void centrerVueSur(int cx, int cz) {
+        tailleCellule = Math.min(48, Math.max(tailleCellule, 12));
+        decalageX = (grilleDroiteEcran() - grilleGaucheEcran()) / 2.0 - (cx + 0.5) * tailleCellule;
+        decalageY = (basGrille() - hautGrille) / 2.0 - (cz + 0.5) * tailleCellule;
+    }
+
+    /**
+     * Bouton « Vérifier Limite » / « Défaut suiv. » de la barre d'état : sans diagnostic
+     * actif, contrôle le périmètre et localise le défaut ; avec un diagnostic actif,
+     * centre la vue sur le défaut suivant (cycle).
+     */
+    private void surBoutonDefautLimite() {
+        if (defautsLimite != null && !defautsLimite.isEmpty()) {
+            indexDefautLimite = (indexDefautLimite + 1) % defautsLimite.size();
+            int[] defaut = defautsLimite.get(indexDefautLimite);
+            centrerVueSur(defaut[0], defaut[1]);
+            afficherToast("Défaut " + (indexDefautLimite + 1) + "/" + defautsLimite.size()
+                + " — cellule (" + defaut[0] + ", " + defaut[1] + ")", false);
+            return;
+        }
+        if (carte.limiteEstBoucleFermeeValide()) {
+            afficherToast("Périmètre Limite fermé ✔", false);
+            return;
+        }
+        List<int[]> defauts = carte.localiserDefautsLimite();
+        if (defauts.isEmpty()) {
+            afficherToast("Périmètre non fermé — aucun point précis identifiable (aucune Limite tracée ?)", true);
+            return;
+        }
+        activerDiagnosticLimite(defauts, true);
+    }
+
+    /** Active le surlignage clignotant des défauts et centre la vue sur le premier. */
+    private void activerDiagnosticLimite(List<int[]> defauts, boolean avecToast) {
+        defautsLimite = defauts;
+        indexDefautLimite = 0;
+        int[] premier = defauts.get(0);
+        centrerVueSur(premier[0], premier[1]);
+        mettreAJourBoutonDefautLimite();
+        if (avecToast) {
+            afficherToast("Défaut du périmètre repéré vers (" + premier[0] + ", " + premier[1] + ")"
+                + (defauts.size() > 1 ? " — " + defauts.size() + " cellules clignotent" : ""), true);
+        }
+    }
+
+    /** Le bouton devient « Défaut suiv. » tant qu'un diagnostic est actif. */
+    private void mettreAJourBoutonDefautLimite() {
+        if (boutonDefautLimite != null) {
+            boutonDefautLimite.setMessage(Component.literal(
+                defautsLimite != null && !defautsLimite.isEmpty() ? "Défaut suiv." : "Vérifier Limite"));
+        }
     }
 
     @Override
@@ -3107,6 +3198,27 @@ public class EcranEditeurCarte extends Screen {
             int ecranY = (int) Math.floor(haut + decalageY + carte.apparitionZ * tailleCellule);
             dessinerTexteCellule(guiGraphics, "⚑", ecranX + taille / 2.0f, ecranY + taille / 2.0f,
                 Math.max(8, taille), 0xFFFF3030);
+        }
+
+        // Défauts du périmètre Limite (localisateur) : cellule remplie + cadre débordant
+        // clignotant rouge/jaune, avec une taille minimale pour rester repérable en dézoom
+        if (defautsLimite != null && !defautsLimite.isEmpty()) {
+            int couleurDefaut = (net.minecraft.Util.getMillis() / 350) % 2 == 0 ? 0xFFFF2020 : 0xFFFFE040;
+            for (int[] defaut : defautsLimite) {
+                int cx = defaut[0];
+                int cz = defaut[1];
+                if (cx < cxMin - 2 || cx > cxMax + 2 || cz < czMin - 2 || cz > czMax + 2) {
+                    continue;
+                }
+                int x0 = (int) Math.floor(gauche + decalageX + cx * tailleCellule);
+                int y0 = (int) Math.floor(haut + decalageY + cz * tailleCellule);
+                guiGraphics.fill(x0, y0, x0 + taille, y0 + taille, couleurDefaut);
+                int rayon = Math.max(8, taille);
+                int centreX = x0 + taille / 2;
+                int centreY = y0 + taille / 2;
+                dessinerCadre(guiGraphics, centreX - rayon, centreY - rayon,
+                    centreX + rayon, centreY + rayon, couleurDefaut);
+            }
         }
 
         // Contour de l'aire totale
